@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Start Application • Email Verification</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#0f8edd',
+            dark: '#000000',
+            light: '#ffffff'
+          },
+          boxShadow: {
+            soft: '0 10px 30px -12px rgba(0,0,0,0.15)'
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    html { scroll-behavior: smooth; }
+  </style>
+</head>
+<body class="min-h-screen bg-light text-slate-800">
+  <div class="mx-auto max-w-lg px-4 py-8 sm:py-12">
+    <header class="mb-6">
+      <a href="/" class="inline-flex items-center gap-2 text-dark hover:text-primary">
+        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.828 12 16 17.172 14.586 18.586 8 12l6.586-6.586L16 6.828 10.828 12z"/></svg>
+        Back to Portal
+      </a>
+      <h1 class="mt-3 text-2xl font-semibold text-dark">Start Application</h1>
+      <p class="text-slate-600" id="grantLabel">Select grant</p>
+    </header>
+
+    <section class="rounded-2xl border border-slate-200 shadow-soft p-6 sm:p-8 bg-gradient-to-br from-light via-primary/10 to-dark/5">
+      <h2 class="text-lg font-semibold text-primary">Verify your email</h2>
+      <p class="text-sm text-slate-600 mt-1">Enter your Gmail address. We’ll send a one-time code you’ll use to resume your application later.</p>
+
+      <form id="emailForm" class="mt-5 space-y-4" onsubmit="event.preventDefault(); sendCode();">
+        <div>
+          <label for="email" class="block text-sm font-medium">Gmail address</label>
+          <input id="email" name="email" type="email" required autocomplete="email" placeholder="yourname@gmail.com"
+            class="mt-1 w-full rounded-xl border border-slate-300 bg-light px-4 py-2.5 text-sm shadow-sm focus:border-primary focus:ring-4 focus:ring-primary/40">
+        </div>
+
+        <div id="codeArea" class="hidden">
+          <label for="code" class="block text-sm font-medium mt-4">Enter the 6-digit code</label>
+          <input id="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456"
+            class="mt-1 w-full rounded-xl border border-slate-300 bg-light px-4 py-2.5 text-sm tracking-widest text-center shadow-sm focus:border-primary focus:ring-4 focus:ring-primary/40" />
+
+          <button id="proceedBtn" type="button" onclick="window.location.href='applicationRequirements.html'" class="hidden mt-4 w-full rounded-xl bg-primary text-light font-semibold px-4 py-2.5 shadow-soft hover:bg-dark hover:text-light focus:outline-none focus:ring-4 focus:ring-primary/30">Proceed to Application Form</button>
+        </div>
+
+        <button id="sendBtn" type="submit" class="w-full rounded-xl bg-dark text-light font-medium px-4 py-2.5 shadow-soft hover:bg-primary focus:outline-none focus:ring-4 focus:ring-primary">Send code</button>
+
+        <p class="text-xs text-slate-500">Make sure your email is correct because updates and your code will be sent there.</p>
+      </form>
+    </section>
+
+    <footer class="mt-8 text-sm text-slate-600">
+      <p>Tip: Always save your application so you can easily return to it later.</p>
+    </footer>
+  </div>
+
+  <script>
+    const qs = new URLSearchParams(location.search);
+    const grantType = (qs.get('type') || 'grant').replace(/-/g,' ');
+    document.getElementById('grantLabel').textContent = `Grant: ${grantType.replace(/\b\w/g, c => c.toUpperCase())}`;
+
+    const emailInput = document.getElementById('email');
+    const codeInput = document.getElementById('code');
+    const codeArea = document.getElementById('codeArea');
+    const sendBtn = document.getElementById('sendBtn');
+    const proceedBtn = document.getElementById('proceedBtn');
+
+    async function apiSendCode(email, type){
+      const code = (Math.floor(100000 + Math.random()*900000)).toString();
+      localStorage.setItem(`smcc_code_${email}`, JSON.stringify({ code, type, at: Date.now() }));
+      return { ok: true };
+    }
+
+    async function apiVerifyCode(email, code){
+      const payload = localStorage.getItem(`smcc_code_${email}`);
+      if(!payload) return { ok:false };
+      const { code:stored } = JSON.parse(payload);
+      return { ok: stored === code };
+    }
+
+    async function sendCode(){
+      const email = emailInput.value.trim();
+      if(!email) return;
+      sendBtn.disabled = true; sendBtn.textContent = 'Sending…';
+      const res = await apiSendCode(email, grantType);
+      sendBtn.disabled = false; sendBtn.textContent = 'Send code';
+      if(res.ok){
+        codeArea.classList.remove('hidden');
+        proceedBtn.classList.remove('hidden');
+        codeInput.focus();
+        alert('A verification code has been sent to your email (demo).');
+      } else {
+        alert('Failed to send code. Please try again.');
+      }
+    }
+
+    proceedBtn.addEventListener('click', async ()=>{
+      const email = emailInput.value.trim();
+      const code = codeInput.value.trim();
+      if(!email || code.length !== 6) { codeInput.focus(); return; }
+      const res = await apiVerifyCode(email, code);
+      if(res.ok){
+        location.href = `/apply/form?type=${encodeURIComponent(grantType)}&email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`;
+      } else {
+        alert('Invalid code. Please check and try again.');
+      }
+    });
+  </script>
+</body>
+</html>

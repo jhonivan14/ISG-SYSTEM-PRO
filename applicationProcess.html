@@ -1,0 +1,432 @@
+<html lang="en">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>
+   Application Form
+  </title>
+  <script src="https://cdn.tailwindcss.com">
+  </script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Times+New+Roman&amp;display=swap" rel="stylesheet"/>
+  <style>
+    @page {
+      size: A4;
+      margin: 30mm 25mm 30mm 25mm;
+    }
+   body {
+      font-family: "Times New Roman", serif;
+    }
+     header {
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+    .header-top{
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .header-left img {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+    }
+    .header-left-text {
+      line-height: 1.1;
+      text-align: left;
+    }
+    .header-left-text h1 {
+      font-weight: 700;
+      font-size: 16pt;
+      margin: 0;
+    }
+    .header-left-text p {
+      margin: 0;
+      font-size: 10pt;
+    }
+    .header-right {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      align-items: center;
+    }
+    .header-right img {
+      width: 100px;
+      height: 80px;
+    
+    }
+
+  </style>
+ </head>
+ <body class="bg-white text-black p-6">
+  <div class="max-w-5xl mx-auto">
+<header>
+      <div class="header-top">
+        <div class="header-left">
+          <img src="img/Smcc_logo (1).gif" alt="Seal of Saint Michael College of Caraga" />
+          <div class="header-left-text">
+            <h1 class="text-center">Saint Michael College of Caraga</h1>
+            <p class="text-center">Brgy. 4, Nasipit, Agusan del Norte, Philippines<br>
+                          District 8, Brgy. Triangulo, Nasipit, Agusan del Norte, Philippines
+            </p>
+            <p class="text-center">Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
+            <p class="text-center"><a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a></p>
+          </div>
+        </div>
+        <div class="header-right">
+          <img src="img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" />
+         
+        </div>
+      </div> 
+     
+    </header>
+   <section class="text-center mb-6">
+    <h1 class="font-bold text-base">
+     APPLICATION FORM
+    </h1>
+    <p class="font-semibold text-sm">
+     For Institutional Scholars/Grantees
+    </p>
+   </section>
+   
+   <form>
+    <fieldset class="max-w-3xl mx-auto">
+     <legend class="font-semibold text-sm mb-2">
+      Type of Scholarship/Grant:
+     </legend>
+     <div class="flex flex-wrap justify-between max-w-3xl mx-auto">
+      <div class="flex flex-col space-y-1 w-1/2 min-w-[180px]">
+       <label class="inline-flex items-center space-x-2">
+        <input class="w-4 h-4 border border-black" type="checkbox"/>
+        <span class="text-sm">
+         Academic
+        </span>
+       </label>
+       <label class="inline-flex items-center space-x-2">
+        <input class="w-4 h-4 border border-black" type="checkbox"/>
+        <span class="text-sm">
+         Kabayani
+        </span>
+       </label>
+       <label class="text-xs pl-6 pt-0.5">
+        Please specify:
+        <span type="text" class="inline-block border-b border-black w-36">
+        <input type="text">
+        </span>
+       </label>
+      </div>
+      <div class="flex flex-col space-y-1 w-1/2 min-w-[180px]">
+       <label class="inline-flex items-center space-x-2">
+        <input class="w-4 h-4 border border-black" type="checkbox"/>
+        <span class="text-sm">
+         Student Assistance
+        </span>
+       </label>
+       <label class="inline-flex items-center space-x-2">
+        <input class="w-4 h-4 border border-black" type="checkbox"/>
+        <span class="text-sm">
+         Others
+        </span>
+       </label>
+       <label class="text-xs pl-6 pt-0.5">
+        Please specify:
+        <span class="inline-block border-b border-black w-44">
+             <input type="text">
+        </span>
+       </label>
+      </div>
+     </div>
+    </fieldset>
+    <br>
+
+     <!-- Scholar/Grantee's Profile -->
+   <div class="max-w-3xl mx-auto">
+    <p class="font-serif font-semibold text-sm mb-2">
+     Scholar/Grantee’s Profile:
+    </p>
+    <div class="space-y-1 text-xs font-serif">
+     <div class="flex items-center">
+      <label class="w-44">
+       Name of Applicant
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Program/Course Enrolled
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Year Level
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       School Year
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Permanent Address
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+      <label class="ml-4 w-14">
+       Gender
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black w-20 ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Date of Birth
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+      <label class="ml-4 w-14">
+       Age
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black w-20 ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Contact Number
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-72">
+       Estimated Gross Income of the Family/Month
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+    </div>
+    <!-- Mother's info -->
+    <div class="mt-4 space-y-1 text-xs font-serif">
+     <div class="flex items-center">
+      <label class="w-44">
+       Mother’s Name
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+      <label class="ml-4 w-14">
+       Age:
+      </label>
+      <span class="border-b border-black w-20 ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Contact Number
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+      <label class="ml-4 w-20">
+       Occupation:
+      </label>
+      <span class="border-b border-black w-44 ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Company’s Name
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Company’s Address
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+    </div>
+    <!-- Father's info -->
+    <div class="mt-4 space-y-1 text-xs font-serif">
+     <div class="flex items-center">
+      <label class="w-44">
+       Father’s Name
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+      <label class="ml-4 w-14">
+       Age:
+      </label>
+      <span class="border-b border-black w-20 ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Contact Number
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+      <label class="ml-4 w-20">
+       Occupation:
+      </label>
+      <span class="border-b border-black w-44 ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Company’s Name
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+     <div class="flex items-center">
+      <label class="w-44">
+       Company’s Address
+      </label>
+      <span>
+       :
+      </span>
+      <span class="border-b border-black flex-grow ml-2 h-4">
+      </span>
+     </div>
+    </div>
+   </div>
+   <!-- Certification text -->
+<p class="text-xs font-serif mt-6 mb-6 max-w-3xl mx-auto">
+    I certify that the above information is true and correct.
+   </p>
+   <!-- Signatures -->
+   <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8">
+    <div class="w-full sm:w-[45%]">
+     <div class="border-b border-black w-full h-4 mb-1">
+     </div>
+     <p class="text-xs font-serif">
+      Name and signature of applicant
+     </p>
+    </div>
+    <div class="w-full sm:w-[45%]">
+     <div class="border-b border-black w-full h-4 mb-1">
+     </div>
+     <p class="text-xs font-serif">
+      Name and signature of personnel
+      <br/>
+      <span class="text-[10px]">
+       (If the scholar/grantee is personnel dependent)
+      </span>
+     </p>
+    </div>
+   </div>
+   <!-- Approval -->
+   <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8 mt-8">
+    <div class="w-full sm:w-[45%]">
+     <p class="text-xs font-serif mb-6">
+      Recommending approval:
+     </p>
+     <div class="border-b border-black w-full h-4 mb-1">
+     </div>
+     <p class="text-xs font-serif">
+      Head, Admission &amp; Scholarship
+     </p>
+    </div>
+    <div class="w-full sm:w-[45%]">
+     <p class="text-xs font-serif mb-6">
+      Approved by:
+     </p>
+     <div class="border-b border-black w-full h-4 mb-1">
+     </div>
+     <p class="text-xs font-serif">
+      Head, HRMDO
+     </p>
+    </div>
+   </div>
+   
+    </section>
+    <br>
+    
+<div class="max-w-3xl mx-auto">
+  <div class="flex items-center">
+    <img src="img/box.png" alt="Box" class="w-48 h-auto" />
+  </div>
+</div>
+
+
+</form>
+
+
+
+<footer class="max-w-3xl mx-auto">
+  <div class="flex items-center justify-between text-[10px] font-semibold text-black">
+  <img src="img/footer.png"/>
+  </div>
+</footer>
+
+
+  </div>
+ </body>
+</html>

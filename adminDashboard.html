@@ -1,0 +1,360 @@
+<html lang="en">
+ <head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1" name="viewport"/>
+  <title>
+  Admin Dashboard
+  </title>
+  <script src="https://cdn.tailwindcss.com">
+  </script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
+  <style>
+   /* Custom scrollbar for sidebar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background-color: #052c6a; /* navy blue */
+      border-radius: 3px;
+    }
+  
+  </style>
+ </head>
+ <body class="bg-white font-sans">
+  <div class="flex min-h-screen">
+   <!-- Sidebar -->
+   <aside class="flex flex-col bg-[#052c6a] text-white w-56">
+    <div class="flex items-center gap-3 px-4 py-4 border-b border-[#0d8ddb]">
+     <img alt="Portrait of a male doctor with white coat and stethoscope" class="rounded-full w-12 h-12 object-cover" height="48" src="img/Smcc_logo (1).gif" width="48"/>
+     <span class="text-sm font-normal">
+      Admission and Scholarship Office
+     </span>
+    </div>
+    <nav class="flex-1 overflow-y-auto">
+     <ul class="text-xs font-semibold">
+      <li class="bg-[#fcdc2f] bg-opacity-90 text-[#052c6a] flex items-center gap-2 px-4 py-3 cursor-pointer">
+       <i class="fas fa-trophy text-[#052c6a] text-base w-5">
+       </i>
+       <span>
+        Dashboard
+       </span>
+      </li>
+      <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+       <i class="fas fa-user-graduate w-5">
+       </i>
+       <span>
+        Applicants
+       </span>
+      </li>
+      <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+       <i class="fas fa-building w-5">
+       </i>
+       <span>
+        Institutions
+       </span>
+      </li>
+      <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+       <i class="fas fa-file-alt w-5">
+       </i>
+       <span>
+        Scholarship Applications
+       </span>
+      </li>
+      <hr class="border-[#0d8ddb]"/>
+      <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+       <i class="fas fa-check-circle w-5">
+       </i>
+       <span>
+        Interview Scheduling
+       </span>
+      </li>
+      <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+       <i class="fas fa-file-invoice-dollar w-5">
+       </i>
+       <span>
+        Financial Aid
+       </span>
+      </li>
+      <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+       <i class="fas fa-chart-line w-5">
+       </i>
+       <span>
+        Reports
+       </span>
+      </li>
+      <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+       <i class="fas fa-cogs w-5">
+       </i>
+       <span>
+        Settings
+       </span>
+      </li>
+      <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+       <i class="fas fa-user-circle w-5">
+       </i>
+       <span>
+        Profile
+       </span>
+      </li>
+     </ul>
+    </nav>
+   </aside>
+   <!-- Main content -->
+   <main class="flex-1 flex flex-col">
+    <!-- Top bar -->
+      <header class="flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2">
+     <div>
+     </div>
+     <div class="flex gap-2 text-xs">
+      <button class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 flex items-center gap-1 font-normal" type="button">
+       <i class="fas fa-user">
+       </i>
+       Admin panel
+      </button>
+      <button class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal" type="button">
+       Choose Language ▾
+      </button>
+      <button class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal" type="button">
+       Account ▾
+      </button>
+     </div>
+    </header>
+    <!-- Dashboard header -->
+    <section class="border-b border-[#0d8ddb] px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between">
+     <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+      <i class="fas fa-trophy">
+      </i>
+      Admin Dashboard
+     </h2>
+     <div class="flex text-xs text-[#052c6a] space-x-6">
+      <div class="text-right">
+       <div class="text-[#0d8ddb]">
+        Total Scholars
+       </div>
+       <div class="text-[#fcdc2f] font-semibold">
+        120
+       </div>
+      </div>
+      <div class="text-right">
+       <div class="text-[#0d8ddb]">
+        Applicants
+       </div>
+       <div class="text-[#052c6a] font-semibold">
+        450
+       </div>
+      </div>
+      
+      <div class="text-right">
+       <div class="text-[#0d8ddb]">
+        Pending Interviews
+       </div>
+       <div class="text-[#fcdc2f] font-semibold">
+        18
+       </div>
+      </div>
+      <div class="text-right">
+       <div class="text-[#0d8ddb]">
+        Head of offices
+       </div>
+       <div class="text-[#0d8ddb] font-semibold">
+        20
+       </div>
+      </div>
+     </div>
+    </section>
+    <!-- Icon grid -->
+    <section class="px-6 py-6 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
+     <button class="flex flex-col items-center justify-center border border-[#0d8ddb] rounded bg-white p-3 text-xs text-[#fcdc2f] font-semibold" type="button">
+      <i class="fas fa-user-graduate text-[#0d8ddb] mb-1 text-lg">
+      </i>
+      Applicants
+     </button>
+    
+     <button class="flex flex-col items-center justify-center border border-[#0d8ddb] rounded bg-white p-3 text-xs text-[#fcdc2f] font-semibold" type="button">
+      <i class="fas fa-file-alt text-[#0d8ddb] mb-1 text-lg">
+      </i>
+      Applications
+     </button>
+     <button class="flex flex-col items-center justify-center border border-[#0d8ddb] rounded bg-white p-3 text-xs text-[#fcdc2f] font-semibold" type="button">
+      <i class="fas fa-check-circle text-[#0d8ddb] mb-1 text-lg">
+      </i>
+      Interviews
+     </button>
+  
+     <button class="flex flex-col items-center justify-center border border-[#0d8ddb] rounded bg-white p-3 text-xs text-[#fcdc2f] font-semibold" type="button">
+      <i class="fas fa-chart-line text-[#0d8ddb] mb-1 text-lg">
+      </i>
+      Reports
+     </button>
+     <button class="flex flex-col items-center justify-center border border-[#0d8ddb] rounded bg-white p-3 text-xs text-[#fcdc2f] font-semibold" type="button">
+      <i class="fas fa-cogs text-[#0d8ddb] mb-1 text-lg">
+      </i>
+      Settings
+     </button>
+     <button class="flex flex-col items-center justify-center border border-[#0d8ddb] rounded bg-white p-3 text-xs text-[#fcdc2f] font-semibold" type="button">
+      <i class="fas fa-user-circle text-[#0d8ddb] mb-1 text-lg">
+      </i>
+      Profile
+     </button>
+   
+    
+    </section>
+    <!-- Table -->
+    <section class="px-6 pb-6 overflow-x-auto">
+     <table class="w-full border border-[#0d8ddb] text-xs text-center">
+      <thead>
+       <tr class="bg-white border-b border-[#0d8ddb]">
+        <th class="border-r border-[#0d8ddb] py-2 font-semibold text-[#fcdc2f]">
+         Applicant Name
+        </th>
+        <th class="border-r border-[#0d8ddb] py-2 font-semibold text-[#fcdc2f]">
+         Application Status
+        </th>
+        <th class="py-2 font-semibold text-[#fcdc2f]">
+         Action
+        </th>
+       </tr>
+      </thead>
+      <tbody>
+       <tr class="border-b border-[#0d8ddb]">
+        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+         Maria Johnson
+        </td>
+        <td class="border-r border-[#0d8ddb] py-2">
+         <span class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block">
+          Pending
+         </span>
+        </td>
+        <td class="py-2">
+         <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+          Review Application
+         </button>
+        </td>
+       </tr>
+       <tr class="border-b border-[#0d8ddb]">
+        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+         James Smith
+        </td>
+        <td class="border-r border-[#0d8ddb] py-2">
+         <span class="bg-green-500 text-white rounded px-2 py-0.5 inline-block">
+          Approved
+         </span>
+        </td>
+        <td class="py-2">
+         <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+          View Details
+         </button>
+        </td>
+       </tr>
+       <tr class="border-b border-[#0d8ddb]">
+        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+         Aisha Khan
+        </td>
+        <td class="border-r border-[#0d8ddb] py-2">
+         <span class="bg-red-600 text-white rounded px-2 py-0.5 inline-block">
+          Rejected
+         </span>
+        </td>
+        <td class="py-2">
+         <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+          View Details
+         </button>
+        </td>
+       </tr>
+       <tr class="border-b border-[#0d8ddb]">
+        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+         Carlos Martinez
+        </td>
+        <td class="border-r border-[#0d8ddb] py-2">
+         <span class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block">
+          Pending
+         </span>
+        </td>
+        <td class="py-2">
+         <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+          Review Application
+         </button>
+        </td>
+       </tr>
+       <tr class="border-b border-[#0d8ddb]">
+        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+         Fatima Al-Sayed
+        </td>
+        <td class="border-r border-[#0d8ddb] py-2">
+         <span class="bg-green-500 text-white rounded px-2 py-0.5 inline-block">
+          Approved
+         </span>
+        </td>
+        <td class="py-2">
+         <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+          View Details
+         </button>
+        </td>
+       </tr>
+       <tr class="border-b border-[#0d8ddb]">
+        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+         Daniel Lee
+        </td>
+        <td class="border-r border-[#0d8ddb] py-2">
+         <span class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block">
+          Pending
+         </span>
+        </td>
+        <td class="py-2">
+         <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+          Review Application
+         </button>
+        </td>
+       </tr>
+       <tr class="border-b border-[#0d8ddb]">
+        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+         Sophia Nguyen
+        </td>
+        <td class="border-r border-[#0d8ddb] py-2">
+         <span class="bg-red-600 text-white rounded px-2 py-0.5 inline-block">
+          Rejected
+         </span>
+        </td>
+        <td class="py-2">
+         <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+          View Details
+         </button>
+        </td>
+       </tr>
+       <tr class="border-b border-[#0d8ddb]">
+        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+         Michael Brown
+        </td>
+        <td class="border-r border-[#0d8ddb] py-2">
+         <span class="bg-green-500 text-white rounded px-2 py-0.5 inline-block">
+          Approved
+         </span>
+        </td>
+        <td class="py-2">
+         <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+          View Details
+         </button>
+        </td>
+       </tr>
+       <tr>
+        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+         Emily Davis
+        </td>
+        <td class="border-r border-[#0d8ddb] py-2">
+         <span class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block">
+          Pending
+         </span>
+        </td>
+        <td class="py-2">
+         <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+          Review Application
+         </button>
+        </td>
+       </tr>
+      </tbody>
+     </table>
+    </section>
+   </main>
+  </div>
+ </body>
+</html>
