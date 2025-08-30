@@ -10,15 +10,50 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&amp;display=swap" rel="stylesheet"/>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
   <style>
-   body {
+ body {
       font-family: 'Inter', sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      background-color: #052c6a;
+      overflow: hidden;
     }
     #admin{
       background-color: #052c6a; /* navy blue */
+      position: relative;
+      z-index: 10;
+      border-radius: 1.5rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    /* Cover background image styling */
+    #background-cover {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      overflow: hidden;
+      pointer-events: none;
+      filter: brightness(0.3) saturate(1.2) blur(12px);
+      -webkit-filter: brightness(0.3) saturate(1.2) blur(5px);
+      user-select: none;
+      transform: scale(1.05);
+      will-change: filter;
+    }
+    #background-cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      user-select: none;
+      pointer-events: none;
     }
   </style>
  </head>
  <body class="min-h-screen bg-white flex items-center justify-center px-4">
+  <div aria-hidden="true" id="background-cover">
+   <img alt="Abstract blue and yellow gradient geometric shapes background with soft glowing light effects" height="1080" src="img/smccbackground.png" width="1920"/>
+  </div>
   <div class="max-w-md w-full rounded-3xl shadow-lg overflow-hidden" id="admin">
    <div class="p-10">
     <div class="flex justify-center mb-8">
