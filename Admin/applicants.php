@@ -7,10 +7,10 @@ $categoryDefinitions = [
     "keywords" => ["student assistant", "assistant"],
   ],
   [
-    "label" => "Kabayan Scholarship",
-    "slug" => "kabayan-scholarship",
+    "label" => "Kabayani Scholarship",
+    "slug" => "kabayani-scholarship",
     "color" => "#0d8ddb",
-    "keywords" => ["kabayan"],
+    "keywords" => ["kabayani"],
   ],
   [
     "label" => "Academic Scholarship",
@@ -38,7 +38,7 @@ $applicants = [
     "application_id" => "0002",
     "name" => "Mark Christian Joven Balatayo",
     "course" => "Bachelor of Science in Information Technology",
-    "grant" => "Kabayan",
+    "grant" => "Kabayani",
     "status" => "Pending",
   ],
   [
@@ -59,14 +59,14 @@ $applicants = [
     "application_id" => "0005",
     "name" => "Mark Christian Joven Balatayo",
     "course" => "Bachelor of Science in Information Technology",
-    "grant" => "Kabayan",
+    "grant" => "Kabayani",
     "status" => "Pending",
   ],
   [
     "application_id" => "0006",
     "name" => "John Doe",
     "course" => "Bachelor of Science in Criminology",
-    "grant" => "Kabayan",
+    "grant" => "Kabayani",
     "status" => "Pending",
   ],
   [

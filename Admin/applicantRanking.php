@@ -59,7 +59,6 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
-              onclick="window.location.href='applicant.php'"
             >
               <i class="fas fa-user-graduate w-5"></i>
               <span>Applicants</span>
@@ -586,7 +585,7 @@
 
       document.addEventListener("DOMContentLoaded", () => {
         // === BAR CHART: grouped by YEAR with 1st & 2nd Sem per year ===
-        const barLabels = ["2024-2025", "2025-2026", "2026-2027", "2027-2028"];
+        const barLabels = ["2025", "2026", "2027", "2028"];
         // values per year
         const firstSem = [190, 270, 380, 330];
         const secondSem = [250, 210, 300, 160];
@@ -646,7 +645,7 @@
           new Chart(trendCtx, {
             type: "line",
             data: {
-              labels: ["2024-2025", "2025-2026", "2026-2027", "2027-2028"],
+              labels: ["2025", "2026", "2027", "2028"],
               datasets: [
                 {
                   label: "Applicants",
