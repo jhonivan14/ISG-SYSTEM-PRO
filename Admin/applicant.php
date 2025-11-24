@@ -143,14 +143,7 @@ $pendingCount = count($pendingApplicants);
               <i class="fas fa-thumbs-up w-5"></i>
               <span>Approved Applications</span>
             </li>
-
-            <li
-              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
-            >
-              <i class="fas fa-file-alt w-5"></i>
-              <span>Qualifying Exam Result</span>
-            </li>
-
+            
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
             >

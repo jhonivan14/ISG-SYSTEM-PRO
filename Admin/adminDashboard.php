@@ -75,13 +75,6 @@
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
             >
-              <i class="fas fa-file-alt w-5"></i>
-              <span>Qualifying Exam Result</span>
-            </li>
-
-            <li
-              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
-            >
               <i class="fas fa-check-circle w-5"></i>
               <span>Interview Evaluation</span>
             </li>
@@ -118,7 +111,7 @@
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
             >
               <i class="fas fa-chart-line w-5"></i>
-              <span>Reports</span>
+              <span>Institutional Scholars</span>
             </li>
 
             <li

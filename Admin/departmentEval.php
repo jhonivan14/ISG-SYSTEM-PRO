@@ -26,51 +26,45 @@
         }
 
         .header-top {
-             margin-top: 3rem;
+            margin-top: 3rem;
             display: flex;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
             flex-wrap: wrap;
-            gap: 1rem;
             margin-bottom: 0.5rem;
         }
 
-        .header-left {
+        .header-logo,
+        .header-cert {
             display: flex;
+            justify-content: center;
             align-items: center;
-            gap: 0.5rem;
         }
 
-        .header-left img {
+        .header-logo img {
             width: 80px;
             height: 80px;
             object-fit: contain;
         }
 
-        .header-left-text {
-            line-height: 1.1;
-            text-align: left;
+        .header-center {
+            line-height: 1.2;
+            text-align: center;
         }
 
-        .header-left-text h1 {
+        .header-center h1 {
             font-weight: 700;
             font-size: 16pt;
             margin: 0;
         }
 
-        .header-left-text p {
+        .header-center p {
             margin: 0;
             font-size: 10pt;
         }
 
-        .header-right {
-            display: flex;
-            flex-direction: column;
-            gap: 0.2rem;
-            align-items: center;
-        }
-
-        .header-right img {
+        .header-cert img {
             width: 100px;
             height: 80px;
             object-fit: contain;
@@ -272,17 +266,17 @@
     <div class="max-w-5xl mx-auto">
         <header>
             <div class="header-top">
-                <div class="header-left">
-                    <img src="img/Smcc_logo (1).gif" alt="Seal of Saint Michael College of Caraga" />
-                    <div class="header-left-text">
-                        <h1>Saint Michael College of Caraga</h1>
-                        <p>Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />District 8, Brgy. Triangulo, Nasipit, Agusan del Norte, Philippines</p>
-                        <p>Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
-                        <p><a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a></p>
-                    </div>
+                <div class="header-logo">
+                    <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
                 </div>
-                <div class="header-right">
-                    <img src="img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" />
+                <div class="header-center">
+                    <h1>Saint Michael College of Caraga</h1>
+                    <p>Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />District 8, Brgy. Triangulo, Nasipit, Agusan del Norte, Philippines</p>
+                    <p>Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
+                    <p><a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a></p>
+                </div>
+                <div class="header-cert">
+                    <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" />
                 </div>
             </div>
         </header>
@@ -546,12 +540,12 @@
             </div>
 
             <div class="footer-box">
-                <img src="img/box.png" alt="footer box" />
+                <img src="../img/box.png" alt="footer box" />
             </div>
         </main>
 
         <footer>
-            <img src="img/footer.png" alt="SMCC footer" />
+            <img src="../img/footer.png" alt="SMCC footer" />
         </footer>
     </div>
 </body>
