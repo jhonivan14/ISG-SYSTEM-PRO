@@ -160,7 +160,7 @@
                   >
                     <option value="all">All Academic Years</option>
                     <option value="all">2025-2026</option>
-                    <option value="all">2027-2027</option>
+                    <option value="all">2026-2027</option>
                   </select>
                 </div>
                 <div>

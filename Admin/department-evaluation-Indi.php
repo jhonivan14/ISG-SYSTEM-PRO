@@ -264,26 +264,70 @@
         font-size: 12px;
       }
 
+      @page {
+        size: A4;
+        margin: 0.3in;
+      }
+
       @media print {
+        * {
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+
         .eval-page {
           background: #ffffff;
         }
 
         .eval-page .paper {
           border: none;
-          padding: 0;
+          padding: 0.55rem 0.7rem 1rem;
         }
 
         .eval-page header {
-          margin-bottom: 0.8rem;
+          margin-bottom: 0.45rem;
         }
 
         .eval-page .footer-box {
-          margin-top: 1rem;
+          margin-top: 0.6rem;
         }
 
         .eval-page footer {
-          margin-top: 1rem;
+          margin-top: 0.6rem;
+        }
+
+        #print-eval-form table th,
+        #print-eval-form table td {
+          padding: 0.26rem 0.36rem;
+        }
+
+        #print-eval-form .direction {
+          margin-bottom: 0.6rem;
+        }
+
+        /* Tighter print fit for the evaluation result (second document) */
+        #print-eval-result {
+          transform: scale(0.9);
+          transform-origin: top center;
+        }
+        #print-eval-result .eval-result {
+          padding: 0.3in 0.3in 0.3in;
+        }
+        #print-eval-result h1,
+        #print-eval-result h2,
+        #print-eval-result p {
+          margin-top: 0.12rem;
+          margin-bottom: 0.12rem;
+        }
+        #print-eval-result .space-y-2 > * + * {
+          margin-top: 0.15rem;
+        }
+        #print-eval-result .result-table th,
+        #print-eval-result .result-table td {
+          padding: 4px 6px;
+        }
+        #print-eval-result .grid {
+          margin-top: 1rem !important;
         }
       }
     </style>
@@ -465,7 +509,17 @@
 
         <!-- Department Evaluation Form -->
         <section id="evaluation-details" class="mt-12 px-4 sm:px-6 py-6 bg-gray-50 flex-1">
-          <div class="max-w-6xl mx-auto bg-white rounded-lg shadow-sm border border-[#e5e7eb]">
+          <div class="max-w-6xl mx-auto flex justify-end gap-2 mb-3">
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-[#052c6a] hover:bg-[#0d8ddb] rounded shadow transition"
+              onclick="printSection('print-eval-form')"
+            >
+              <i class="fas fa-print"></i>
+              <span>Print Evaluation Form</span>
+            </button>
+          </div>
+          <div id="print-eval-form" class="max-w-6xl mx-auto bg-white rounded-lg shadow-sm border border-[#e5e7eb]">
             <div class="eval-page">
               <header>
                 <div class="header-top">
@@ -760,8 +814,19 @@
             </div>
           </div>
 
+
           <!-- Evaluation Result (from copyOfEval.php) -->
-          <div class="max-w-6xl mx-auto mt-12 bg-white rounded-lg shadow-sm border border-[#e5e7eb]">
+          <div class="max-w-6xl mx-auto flex justify-end gap-2 mt-12 mb-3">
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-[#052c6a] hover:bg-[#0d8ddb] rounded shadow transition"
+              onclick="printSection('print-eval-result')"
+            >
+              <i class="fas fa-print"></i>
+              <span>Print Evaluation Result</span>
+            </button>
+          </div>
+          <div id="print-eval-result" class="max-w-6xl mx-auto mt-0 bg-white rounded-lg shadow-sm border border-[#e5e7eb]">
             <div class="eval-result p-6 sm:p-8">
               <header class="text-center mb-4">
                 <div class="flex flex-wrap items-center justify-center gap-4 mb-2">
@@ -915,6 +980,43 @@
           });
         }
       });
+
+      function printSection(sectionId) {
+        const section = document.getElementById(sectionId);
+        if (!section) return;
+
+        const styleTag = document.querySelector("style");
+        const styles = styleTag ? styleTag.innerHTML : "";
+        const landscapePage =
+          sectionId === "print-eval-result"
+            ? "@page { size: A4 landscape; margin: 0.3in; }"
+            : "";
+        const tailwindScript = document.querySelector('script[src*="tailwindcss"]');
+        const fontAwesome = document.querySelector('link[href*="font-awesome"]');
+        const fontFamily = document.querySelector('link[href*="Times+New+Roman"]');
+
+        const printWindow = window.open("", "_blank", "width=900,height=1200");
+        if (!printWindow) return;
+
+        const baseHref = window.location.href;
+
+        printWindow.document.write("<html><head><title>Print</title>");
+        printWindow.document.write('<base href="' + baseHref + '" />');
+        if (tailwindScript) printWindow.document.write(tailwindScript.outerHTML);
+        if (fontAwesome) printWindow.document.write(fontAwesome.outerHTML);
+        if (fontFamily) printWindow.document.write(fontFamily.outerHTML);
+        printWindow.document.write("<style>" + styles + landscapePage + "</style>");
+        printWindow.document.write("</head><body class='bg-white'>");
+        printWindow.document.write(section.outerHTML);
+        printWindow.document.write("</body></html>");
+        printWindow.document.close();
+
+        printWindow.onload = () => {
+          printWindow.focus();
+          printWindow.print();
+          printWindow.close();
+        };
+      }
 
     </script>
   </body>
