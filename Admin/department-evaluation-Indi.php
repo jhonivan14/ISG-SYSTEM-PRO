@@ -265,8 +265,9 @@
       }
 
       @page {
-        size: A4;
-        margin: 0.3in;
+        /* Use long bond (8.5in x 13in) for printing */
+        size: 8.5in 13in;
+        margin: 0.28in;
       }
 
       @media print {
@@ -279,39 +280,126 @@
           background: #ffffff;
         }
 
-        .eval-page .paper {
-          border: none;
-          padding: 0.55rem 0.7rem 1rem;
+        /* Tighter spacing for document 1 so it fits on one page */
+        #print-eval-form .eval-page {
+          font-size: 10px;
+          line-height: 1.2;
         }
 
-        .eval-page header {
+        #print-eval-form .header-top {
+          margin-top: 1.2rem;
+          gap: 0.4rem;
+          margin-bottom: 0.25rem;
+        }
+
+        #print-eval-form .header-logo img,
+        #print-eval-form .header-cert img {
+          width: 60px;
+          height: 60px;
+        }
+
+        #print-eval-form .header-center h1 {
+          font-size: 13pt;
+        }
+
+        #print-eval-form .header-center p {
+          font-size: 8.5pt;
+        }
+
+        #print-eval-form .paper {
+          border: none;
+          padding: 0.4rem 0.5rem 0.7rem;
+        }
+
+        #print-eval-form .title {
+          font-size: 12px;
           margin-bottom: 0.45rem;
         }
 
-        .eval-page .footer-box {
-          margin-top: 0.6rem;
+        #print-eval-form .info-block {
+          margin-bottom: 0.5rem;
+          font-size: 10px;
         }
 
-        .eval-page footer {
-          margin-top: 0.6rem;
+        #print-eval-form .info-row {
+          grid-template-columns: 215px minmax(0, 280px);
+          gap: 0.25rem;
+          margin-bottom: 0.12rem;
+        }
+
+        #print-eval-form .info-value {
+          min-height: 0.65rem;
+        }
+
+        #print-eval-form .direction {
+          font-size: 10px;
+          line-height: 1.28;
+          margin-bottom: 0.25rem;
         }
 
         #print-eval-form table th,
         #print-eval-form table td {
-          padding: 0.26rem 0.36rem;
+          padding: 0.14rem 0.28rem;
+          font-size: 10px;
         }
 
-        #print-eval-form .direction {
-          margin-bottom: 0.6rem;
+        #print-eval-form .scale-table {
+          margin-bottom: 0.4rem;
+        }
+
+        #print-eval-form section.pt-4 {
+          padding-top: 0.2rem !important;
+        }
+
+        #print-eval-form .scale-table td {
+          font-size: 9.5px;
+          padding: 0.14rem 0.28rem;
+        }
+
+        #print-eval-form .rating-table td {
+          height: 1.25rem;
+        }
+
+        #print-eval-form .comment-box {
+          min-height: 2.1rem;
+          padding: 0.3rem 0.45rem;
+          line-height: 1.28;
+        }
+
+        #print-eval-form .signature-row {
+          margin-top: 1rem;
+        }
+
+        #print-eval-form .signature-line {
+          margin-top: 0.4rem;
+        }
+
+        #print-eval-form .footer-box {
+          margin-top: 0.12rem;
+          padding-bottom: 0.05rem;
+        }
+
+        #print-eval-form footer {
+          margin-top: 0.24rem;
+          padding-top: 0.05rem;
         }
 
         /* Tighter print fit for the evaluation result (second document) */
         #print-eval-result {
-          transform: scale(0.9);
+          transform: scale(0.88);
           transform-origin: top center;
+          box-shadow: none !important;
+          border: none !important;
+          background: #ffffff !important;
+          border-radius: 0 !important;
         }
         #print-eval-result .eval-result {
-          padding: 0.3in 0.3in 0.3in;
+          padding: 0.26in 0.28in 0.22in;
+          font-size: 11px;
+          line-height: 1.25;
+          box-shadow: none !important;
+          border: none !important;
+          background: transparent !important;
         }
         #print-eval-result h1,
         #print-eval-result h2,
@@ -324,15 +412,21 @@
         }
         #print-eval-result .result-table th,
         #print-eval-result .result-table td {
-          padding: 4px 6px;
+          padding: 3px 5px;
+        }
+        #print-eval-result .result-table {
+          border-collapse: collapse;
         }
         #print-eval-result .grid {
+          margin-top: 0.6rem !important;
+        }
+        #print-eval-result .max-w-4xl.mx-auto.mt-10 {
           margin-top: 1rem !important;
         }
       }
     </style>
   </head>
-  <body class="bg-white font-sans">
+  <body class="bg-gray-200 font-sans">
     <div class="min-h-screen">
       <!-- Sidebar -->
       <aside
@@ -508,7 +602,7 @@
       </header>
 
         <!-- Department Evaluation Form -->
-        <section id="evaluation-details" class="mt-12 px-4 sm:px-6 py-6 bg-gray-50 flex-1">
+        <section id="evaluation-details" class="mt-12 px-4 sm:px-6 py-6 bg-gray-200 flex-1">
           <div class="max-w-6xl mx-auto flex justify-end gap-2 mb-3">
             <button
               type="button"
@@ -519,7 +613,7 @@
               <span>Print Evaluation Form</span>
             </button>
           </div>
-          <div id="print-eval-form" class="max-w-6xl mx-auto bg-white rounded-lg shadow-sm border border-[#e5e7eb]">
+          <div id="print-eval-form" class="max-w-6xl mx-auto bg-white rounded-lg shadow-sm">
             <div class="eval-page">
               <header>
                 <div class="header-top">
@@ -814,9 +908,23 @@
             </div>
           </div>
 
+          <!-- Separator between documents with light design -->
+          <div class="max-w-6xl mx-auto mt-6 mb-6 px-2">
+            <div class="flex items-center gap-3 text-[11px] text-gray-500">
+              <div class="flex-1 h-px bg-gradient-to-r from-transparent via-gray-300 to-gray-200"></div>
+              <div class="px-3 py-1 rounded-full border border-dashed border-gray-300 bg-white shadow-sm uppercase tracking-wide font-semibold">
+                Next Document
+              </div>
+              <div class="flex-1 h-px bg-gradient-to-l from-transparent via-gray-300 to-gray-200"></div>
+            </div>
+          </div>
 
           <!-- Evaluation Result (from copyOfEval.php) -->
-          <div class="max-w-6xl mx-auto flex justify-end gap-2 mt-12 mb-3">
+          <div class="max-w-6xl mx-auto flex items-center justify-between gap-2 mt-8 mb-3 px-2">
+            <span class="inline-flex items-center gap-2 px-3 py-1 text-[11px] font-semibold text-[#052c6a] uppercase tracking-wide bg-[#f8fafc] border border-[#0d8ddb]/30 rounded-full shadow-sm">
+              <i class="fas fa-copy text-[10px]"></i>
+              Copy of Evaluation
+            </span>
             <button
               type="button"
               class="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-[#052c6a] hover:bg-[#0d8ddb] rounded shadow transition"
@@ -826,7 +934,7 @@
               <span>Print Evaluation Result</span>
             </button>
           </div>
-          <div id="print-eval-result" class="max-w-6xl mx-auto mt-0 bg-white rounded-lg shadow-sm border border-[#e5e7eb]">
+          <div id="print-eval-result" class="max-w-6xl mx-auto mt-0 bg-white rounded-lg shadow-sm">
             <div class="eval-result p-6 sm:p-8">
               <header class="text-center mb-4">
                 <div class="flex flex-wrap items-center justify-center gap-4 mb-2">
@@ -919,7 +1027,7 @@
               <div class="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-8 mt-6 text-[12px] font-serif">
                 <div>
                   <p class="mb-8">Prepared by:</p>
-                  <p class="font-bold">ARLYN B. TUYOGON</p>
+                  <p class="font-bold">ARLYN B. TUYOGON, MMBM</p>
                   <p>Head, Admission &amp; Scholarship</p>
                 </div>
                 <div>
@@ -989,7 +1097,7 @@
         const styles = styleTag ? styleTag.innerHTML : "";
         const landscapePage =
           sectionId === "print-eval-result"
-            ? "@page { size: A4 landscape; margin: 0.3in; }"
+            ? "@page { size: 11in 8.5in; margin: 0.2in; }"
             : "";
         const tailwindScript = document.querySelector('script[src*="tailwindcss"]');
         const fontAwesome = document.querySelector('link[href*="font-awesome"]');

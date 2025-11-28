@@ -174,6 +174,36 @@
             </li>
           </ul>
         </nav>
+        
+         <div class="absolute bottom-0 left-0 w-full">
+        <div class="h-px w-full bg-gradient-to-r from-transparent via-[#0d8ddb] to-transparent opacity-60"></div>
+
+   
+        <div class="px-4 pt-2 pb-1 flex items-center gap-2 text-[11px] text-blue-100/90">
+        <div class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+        <i class="fas fa-user-shield text-[12px]"></i>
+        </div>
+        <div class="leading-tight">
+        <p class="font-semibold">Admin Account</p>
+        <p class="text-[10px] text-blue-200/80">Institutional Scholarship</p>
+        </div>
+        </div>
+
+    <!-- Logout button -->
+    <div class="px-3 pb-3 pt-1">
+      <button
+        onclick="window.location.href='../logout.php'"
+        class="w-full flex items-center justify-center gap-2 text-[11px] font-semibold
+               bg-gradient-to-r from-red-500 to-red-600
+               hover:from-red-600 hover:to-red-700
+               px-3 py-2 rounded-full shadow-md hover:shadow-lg
+               transition-all duration-150"
+      >
+        <i class="fas fa-sign-out-alt text-xs"></i>
+        <span>Logout</span>
+      </button>
+    </div>
+  </div>
       </aside>
       <main class="admin-content ml-56 flex flex-col min-h-screen bg-[#f8fafc]">
         <header class="admin-topbar fixed top-0 left-56 right-0 z-20 flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2">
@@ -191,9 +221,34 @@
             </button>
           </div>
         </header>
-        <section class="flex justify-center px-4 pt-16 pb-8">
+        <section class="flex flex-col items-center px-4 pt-16 pb-8">
+          <div class="no-print w-full max-w-4xl flex flex-wrap gap-3 text-xs items-center justify-center mb-4">
+            <div class="flex flex-wrap items-center gap-3 justify-center">
+              <label for="academicYear" class="font-semibold text-slate-600">Academic Year</label>
+              <select
+                id="academicYear"
+                class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+              >
+                <option value="2025-2026" selected>2025-2026</option>
+                <option value="2024-2025">2024-2025</option>
+                <option value="2023-2024">2023-2024</option>
+              </select>
+              <label for="semesterSelect" class="font-semibold text-slate-600">Semester</label>
+              <select
+                id="semesterSelect"
+                class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+              >
+                <option value="1st" selected>1st Semester</option>
+                <option value="2nd">2nd Semester</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-2 justify-center">
+              <button class="px-6 py-1 text-xs rounded bg-[#003b7d] text-white shadow" onclick="window.print()">Print</button>
+            </div>
+          </div>
+
           <div class="paper mx-auto bg-white border border-slate-300 shadow-xl print:shadow-none print:border-0">
-         <div class="document-header">
+            <div class="document-header">
               <div class="header-top">
                 <div class="header-left">
                   <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
@@ -218,30 +273,6 @@
               <p class="text-[12px]">Student Assistance Scholarship Program (SASP) Applicants' Rank</p>
               <p class="text-[12px]" id="termText">1st Semester, S.Y. 2025-2026</p>
               <p class="text-[12px]">Batch 2</p>
-            </div>
-            <div class="no-print mt-4 flex flex-wrap gap-3 text-xs items-center justify-between">
-              <div class="flex flex-wrap items-center gap-3">
-                <label for="academicYear" class="font-semibold text-slate-600">Academic Year</label>
-                <select
-                  id="academicYear"
-                  class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
-                >
-                  <option value="2025-2026" selected>2025-2026</option>
-                  <option value="2024-2025">2024-2025</option>
-                  <option value="2023-2024">2023-2024</option>
-                </select>
-                <label for="semesterSelect" class="font-semibold text-slate-600">Semester</label>
-                <select
-                  id="semesterSelect"
-                  class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
-                >
-                  <option value="1st" selected>1st Semester</option>
-                  <option value="2nd">2nd Semester</option>
-                </select>
-              </div>
-              <div class="flex items-center gap-2">
-                <button class="px-6 py-1 text-xs rounded bg-[#003b7d] text-white" onclick="window.print()">Print</button>
-              </div>
             </div>
             <div class="overflow-x-auto mt-3">
               <table class="w-full border-collapse border border-black text-[11px]">
