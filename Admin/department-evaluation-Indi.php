@@ -1106,7 +1106,7 @@
         const printWindow = window.open("", "_blank", "width=900,height=1200");
         if (!printWindow) return;
 
-        const baseHref = window.location.href;
+        const baseHref = document.baseURI || window.location.href;
 
         printWindow.document.write("<html><head><title>Print</title>");
         printWindow.document.write('<base href="' + baseHref + '" />');
@@ -1119,10 +1119,18 @@
         printWindow.document.write("</body></html>");
         printWindow.document.close();
 
+        const handleAfterPrint = () => {
+          printWindow.close();
+        };
+
+        printWindow.onafterprint = handleAfterPrint;
+        printWindow.addEventListener("afterprint", handleAfterPrint);
+
         printWindow.onload = () => {
           printWindow.focus();
-          printWindow.print();
-          printWindow.close();
+          setTimeout(() => {
+            printWindow.print();
+          }, 50);
         };
       }
 

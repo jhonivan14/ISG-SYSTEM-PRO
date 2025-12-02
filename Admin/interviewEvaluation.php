@@ -8,8 +8,6 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
     />
-    <!-- Charts CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
       /* Custom scrollbar for sidebar */
       ::-webkit-scrollbar {
@@ -18,6 +16,120 @@
       ::-webkit-scrollbar-thumb {
         background-color: #052c6a; /* navy blue */
         border-radius: 3px;
+      }
+      /* Print styling */
+      @page {
+        size: Legal;
+        margin: 12mm 10mm 12mm 10mm;
+      }
+      body, .paper {
+        font-family: "Times New Roman", serif;
+      }
+      .paper h1,
+      .paper h2,
+      .paper p {
+        margin: 0;
+      }
+      .paper header {
+        margin-bottom: 0.5rem;
+        text-align: center;
+      }
+      .paper .header-top {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 0.15rem;
+      }
+      .paper .header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .paper .header-left img {
+        width: 76px;
+        height: 76px;
+        object-fit: contain;
+      }
+      .paper .header-left-text {
+        line-height: 1.2;
+        text-align: left;
+      }
+      .paper .header-left-text h1 {
+        font-weight: 700;
+        font-size: 16pt;
+      }
+      .paper .header-left-text p {
+        font-size: 10pt;
+      }
+      .paper .header-right {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .paper .header-right img {
+        width: 96px;
+        height: 74px;
+        object-fit: contain;
+      }
+      .title-line {
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+      .plain-table table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      .plain-table th,
+      .plain-table td {
+        border: 1px solid #000;
+        font-size: 10pt;
+        padding: 6px 7px;
+        text-align: center;
+      }
+      .plain-table td:nth-child(2) {
+        text-align: left;
+      }
+      .plain-table thead th {
+        background: #f1c40f;
+        color: #000;
+        font-weight: 700;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .sig-role {
+        font-size: 10pt;
+      }
+      @media print {
+        html, body {
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          background: #fff !important;
+        }
+        #sidebar,
+        .print-btn-bar,
+        .admin-topbar {
+          display: none !important;
+        }
+        main, section {
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+        }
+        .paper {
+          border: none !important;
+          box-shadow: none !important;
+          padding: 0 !important;
+          margin: 0 auto !important;
+          background: #fff !important;
+        }
+        .paper-wrap {
+          max-width: 100% !important;
+          width: 100% !important;
+          padding: 0 4px 12px 4px !important;
+        }
       }
     </style>
   </head>
@@ -165,7 +277,7 @@
       <main class="ml-0 md:ml-56 flex flex-col min-h-screen">
         <!-- Top bar -->
         <header
-          class="fixed top-0 left-0 md:left-56 right-0 z-20 flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2"
+          class="admin-topbar fixed top-0 left-0 md:left-56 right-0 z-20 flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2"
         >
           <div class="flex items-center gap-2">
             <!-- Mobile menu button -->
@@ -197,351 +309,98 @@
           </div>
         </header>
 
-        <!-- Dashboard header -->
-        <section
-          class="mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
-        >
-          <h2
-            class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0"
-          >
-            <i class="fas fa-trophy"></i>
-            Admin Dashboard
-          </h2>
-          <div class="flex text-xs text-[#052c6a] space-x-4 sm:space-x-6">
-            <div class="text-right">
-              <div class="text-[#0d8ddb]">Total Scholars</div>
-              <div class="text-[#fcdc2f] font-semibold">120</div>
-            </div>
-            <div class="text-right">
-              <div class="text-[#0d8ddb]">Applicants</div>
-              <div class="text-[#052c6a] font-semibold">450</div>
-            </div>
-            <div class="text-right">
-              <div class="text-[#0d8ddb]">Panelists</div>
-              <div class="text-[#fcdc2f] font-semibold">18</div>
-            </div>
-            <div class="text-right">
-              <div class="text-[#0d8ddb]">Head of offices</div>
-              <div class="text-[#0d8ddb] font-semibold">20</div>
+        <!-- Print-friendly Interview Result -->
+        <section class="mt-12 px-4 sm:px-6 py-6">
+          <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6 paper">
+            <div class="w-full mx-auto paper-wrap">
+              <div class="flex justify-end mb-3 print-btn-bar">
+                <button
+                  type="button"
+                  onclick="window.print()"
+                  class="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-[#052c6a] hover:bg-[#0d8ddb] rounded shadow-sm"
+                >
+                  <i class="fas fa-print"></i>
+                  <span>Print</span>
+                </button>
+              </div>
+
+              <header>
+                <div class="header-top">
+                  <div class="header-left">
+                    <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
+                    <div class="header-left-text">
+                      <h1 class="text-center">Saint Michael College of Caraga</h1>
+                      <p class="text-center">Brgy. 4, Nasipit, Agusan del Norte, Philippines</p>
+                      <p class="text-center">Tel. No. 085 225-0208</p>
+                      <p class="text-center">
+                        Website: <a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a>,
+                        Email: <a href="mailto:communications@smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">communications@smccnasipit.edu.ph</a>
+                      </p>
+                    </div>
+                  </div>
+                  <div class="header-right">
+                    <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" />
+                  </div>
+                </div>
+              </header>
+
+              <div class="text-center mb-1">
+                <div class="title-line">Office of the Admission &amp; Scholarship</div>
+              </div>
+              <hr class="border-black mb-3" />
+
+              <section class="text-center mb-4">
+                <h2 class="font-bold text-base">Student Assistance Applicants' Interview Result</h2>
+                <p class="font-semibold text-sm">1st Semester, S.Y. 2025-2026</p>
+                <p class="font-semibold text-sm">Batch 3</p>
+              </section>
+
+              <section class="plain-table mb-8">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width: 40px;">SEQ.</th>
+                      <th>NAME OF APPLICANT</th>
+                      <th style="width: 110px;">WEIGHTED MEAN</th>
+                      <th style="width: 140px;">VERBAL DESCRIPTION</th>
+                      <th style="width: 150px;">VERBAL INTERPRETATION</th>
+                      <th style="width: 120px;">REMARKS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>1</td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr><td>2</td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr><td>3</td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr><td>4</td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr><td>5</td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr><td>6</td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr><td>7</td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <tr><td>8</td><td></td><td></td><td></td><td></td><td></td></tr>
+                  </tbody>
+                </table>
+              </section>
+
+              <div class="mt-6 grid grid-cols-1 gap-6 max-w-3xl">
+                <div>
+                  <div class="text-[10pt] mb-1">Prepared by:</div>
+                  <div class="font-semibold">ARLYN B. TUYOGON, MMBM</div>
+                  <div class="sig-role">Head, Admission &amp; Scholarship</div>
+                </div>
+
+                <div>
+                  <div class="text-[10pt] mb-1">Checked by:</div>
+                  <div class="font-semibold">FELMARIE MANLUNAS, MACDDS</div>
+                  <div class="sig-role">Head, Student Affairs &amp; Services</div>
+                </div>
+
+                <div>
+                  <div class="text-[10pt] mb-1">Noted by:</div>
+                  <div class="font-semibold">RICKY E. DESTACAMENTO, RGC, MAED</div>
+                  <div class="sig-role">Head, HRMDO</div>
+                </div>
+              </div>
             </div>
           </div>
-        </section>
-
-        <!-- Stats cards above charts -->
-        <section
-          class="px-4 sm:px-6 pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-        >
-          <!-- Total Scholars -->
-          <div
-            class="bg-[#052c6a] text-white rounded-lg p-4 flex items-center justify-between shadow"
-          >
-            <div>
-              <p class="text-xs text-[#fcdc2f] uppercase tracking-wide">
-                Total Scholars
-              </p>
-              <p class="text-2xl font-bold mt-1">120</p>
-              <p class="text-[11px] text-gray-200 mt-1">
-                Currently enrolled scholars
-              </p>
-            </div>
-            <div class="text-3xl opacity-80">
-              <i class="fas fa-user-graduate"></i>
-            </div>
-          </div>
-
-          <!-- Applicants -->
-          <div
-            class="bg-white border border-[#0d8ddb] text-[#052c6a] rounded-lg p-4 flex items-center justify-between shadow-sm"
-          >
-            <div>
-              <p class="text-xs text-[#0d8ddb] uppercase tracking-wide">
-                Applicants
-              </p>
-              <p class="text-2xl font-bold mt-1">450</p>
-              <p class="text-[11px] text-gray-500 mt-1">
-                Total application submitted
-              </p>
-            </div>
-            <div class="text-3xl text-[#0d8ddb] opacity-90">
-              <i class="fas fa-users"></i>
-            </div>
-          </div>
-
-          <!-- Panelists -->
-          <div
-            class="bg-[#fcdc2f] text-[#052c6a] rounded-lg p-4 flex items-center justify-between shadow"
-          >
-            <div>
-              <p class="text-xs uppercase tracking-wide">Panelists</p>
-              <p class="text-2xl font-bold mt-1">18</p>
-              <p class="text-[11px] text-[#052c6a] mt-1">
-                Waiting for interview schedule
-              </p>
-            </div>
-            <div class="text-3xl opacity-90">
-              <i class="fas fa-user-tie"></i>
-            </div>
-          </div>
-
-          <!-- Head of Offices -->
-          <div
-            class="bg-green-500 text-white rounded-lg p-4 flex items-center justify-between shadow-sm"
-          >
-            <div>
-              <p class="text-xs uppercase tracking-wide">Head of Offices</p>
-              <p class="text-2xl font-bold mt-1">20</p>
-              <p class="text-[11px] text-white mt-1">Active evaluators</p>
-            </div>
-            <div class="text-3xl opacity-90">
-              <i class="fas fa-user-tie"></i>
-            </div>
-          </div>
-        </section>
-
-        <!-- Charts -->
-        <section class="px-4 sm:px-6 space-y-6 mt-4">
-          <!-- Applicants Statistical Report (Bar Chart) -->
-          <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4">
-            <div class="text-[#052c6a] text-sm font-semibold mb-2">
-              Applicants Statistical Report
-            </div>
-            <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
-              <canvas id="applicantsBarChart" class="w-full h-full"></canvas>
-            </div>
-          </div>
-
-          <!-- Trends (Line Chart) -->
-          <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4">
-            <div class="text-[#052c6a] text-sm font-semibold mb-2">
-              Yearly Trend
-            </div>
-            <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
-              <canvas id="trendLineChart" class="w-full h-full"></canvas>
-            </div>
-          </div>
-        </section>
-
-        <!-- Table -->
-        <section class="px-4 sm:px-6 pb-6 mt-4 overflow-x-auto">
-          <table
-            class="min-w-full border border-[#0d8ddb] text-xs text-center"
-          >
-            <thead>
-              <tr class="bg-white border-b border-[#0d8ddb]">
-                <th
-                  class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                >
-                  Applicant Name
-                </th>
-                <th
-                  class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                >
-                  Application Status
-                </th>
-                <th class="py-2 px-2 font-semibold text-[#fcdc2f]">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Maria Johnson
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  James Smith
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-green-500 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Approved
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Aisha Khan
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-red-600 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Rejected
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Carlos Martinez
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Fatima Al-Sayed
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-green-500 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Approved
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Daniel Lee
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Sophia Nguyen
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-red-600 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Rejected
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Michael Brown
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-green-500 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Approved
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr>
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Emily Davis
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
         </section>
       </main>
     </div>
@@ -564,124 +423,6 @@
                 sidebar.classList.add("-translate-x-full");
               }
             });
-          });
-        }
-      });
-
-      // Chart.js helpers for consistent styling
-      const brandBlue = "#0d8ddb";
-      const brandNavy = "#052c6a";
-      const brandYellow = "#fcdc2f";
-
-      // handy RGBA for brand colors
-      const purpleBlueFill = "rgba(106, 110, 230, 0.9)";
-      const tealBlueFill = "rgba(65, 155, 180, 0.9)";
-
-      document.addEventListener("DOMContentLoaded", () => {
-        // === BAR CHART: grouped by YEAR with 1st & 2nd Sem per year ===
-        const barLabels = ["2025", "2026", "2027", "2028"];
-        // values per year
-        const firstSem = [190, 270, 380, 330];
-        const secondSem = [250, 210, 300, 160];
-
-        const barCtx = document.getElementById("applicantsBarChart");
-        if (barCtx && window.Chart) {
-          new Chart(barCtx, {
-            type: "bar",
-            data: {
-              labels: barLabels,
-              datasets: [
-                {
-                  label: "1st Sem",
-                  data: firstSem,
-                  backgroundColor: purpleBlueFill,
-                  borderColor: brandNavy,
-                  borderWidth: 1,
-                  barPercentage: 0.8,
-                  categoryPercentage: 0.7,
-                },
-                {
-                  label: "2nd Sem",
-                  data: secondSem,
-                  backgroundColor: tealBlueFill,
-                  borderColor: brandNavy,
-                  borderWidth: 1,
-                  barPercentage: 0.8,
-                  categoryPercentage: 0.7,
-                },
-              ],
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                x: {
-                  ticks: { color: brandNavy },
-                  grid: { color: "rgba(0,0,0,0.05)" },
-                },
-                y: {
-                  beginAtZero: true,
-                  ticks: { color: brandNavy },
-                  grid: { color: "rgba(0,0,0,0.08)" },
-                },
-              },
-              plugins: {
-                legend: { labels: { color: brandNavy } },
-                tooltip: { enabled: true },
-              },
-            },
-          });
-        }
-
-        // === LINE CHART (yearly trend) ===
-        const trendCtx = document.getElementById("trendLineChart");
-        if (trendCtx && window.Chart) {
-          new Chart(trendCtx, {
-            type: "line",
-            data: {
-              labels: ["2025", "2026", "2027", "2028"],
-              datasets: [
-                {
-                  label: "Applicants",
-                  data: [320, 150, 290, 40],
-                  borderColor: "#c81dff",
-                  backgroundColor: "rgba(200, 29, 255, 0.15)",
-                  pointBackgroundColor: "#ffffff",
-                  pointBorderColor: "#c81dff",
-                  pointRadius: 4,
-                  tension: 0.3,
-                },
-                {
-                  label: "Qualified",
-                  data: [310, 160, 300, 45],
-                  borderColor: "#ccff33",
-                  backgroundColor: "rgba(204, 255, 51, 0.15)",
-                  pointBackgroundColor: "#ffffff",
-                  pointBorderColor: "#ccff33",
-                  pointRadius: 4,
-                  tension: 0.3,
-                },
-              ],
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                x: {
-                  ticks: { color: brandNavy },
-                  grid: { color: "rgba(0,0,0,0.05)" },
-                },
-                y: {
-                  beginAtZero: true,
-                  ticks: { color: brandNavy },
-                  grid: { color: "rgba(0,0,0,0.08)" },
-                },
-              },
-              plugins: {
-                legend: { labels: { color: brandNavy } },
-                tooltip: { enabled: true },
-              },
-            },
           });
         }
       });
