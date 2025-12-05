@@ -96,7 +96,7 @@
     />
 
     <h1 class="text-white font-extrabold text-3xl md:text-4xl leading-tight mt-5 drop-shadow-sm">
-      Institutional Scholarship Application System
+      Institutional Scholarship Management System
     </h1>
 
     <p class="text-white mt-3 text-sm md:text-base max-w-md mx-auto">

@@ -124,53 +124,99 @@
         </div>
         <nav class="flex-1">
           <ul class="text-xs font-semibold">
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+            <li
+              class="bg-[#fcdc2f] bg-opacity-90 text-[#052c6a] flex items-center gap-2 px-4 py-3 cursor-pointer"
+            >
               <i class="fas fa-trophy w-5"></i>
               <span>Dashboard</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+               onclick="window.location.href='adminDashboard.php'"
+            >
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='applicant.php'"
+            >
               <i class="fas fa-user-graduate w-5"></i>
               <span>Applicants</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='approved.php'"
+            >
               <i class="fas fa-thumbs-up w-5"></i>
               <span>Approved Applications</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='interviewEvaluation.php'"
+            >
               <i class="fas fa-check-circle w-5"></i>
               <span>Interview Evaluation</span>
             </li>
-            <li class="bg-[#fcdc2f] bg-opacity-90 text-[#052c6a] flex items-center gap-2 px-4 py-3 cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='ranks.php'"
+            >
               <i class="fas fa-star w-5"></i>
               <span>Applicant Ranks</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='list-of-qualified.php'"
+            >
               <i class="fas fa-list w-5"></i>
               <span>List of Qualified</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='department-evaluation-list.php'"
+            >
               <i class="fas fa-building w-5"></i>
               <span>Departmental Evaluation</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='summary-report.php'"
+            >
               <i class="fas fa-flag w-5"></i>
               <span>Summary Evaluation Report</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='institutional-scholars.php'"
+            >
               <i class="fas fa-chart-line w-5"></i>
-              <span>Reports</span>
+              <span>Institutional Scholars</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='settings.php'"
+            >
               <i class="fas fa-cogs w-5"></i>
               <span>Settings</span>
             </li>
-            <li class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer">
+
+            <li
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              onclick="window.location.href='accounts.php'"
+            >
               <i class="fas fa-user-circle w-5"></i>
-              <span>Profile</span>
+              <span>Accounts</span>
             </li>
           </ul>
         </nav>
