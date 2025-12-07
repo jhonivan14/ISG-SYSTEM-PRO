@@ -19,7 +19,7 @@
       }
       .paper {
         width: 100%;
-        max-width: 920px;
+        max-width: 1150px;
         padding: 18px;
         background-color: #fff;
         font-family: "Times New Roman", serif;
@@ -268,7 +268,7 @@
           </div>
         </header>
         <section class="flex flex-col items-center px-4 pt-16 pb-8">
-          <div class="no-print w-full max-w-4xl flex flex-wrap gap-3 text-xs items-center justify-center mb-4">
+          <div class="no-print w-full max-w-6xl flex flex-wrap gap-3 text-xs items-center justify-center mb-4">
             <div class="flex flex-wrap items-center gap-3 justify-center">
               <label for="academicYear" class="font-semibold text-slate-600">Academic Year</label>
               <select
@@ -332,9 +332,9 @@
                     <th rowspan="3" class="border border-black px-1 py-1 min-w-[120px]">REMARKS</th>
                   </tr>
                   <tr class="text-center font-semibold bg-white">
-                    <th colspan="2" class="border border-black px-1 py-1">Examination</th>
-                    <th colspan="2" class="border border-black px-1 py-1">Interview</th>
-                    <th colspan="2" class="border border-black px-1 py-1">Grades</th>
+                    <th colspan="2" class="border border-black px-1 py-1 bg-green-200">Examination</th>
+                    <th colspan="2" class="border border-black px-1 py-1 bg-orange-200">Interview</th>
+                    <th colspan="2" class="border border-black px-1 py-1 bg-yellow-200">Grades</th>
                   </tr>
                   <tr class="text-center font-semibold bg-white">
                     <th class="border border-black px-1 py-1">Rating</th>

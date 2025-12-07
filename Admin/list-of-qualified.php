@@ -236,7 +236,26 @@
         <section class="mt-12 px-4 sm:px-6 py-4">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6 paper">
             <div class="w-full mx-auto paper-wrap">
-              <div class="flex justify-end mb-3 print-btn-bar">
+              <div class="flex flex-wrap items-center justify-between gap-3 mb-3 print-btn-bar">
+                <div class="flex flex-wrap items-center gap-3 text-xs">
+                  <label for="academicYear" class="font-semibold text-slate-700">Academic Year</label>
+                  <select
+                    id="academicYear"
+                    class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                  >
+                    <option value="2025-2026" selected>2025-2026</option>
+                    <option value="2024-2025">2024-2025</option>
+                    <option value="2023-2024">2023-2024</option>
+                  </select>
+                  <label for="semesterSelect" class="font-semibold text-slate-700">Semester</label>
+                  <select
+                    id="semesterSelect"
+                    class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                  >
+                    <option value="1st" selected>1st Semester</option>
+                    <option value="2nd">2nd Semester</option>
+                  </select>
+                </div>
                 <button
                   type="button"
                   onclick="window.print()"
@@ -270,7 +289,7 @@
 
               <section class="text-center mb-4">
                 <h2 class="font-bold text-base">List of Qualified Applicants for Student Assistance Scholarship Program</h2>
-                <p class="font-semibold text-sm">1st Semester, S.Y. 2025-2026</p>
+                <p class="font-semibold text-sm" id="termText">1st Semester, S.Y. 2025-2026</p>
                 <p class="font-semibold text-sm">Batch 1</p>
               </section>
 
@@ -345,6 +364,18 @@
       document.addEventListener("DOMContentLoaded", () => {
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
+        const academicYearSelect = document.getElementById("academicYear");
+        const semesterSelect = document.getElementById("semesterSelect");
+        const termText = document.getElementById("termText");
+
+        if (academicYearSelect && semesterSelect && termText) {
+          const updateTermText = () => {
+            termText.textContent = `${semesterSelect.value} Semester, S.Y. ${academicYearSelect.value}`;
+          };
+          academicYearSelect.addEventListener("change", updateTermText);
+          semesterSelect.addEventListener("change", updateTermText);
+          updateTermText();
+        }
 
         if (toggleBtn && sidebar) {
           toggleBtn.addEventListener("click", () => {
