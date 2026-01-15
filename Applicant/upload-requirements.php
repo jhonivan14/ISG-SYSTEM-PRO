@@ -1,4 +1,6 @@
 <?php
+session_start();
+
 $grants = [
   1 => [
     "title" => "Student Assistant",
@@ -136,7 +138,8 @@ $grants = [
 ];
 
 // Prefer POST (gikan Step 2), fallback to GET (direct link)
-$id = $_POST["grant_id"] ?? $_GET["grant"] ?? 0;
+$draft = $_SESSION["application_draft"] ?? null;
+$id = $_POST["grant_id"] ?? $_GET["grant"] ?? ($draft["grant_id"] ?? 0);
 $selected = $grants[$id] ?? null;
 ?>
 <!DOCTYPE html>
@@ -183,6 +186,11 @@ $selected = $grants[$id] ?? null;
   </header>
 
   <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+    <?php if (empty($draft)): ?>
+      <div class="mb-4 rounded-xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-xs sm:text-sm text-yellow-800">
+        Please complete Step 2 first. Your application details are needed before uploading documents.
+      </div>
+    <?php endif; ?>
     <!-- Progress -->
     <section class="mb-4 sm:mb-6">
       <div class="max-w-md mx-auto mb-3">

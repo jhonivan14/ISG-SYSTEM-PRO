@@ -1,3 +1,55 @@
+<?php
+session_start();
+
+$errors = [];
+
+function read_post_field($key) {
+  return isset($_POST[$key]) ? trim($_POST[$key]) : "";
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  $grantId = (int)($_POST["grant_id"] ?? 0);
+
+  if ($grantId <= 0) {
+    $errors[] = "Missing grant selection.";
+  }
+
+  if (empty($errors)) {
+    $_SESSION["application_draft"] = [
+      "grant_id" => $grantId,
+      "scholarship_type" => read_post_field("scholarshipType"),
+      "kabayani_specify" => read_post_field("kabayaniSpecify"),
+      "others_specify" => read_post_field("othersSpecify"),
+      "applicant_name" => read_post_field("applicantName"),
+      "program_course" => read_post_field("programCourse"),
+      "year_level" => read_post_field("yearLevel"),
+      "school_year" => read_post_field("schoolYear"),
+      "permanent_address" => read_post_field("permanentAddress"),
+      "gender" => read_post_field("gender"),
+      "age" => (int)read_post_field("age"),
+      "date_of_birth" => read_post_field("dateOfBirth"),
+      "contact_number" => read_post_field("contactNumber"),
+      "estimated_income" => (int)read_post_field("estimatedIncome"),
+      "mother_name" => read_post_field("motherName"),
+      "mother_contact" => read_post_field("motherContact"),
+      "mother_company_name" => read_post_field("motherCompanyName"),
+      "mother_company_address" => read_post_field("motherCompanyAddress"),
+      "mother_age" => (int)read_post_field("motherAge"),
+      "mother_occupation" => read_post_field("motherOccupation"),
+      "father_name" => read_post_field("fatherName"),
+      "father_contact" => read_post_field("fatherContact"),
+      "father_company_name" => read_post_field("fatherCompanyName"),
+      "father_company_address" => read_post_field("fatherCompanyAddress"),
+      "father_age" => (int)read_post_field("fatherAge"),
+      "father_occupation" => read_post_field("fatherOccupation")
+    ];
+
+    $redirect = "upload-requirements.php?grant=" . urlencode((string)$grantId);
+    header("Location: " . $redirect);
+    exit;
+  }
+}
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -56,6 +108,13 @@
 
   <!-- MAIN WRAPPER -->
   <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8" tabindex="-1">
+    <?php if (!empty($errors)): ?>
+      <div class="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs sm:text-sm text-red-700">
+        <?php foreach ($errors as $error): ?>
+          <div><?php echo htmlspecialchars($error); ?></div>
+        <?php endforeach; ?>
+      </div>
+    <?php endif; ?>
     <!-- PAGE TITLE + STEP -->
     <section class="mb-6 sm:mb-8 space-y-4">
       <div class="text-center space-y-2">
@@ -118,7 +177,7 @@
         <i class="fas fa-graduation-cap"></i>
       </div>
 
-      <form action="upload-requirements.php" method="POST" novalidate class="space-y-8 sm:space-y-10 relative z-10">
+      <form action="isg-application-form.php" method="POST" novalidate class="space-y-8 sm:space-y-10 relative z-10">
         <!-- Hidden field to carry grant id -->
         <input type="hidden" name="grant_id" id="grantIdField" />
 
