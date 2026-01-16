@@ -225,6 +225,7 @@ if (empty($errors)) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Submission Status</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  
 </head>
 <body class="min-h-screen bg-gradient-to-b from-[#e0f2ff] via-white to-[#e0f2ff] flex items-center justify-center px-4">
   <div class="max-w-md w-full bg-white rounded-2xl shadow-lg border border-[#cddfff] p-6 text-center">
@@ -234,10 +235,10 @@ if (empty($errors)) {
         Your application and documents have been submitted successfully.
       </p>
       <a
-        href="applicationReq.php"
+        href="../index.php"
         class="mt-4 inline-flex items-center justify-center px-5 py-2 rounded-full bg-[#0d8ddb] text-white text-sm font-semibold hover:bg-[#0b63d1]"
       >
-        Back to Step 1
+        Back to homepage
       </a>
     <?php else: ?>
       <h1 class="text-xl font-bold text-red-600">Submission Failed</h1>
@@ -247,10 +248,10 @@ if (empty($errors)) {
         <?php endforeach; ?>
       </div>
       <a
-        href="upload-requirements.php"
+        href="applicationReq.php"
         class="mt-4 inline-flex items-center justify-center px-5 py-2 rounded-full bg-[#0d8ddb] text-white text-sm font-semibold hover:bg-[#0b63d1]"
       >
-        Back to Step 3
+        Back to Step 2
       </a>
     <?php endif; ?>
   </div>

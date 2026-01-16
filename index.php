@@ -1,3 +1,7 @@
+<?php
+session_start();
+$_SESSION["from_index"] = true;
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,6 +18,7 @@
     href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
     rel="stylesheet"
   />
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
   <style>
     body {
@@ -104,9 +109,10 @@
     </p>
 
     <button
+       id="applyBtn"
       class="mt-6 md:mt-8 bg-[#fcdc2f] text-[#052c6a] font-semibold rounded-full px-6 py-2.5 md:px-7 md:py-3 text-sm md:text-base shadow-md hover:bg-[#ffe45c] hover:shadow-lg transition-transform duration-200 hover:-translate-y-1"
       type="button"
-      onclick="window.location.href='Applicant/applicationReq.php'"
+      
     >
       Proceed to Application
       <i class="fas fa-arrow-right ml-2 text-xs"></i>
@@ -223,5 +229,44 @@
   </section>
 </main>
 
+<script>
+  document.getElementById("applyBtn").addEventListener("click", () => {
+    Swal.fire({
+      html: `
+        <div class="flex flex-col items-center">
+          <img
+            src="img/SMCCNEWLOGO.png"
+            alt="Loading Logo"
+            class="w-20 h-20 animate-pulse mb-4"
+          />
+          <p class="text-sm text-gray-600">
+            Loading application form…
+          </p>
+        </div>
+      `,
+      showConfirmButton: false,
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      background: "#ffffff",
+      customClass: {
+        popup: "rounded-2xl"
+      },
+      didOpen: () => {
+        Swal.showLoading();
+      }
+    });
+
+    setTimeout(() => {
+      window.location.href = "Applicant/applicationReq.php";
+    }, 700);
+  });
+
+    window.addEventListener("pageshow", function (event) {
+    if (event.persisted) {
+      // Page restored from cache (BACK button)
+      Swal.close();
+    }
+  });
+</script>
 </body>
 </html>

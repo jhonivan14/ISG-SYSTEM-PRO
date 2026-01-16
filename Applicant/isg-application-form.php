@@ -13,6 +13,30 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   if ($grantId <= 0) {
     $errors[] = "Missing grant selection.";
   }
+ 
+  
+  $requiredFields = [
+    "scholarshipType" => "Scholarship type is required.",
+    "applicantName" => "Applicant name is required.",
+    "programCourse" => "Program/course is required.",
+    "yearLevel" => "Year level is required.",
+    "schoolYear" => "School year is required.",
+    "permanentAddress" => "Permanent address is required.",
+    "gender" => "Gender is required.",
+    "age" => "Age is required.",
+    "dateOfBirth" => "Date of birth is required.",
+    "contactNumber" => "Contact number is required.",
+    "estimatedIncome" => "Estimated income is required.",
+    "motherName" => "Mother's name is required.",
+    "fatherName" => "Father's name is required."
+  ];
+  
+
+  foreach ($requiredFields as $field => $message) {
+    if (read_post_field($field) === "") {
+      $errors[] = $message;
+    }
+  }
 
   if (empty($errors)) {
     $_SESSION["application_draft"] = [
@@ -177,7 +201,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         <i class="fas fa-graduation-cap"></i>
       </div>
 
-      <form action="isg-application-form.php" method="POST" novalidate class="space-y-8 sm:space-y-10 relative z-10">
+      <form action="isg-application-form.php" method="POST" class="space-y-8 sm:space-y-10 relative z-10">
         <!-- Hidden field to carry grant id -->
         <input type="hidden" name="grant_id" id="grantIdField" />
 

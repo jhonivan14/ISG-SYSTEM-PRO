@@ -1,4 +1,6 @@
 <?php
+session_start();
+require_once '../db.php';
 $categoryDefinitions = [
   [
     "label" => "Student Assistant",
@@ -22,16 +24,46 @@ $categoryDefinitions = [
   ],
 ];
 
-$pendingApplicants = [
-  ["submitted_at" => "2025-01-08 09:15 AM", "name" => "Maria Johnson", "grant" => "Student Assistant", "status" => "Pending"],
-  ["submitted_at" => "2025-01-08 09:25 AM", "name" => "Mark Christian Joven Balatayo", "grant" => "Kabayani Scholarship", "status" => "Pending"],
-  ["submitted_at" => "2025-01-08 09:33 AM", "name" => "Jhon Ivan Tabanao", "grant" => "Academic Scholarship", "status" => "Pending"],
-  ["submitted_at" => "2025-01-08 09:40 AM", "name" => "Carlos Martinez", "grant" => "Student Assistant", "status" => "Pending"],
-  ["submitted_at" => "2025-01-08 10:02 AM", "name" => "Aisha Khan", "grant" => "Academic Scholar", "status" => "Pending"],
-  ["submitted_at" => "2025-01-08 10:08 AM", "name" => "Daniel Lee", "grant" => "Kabayani Scholarship", "status" => "Pending"],
-  ["submitted_at" => "2025-01-08 10:20 AM", "name" => "Sophia Nguyen", "grant" => "Others", "status" => "Pending"],
-  ["submitted_at" => "2025-01-08 10:45 AM", "name" => "Emily Davis", "grant" => "Others", "status" => "Pending"],
+$grantLabels = [
+  1 => "Student Assistant",
+  2 => "Academic Scholarship Program",
+  3 => "Executive Student Government (ESG) President Scholarship Program",
+  4 => "Kabayani Scholarship Program",
+  5 => "Kabayani Loyalty Grant",
+  6 => "Discount for Persons with Disability (PWD)",
+  7 => "Discount for Children of Employees",
+  8 => "Discount for Sibling of Employees",
+  9 => "Sibling Discount",
+  10 => "DXSM-FM Grant",
+  11 => "Michaelinian Mirror Grant (Editor-in-Chief)",
+  12 => "Grant for the Dependents of a Lot Donor",
+  13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
+  14 => "SMCC Alumni Discount",
 ];
+
+$pendingApplicants = [];
+$pendingQuery = "SELECT created_at, applicant_name, program_course, grant_id, status FROM applications ORDER BY created_at DESC";
+if ($result = $conn->query($pendingQuery)) {
+  while ($row = $result->fetch_assoc()) {
+    $grantId = (int)($row["grant_id"] ?? 0);
+    $grantLabel = $grantLabels[$grantId] ?? "Others";
+    $submittedAtRaw = $row["created_at"] ?? "";
+    $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
+    $status = isset($row["status"]) ? trim((string)$row["status"]) : "";
+    if ($status === "") {
+      $status = "Pending";
+    }
+
+    $pendingApplicants[] = [
+      "submitted_at" => $submittedAt,
+      "name" => $row["applicant_name"] ?? "",
+      "program_course" => $row["program_course"] ?? "",
+      "grant" => $grantLabel,
+      "status" => $status,
+    ];
+  }
+  $result->free();
+}
 
 $categories = [];
 foreach ($categoryDefinitions as $definition) {
@@ -350,6 +382,11 @@ $pendingCount = count($pendingApplicants);
                     <th
                       class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
                     >
+                      Program / Course
+                    </th>
+                    <th
+                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
+                    >
                       ISG Grant
                     </th>
                     <th
@@ -384,6 +421,11 @@ $pendingCount = count($pendingApplicants);
                           class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
                         >
                           <?= htmlspecialchars($applicant["name"]) ?>
+                        </td>
+                        <td
+                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
+                        >
+                          <?= htmlspecialchars($applicant["program_course"]) ?>
                         </td>
                         <td
                           class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"

@@ -1,5 +1,9 @@
 <?php
 session_start();
+if (empty($_SESSION["from_index"])) {
+  header("Location: ../index.php");
+  exit;
+}
 
 $grants = [
   1 => [
@@ -149,6 +153,7 @@ $selected = $grants[$id] ?? null;
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Upload Requirements • Step 3</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 
 <body class="bg-gradient-to-b from-[#e0f2ff] via-white to-[#e0f2ff] min-h-screen font-sans">
@@ -261,7 +266,7 @@ $selected = $grants[$id] ?? null;
             </p>
           </div>
 
-          <form action="submit_upload.php" method="POST" enctype="multipart/form-data" class="space-y-4 sm:space-y-5">
+          <form id="uploadForm" action="submit_upload.php" method="POST" enctype="multipart/form-data" class="space-y-4 sm:space-y-5">
             <!-- carry grant id to backend -->
             <input type="hidden" name="grant_id" value="<?php echo htmlspecialchars($id); ?>">
 
@@ -319,6 +324,7 @@ $selected = $grants[$id] ?? null;
             <!-- Submit -->
             <div class="pt-2">
               <button
+                 id="uploadBtn"
                 type="submit"
                 class="w-full inline-flex items-center justify-center gap-2 bg-[#fcdc2f]
                        text-[#052c6a] font-bold text-sm sm:text-base py-2.5 sm:py-3 rounded-full
@@ -338,6 +344,37 @@ $selected = $grants[$id] ?? null;
       if (!input) return;
       input.value = "";
     }
+
+   
+  const uploadForm = document.getElementById("uploadForm");
+  let confirmedSubmit = false;
+
+  if (uploadForm) {
+    uploadForm.addEventListener("submit", (event) => {
+      if (confirmedSubmit) {
+        return;
+      }
+
+      event.preventDefault();
+      Swal.fire({
+        title: "Are you sure?",
+        text: "Do you want to submit your application?",
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "Yes, proceed",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#fcdc2f",
+        cancelButtonColor: "#d33"
+      }).then((result) => {
+        if (result.isConfirmed) {
+          confirmedSubmit = true;
+          uploadForm.submit();
+        }
+      });
+    });
+  }
+
+
   </script>
 </body>
 </html>
