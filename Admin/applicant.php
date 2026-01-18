@@ -42,9 +42,10 @@ $grantLabels = [
 ];
 
 $pendingApplicants = [];
-$pendingQuery = "SELECT created_at, applicant_name, program_course, grant_id, status FROM applications ORDER BY created_at DESC";
+$pendingQuery = "SELECT id, created_at, applicant_name, program_course, grant_id, status FROM applications ORDER BY created_at DESC";
 if ($result = $conn->query($pendingQuery)) {
   while ($row = $result->fetch_assoc()) {
+    $applicationId = (int)($row["id"] ?? 0);
     $grantId = (int)($row["grant_id"] ?? 0);
     $grantLabel = $grantLabels[$grantId] ?? "Others";
     $submittedAtRaw = $row["created_at"] ?? "";
@@ -55,6 +56,7 @@ if ($result = $conn->query($pendingQuery)) {
     }
 
     $pendingApplicants[] = [
+      "id" => $applicationId,
       "submitted_at" => $submittedAt,
       "name" => $row["applicant_name"] ?? "",
       "program_course" => $row["program_course"] ?? "",
@@ -402,7 +404,7 @@ $pendingCount = count($pendingApplicants);
                 <tbody>
                   <?php if (empty($pendingApplicants)): ?>
                     <tr>
-                      <td colspan="5" class="py-3 text-center text-[#052c6a]">
+                      <td colspan="6" class="py-3 text-center text-[#052c6a]">
                         No pending applicants at the moment.
                       </td>
                     </tr>
@@ -444,6 +446,7 @@ $pendingCount = count($pendingApplicants);
                             <button
                               class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
                               type="button"
+                              onclick="window.location.href='view-application.php?id=<?= htmlspecialchars((string)$applicant['id']) ?>'"
                             >
                               Review Application
                             </button>

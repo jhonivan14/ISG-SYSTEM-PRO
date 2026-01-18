@@ -26,6 +26,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     "age" => "Age is required.",
     "dateOfBirth" => "Date of birth is required.",
     "contactNumber" => "Contact number is required.",
+    "emailAddress" => "Email address is required.",
     "estimatedIncome" => "Estimated income is required.",
     "motherName" => "Mother's name is required.",
     "fatherName" => "Father's name is required."
@@ -35,6 +36,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   foreach ($requiredFields as $field => $message) {
     if (read_post_field($field) === "") {
       $errors[] = $message;
+    }
+  }
+
+  $emailAddress = read_post_field("emailAddress");
+  if ($emailAddress !== "") {
+    $isValidEmail = filter_var($emailAddress, FILTER_VALIDATE_EMAIL);
+    $isGmail = (bool)preg_match('/@gmail\.com$/i', $emailAddress);
+    if (!$isValidEmail || !$isGmail) {
+      $errors[] = "Email address must be a valid @gmail.com address.";
     }
   }
 
@@ -53,6 +63,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       "age" => (int)read_post_field("age"),
       "date_of_birth" => read_post_field("dateOfBirth"),
       "contact_number" => read_post_field("contactNumber"),
+      "email_address" => read_post_field("emailAddress"),
       "estimated_income" => (int)read_post_field("estimatedIncome"),
       "mother_name" => read_post_field("motherName"),
       "mother_contact" => read_post_field("motherContact"),
@@ -454,6 +465,23 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 placeholder="+63 9XX XXX XXXX"
                 required
                 type="tel"
+              />
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="emailAddress">
+                Email Address <span class="text-red-600">*</span>
+              </label>
+              <input
+                class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+                       focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
+                id="emailAddress"
+                name="emailAddress"
+                placeholder="name@gmail.com"
+                pattern="^[A-Za-z0-9._%+-]+@gmail\\.com$"
+                title="Please enter a valid @gmail.com address."
+                required
+                type="email"
               />
             </div>
 

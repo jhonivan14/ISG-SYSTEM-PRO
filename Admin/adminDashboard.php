@@ -1,3 +1,102 @@
+<?php
+session_start();
+require_once '../db.php';
+$categoryDefinitions = [
+  [
+    "label" => "Student Assistant",
+    "slug" => "student-assistant",
+    "keywords" => ["student assistant"],
+  ],
+  [
+    "label" => "Kabayani Scholarship",
+    "slug" => "kabayani",
+    "keywords" => ["kabayani"],
+  ],
+  [
+    "label" => "Academic Scholar",
+    "slug" => "academic",
+    "keywords" => ["academic"],
+  ],
+  [
+    "label" => "Others",
+    "slug" => "others",
+    "keywords" => [],
+  ],
+];
+
+$grantLabels = [
+  1 => "Student Assistant",
+  2 => "Academic Scholarship Program",
+  3 => "Executive Student Government (ESG) President Scholarship Program",
+  4 => "Kabayani Scholarship Program",
+  5 => "Kabayani Loyalty Grant",
+  6 => "Discount for Persons with Disability (PWD)",
+  7 => "Discount for Children of Employees",
+  8 => "Discount for Sibling of Employees",
+  9 => "Sibling Discount",
+  10 => "DXSM-FM Grant",
+  11 => "Michaelinian Mirror Grant (Editor-in-Chief)",
+  12 => "Grant for the Dependents of a Lot Donor",
+  13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
+  14 => "SMCC Alumni Discount",
+];
+
+$pendingApplicants = [];
+$pendingQuery = "SELECT created_at, applicant_name, program_course, grant_id, status FROM applications ORDER BY created_at DESC";
+if ($result = $conn->query($pendingQuery)) {
+  while ($row = $result->fetch_assoc()) {
+    $grantId = (int)($row["grant_id"] ?? 0);
+    $grantLabel = $grantLabels[$grantId] ?? "Others";
+    $submittedAtRaw = $row["created_at"] ?? "";
+    $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
+    $status = isset($row["status"]) ? trim((string)$row["status"]) : "";
+    if ($status === "") {
+      $status = "Pending";
+    }
+
+    $pendingApplicants[] = [
+      "submitted_at" => $submittedAt,
+      "name" => $row["applicant_name"] ?? "",
+      "program_course" => $row["program_course"] ?? "",
+      "grant" => $grantLabel,
+      "status" => $status,
+    ];
+  }
+  $result->free();
+}
+
+$categories = [];
+foreach ($categoryDefinitions as $definition) {
+  $categories[$definition["slug"]] = [
+    "label" => $definition["label"],
+    "slug" => $definition["slug"],
+    "count" => 0,
+  ];
+}
+
+foreach ($pendingApplicants as &$applicant) {
+  $grant = strtolower($applicant["grant"]);
+  $matchedSlug = "others";
+
+  foreach ($categoryDefinitions as $definition) {
+    foreach ($definition["keywords"] as $keyword) {
+      if (stripos($grant, strtolower($keyword)) !== false) {
+        $matchedSlug = $definition["slug"];
+        break 2;
+      }
+    }
+  }
+
+  $applicant["category_slug"] = $matchedSlug;
+  if (isset($categories[$matchedSlug])) {
+    $categories[$matchedSlug]["count"]++;
+  }
+}
+unset($applicant);
+
+$pendingCount = count($pendingApplicants);
+?>
+
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -332,226 +431,120 @@
         </section>
 
         <!-- Table -->
-        <section class="px-4 sm:px-6 pb-6 mt-4 overflow-x-auto">
-          <table
-            class="min-w-full border border-[#0d8ddb] text-xs text-center"
-          >
-            <thead>
-              <tr class="bg-white border-b border-[#0d8ddb]">
-                <th
-                  class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                >
-                  Applicant Name
-                </th>
-                <th
-                  class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                >
-                  Application Status
-                </th>
-                <th class="py-2 px-2 font-semibold text-[#fcdc2f]">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Maria Johnson
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  James Smith
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-green-500 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Approved
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Aisha Khan
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-red-600 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Rejected
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Carlos Martinez
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Fatima Al-Sayed
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-green-500 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Approved
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Daniel Lee
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Sophia Nguyen
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-red-600 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Rejected
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Michael Brown
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-green-500 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Approved
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr>
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Emily Davis
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <section class="px-4 sm:px-6 pb-6 mt-4">
+          <div class="rounded-lg border border-[#0d8ddb] bg-white p-4 shadow-sm">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p class="text-[#0d8ddb] text-sm font-semibold">Pending Applicants</p>
+                <p class="text-xs text-[#052c6a]">
+                  Showing <?= htmlspecialchars($pendingCount) ?> pending applicants across all grant categories.
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <?php foreach ($categories as $category): ?>
+                <?php endforeach; ?>
+              </div>
+            </div>
+
+            <div class="mt-4 overflow-x-auto">
+              <table
+                class="min-w-full border border-[#0d8ddb] text-xs text-center"
+              >
+                <thead>
+                  <tr class="bg-white border-b border-[#0d8ddb]">
+                    <th
+                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
+                    >
+                      Timestamp
+                    </th>
+                    <th
+                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
+                    >
+                      Applicant Name
+                    </th>
+                    <th
+                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
+                    >
+                      Program / Course
+                    </th>
+                    <th
+                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
+                    >
+                      ISG Grant
+                    </th>
+                    <th
+                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
+                    >
+                      Application Status
+                    </th>
+                    <th class="py-2 px-2 font-semibold text-[#fcdc2f]">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php if (empty($pendingApplicants)): ?>
+                    <tr>
+                      <td colspan="5" class="py-3 text-center text-[#052c6a]">
+                        No pending applicants at the moment.
+                      </td>
+                    </tr>
+                  <?php else: ?>
+                    <?php foreach ($pendingApplicants as $applicant): ?>
+                      <tr
+                        class="border-b border-[#0d8ddb]"
+                        data-applicant-row="<?= htmlspecialchars($applicant["category_slug"]) ?>"
+                      >
+                        <td
+                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
+                        >
+                          <?= htmlspecialchars($applicant["submitted_at"]) ?>
+                        </td>
+                        <td
+                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
+                        >
+                          <?= htmlspecialchars($applicant["name"]) ?>
+                        </td>
+                        <td
+                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
+                        >
+                          <?= htmlspecialchars($applicant["program_course"]) ?>
+                        </td>
+                        <td
+                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
+                        >
+                          <?= htmlspecialchars($applicant["grant"]) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] py-2">
+                          <span
+                            class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
+                          >
+                            <?= htmlspecialchars($applicant["status"]) ?>
+                          </span>
+                        </td>
+                        <td class="py-2">
+                          <div class="flex flex-wrap justify-center gap-2">
+                            <button
+                              class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
+                              type="button"
+                            >
+                              Review Application
+                            </button>
+                            <button
+                              class="border border-[#f44336] text-[#f44336] rounded px-3 py-1 text-xs hover:bg-[#f44336] hover:text-white"
+                              type="button"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                  <?php endif; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
       </main>
     </div>

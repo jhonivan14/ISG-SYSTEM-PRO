@@ -1,3 +1,154 @@
+<?php
+session_start();
+require_once "../db.php";
+
+$applicationId = (int)($_GET["id"] ?? 0);
+$application = [];
+$uploadedRequirements = [];
+$loadError = "";
+$grantRequirements = [
+  1 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Application Letter",
+    "Resume",
+    "Form 138 / Report of Grades",
+    "Certificate of Indigency",
+    "Certificate of Good Moral Character"
+  ],
+  2 => [
+    "Certification (Top 1 or Top 2)",
+    "2x2 ID Picture",
+    "Form 138 / Grades",
+    "Certificate of Indigency",
+    "Certificate of Good Moral Character"
+  ],
+  3 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Endorsement Letter from OSAS"
+  ],
+  4 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Endorsement Letter"
+  ],
+  5 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Certification from External Linkages Coordinator",
+    "Proof of Relationship",
+    "Endorsement Letter from Retiree"
+  ],
+  6 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "PWD ID (2 photocopies)"
+  ],
+  7 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Certification from HRMDO"
+  ],
+  8 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Certification from HRMDO"
+  ],
+  9 => [
+    "Application Form",
+    "2x2 ID Picture"
+  ],
+  10 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Endorsement Letter from Station Manager"
+  ],
+  11 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Endorsement Letter from Publication In-Charge"
+  ],
+  12 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Board Resolution / Certification"
+  ],
+  13 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Board Resolution / Certification",
+    "Endorsement Letter"
+  ],
+  14 => [
+    "Application Form",
+    "2x2 ID Picture",
+    "Certification from Alumni Association"
+  ],
+];
+
+function app_value(array $application, string $key): string {
+  return isset($application[$key]) ? (string)$application[$key] : "";
+}
+
+if ($applicationId <= 0) {
+  $loadError = "Missing application id.";
+} else {
+  $stmt = $conn->prepare("SELECT * FROM applications WHERE id = ?");
+  if ($stmt) {
+    $stmt->bind_param("i", $applicationId);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    $row = $result ? $result->fetch_assoc() : null;
+    if ($row) {
+      $application = $row;
+    } else {
+      $loadError = "Application not found.";
+    }
+    $stmt->close();
+  } else {
+    $loadError = "Failed to prepare application lookup.";
+  }
+}
+
+$uploadsError = "";
+if ($applicationId > 0) {
+  $uploadStmt = $conn->prepare(
+    "SELECT requirement_label, original_file_name, stored_path
+     FROM application_uploads
+     WHERE application_id = ?
+     ORDER BY uploaded_at ASC"
+  );
+  if ($uploadStmt) {
+    $uploadStmt->bind_param("i", $applicationId);
+    $uploadStmt->execute();
+    $uploadsResult = $uploadStmt->get_result();
+    if ($uploadsResult) {
+      while ($uploadRow = $uploadsResult->fetch_assoc()) {
+        $uploadedRequirements[] = $uploadRow;
+      }
+    }
+    $uploadStmt->close();
+  } else {
+    $uploadsError = "Failed to prepare uploads lookup.";
+  }
+}
+
+$scholarshipType = strtolower(app_value($application, "scholarship_type"));
+$grantId = (int)app_value($application, "grant_id");
+$selectedRequirements = $grantRequirements[$grantId] ?? [];
+$uploadsByLabel = [];
+foreach ($uploadedRequirements as $upload) {
+  $label = isset($upload["requirement_label"]) ? (string)$upload["requirement_label"] : "";
+  if ($label === "") {
+    $label = "Document";
+  }
+  if (!isset($uploadsByLabel[$label])) {
+    $uploadsByLabel[$label] = [];
+  }
+  $uploadsByLabel[$label][] = $upload;
+}
+?>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -8,8 +159,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap" rel="stylesheet" />
     <style>
       @page {
-        size: A4;
-        margin: 30mm 25mm 30mm 25mm;
+        size: auto;
+        margin: 6mm 6mm 0mm 6mm;
       }
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-thumb { background-color: #052c6a; border-radius: 3px; }
@@ -23,6 +174,48 @@
       .header-left-text p { margin: 0; font-size: 10pt; }
       .header-right { display: flex; flex-direction: column; gap: 0.2rem; align-items: center; }
       .header-right img { width: 100px; height: 80px; object-fit: contain; }
+      .data-value { font-family: Arial, sans-serif; }
+      @media print {
+        body { background: #ffffff; }
+        .no-print { display: none !important; }
+        .print-area { margin: 0; padding: 0; }
+        .print-area .header-top {
+          margin-top: 0 !important;
+        }
+        .print-area .border,
+        .print-area .shadow-sm {
+          border: 0 !important;
+          box-shadow: none !important;
+        }
+        .print-area .max-w-5xl {
+          max-width: none !important;
+        }
+        .print-area { margin-top: 0 !important; }
+        .print-area .mb-6 { margin-bottom: 0.5rem !important; }
+        .print-area .mt-6 { margin-top: 0.5rem !important; }
+        .print-area .mt-8 { margin-top: 0.75rem !important; }
+        .print-area .gap-y-8 { row-gap: 0.75rem !important; }
+        .print-area {
+          transform: scale(0.95);
+          transform-origin: top center;
+        }
+        .print-area .header-left img { width: 64px !important; height: 64px !important; }
+        .print-area .header-right img { width: 84px !important; height: 68px !important; }
+        .print-area .header-left-text h1 { font-size: 14pt !important; }
+        .print-area .header-left-text p { font-size: 9pt !important; }
+        .print-area .specify-line {
+          border-bottom: 1px solid #000 !important;
+          display: inline-block !important;
+          min-height: 12px !important;
+        }
+        .print-area .specify-line input {
+          width: 100% !important;
+          border: 0 !important;
+          outline: 0 !important;
+          background: transparent !important;
+        }
+        .print-area .certify-text { margin-bottom: 0.5rem !important; }
+      }
     </style>
   </head>
   <body class="bg-white font-sans">
@@ -30,7 +223,7 @@
       <!-- Sidebar -->
       <aside
         id="sidebar"
-        class="flex flex-col bg-[#052c6a] text-white w-56 h-screen fixed left-0 top-0 z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out overflow-y-auto"
+        class="no-print flex flex-col bg-[#052c6a] text-white w-56 h-screen fixed left-0 top-0 z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out overflow-y-auto"
       >
         <div class="flex items-center gap-3 px-4 py-4 border-b border-[#0d8ddb]">
           <img src="../img/SMCCNEWLOGO.png" class="rounded-full w-16 h-16 object-cover" alt="SMCC Logo" />
@@ -117,7 +310,7 @@
       <!-- Main content -->
       <main class="ml-0 md:ml-56 flex flex-col min-h-screen">
         <!-- Top bar -->
-        <header class="fixed top-0 left-0 md:left-56 right-0 z-20 flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2">
+        <header class="no-print fixed top-0 left-0 md:left-56 right-0 z-20 flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2">
           <div class="flex items-center gap-2">
             <button id="sidebarToggle" class="md:hidden inline-flex items-center justify-center p-2 rounded bg-[#0d8ddb] focus:outline-none" type="button">
               <i class="fas fa-bars"></i>
@@ -135,9 +328,24 @@
           </div>
         </header>
 
-        <section class="mt-12 px-4 sm:px-6 py-4">
+        <section class="mt-12 px-4 sm:px-6 py-4 print-area">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6">
             <div class="max-w-5xl mx-auto">
+              <div class="mb-4 flex items-center justify-end no-print">
+                <button
+                  class="inline-flex items-center gap-2 rounded border border-[#0d8ddb] px-3 py-2 text-xs font-semibold text-[#0d8ddb] hover:bg-[#0d8ddb] hover:text-white transition"
+                  type="button"
+                  onclick="window.print()"
+                >
+                  <i class="fas fa-print"></i>
+                  Print Paper Form
+                </button>
+              </div>
+              <?php if ($loadError !== ""): ?>
+                <div class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <?= htmlspecialchars($loadError) ?>
+                </div>
+              <?php endif; ?>
               <header>
                 <div class="header-top">
                   <div class="header-left">
@@ -171,30 +379,34 @@
                   <div class="flex flex-wrap justify-between max-w-3xl mx-auto">
                     <div class="flex flex-col space-y-1 w-1/2 min-w-[180px]">
                       <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" />
+                        <input class="w-4 h-4 border border-black" type="checkbox" <?= $scholarshipType === "academic" ? "checked" : "" ?> />
                         <span class="text-sm">Academic</span>
                       </label>
                       <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" />
+                        <input class="w-4 h-4 border border-black" type="checkbox" <?= $scholarshipType === "kabayani" ? "checked" : "" ?> />
                         <span class="text-sm">Kabayani</span>
                       </label>
                       <label class="text-xs pl-6 pt-0.5">
                         Please specify:
-                        <span class="inline-block border-b border-black w-36"><input type="text" /></span>
+                        <span class="specify-line inline-block border-b border-black w-36">
+                          <input type="text" value="<?= htmlspecialchars(app_value($application, "kabayani_specify")) ?>" />
+                        </span>
                       </label>
                     </div>
                     <div class="flex flex-col space-y-1 w-1/2 min-w-[180px]">
                       <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" />
+                        <input class="w-4 h-4 border border-black" type="checkbox" <?= $scholarshipType === "student assistance" ? "checked" : "" ?> />
                         <span class="text-sm">Student Assistance</span>
                       </label>
                       <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" />
+                        <input class="w-4 h-4 border border-black" type="checkbox" <?= $scholarshipType === "others" ? "checked" : "" ?> />
                         <span class="text-sm">Others</span>
                       </label>
                       <label class="text-xs pl-6 pt-0.5">
                         Please specify:
-                        <span class="inline-block border-b border-black w-44"><input type="text" /></span>
+                        <span class="specify-line inline-block border-b border-black w-44">
+                          <input type="text" value="<?= htmlspecialchars(app_value($application, "others_specify")) ?>" />
+                        </span>
                       </label>
                     </div>
                   </div>
@@ -208,48 +420,75 @@
                     <div class="flex items-center">
                       <label class="w-44">Name of Applicant</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "applicant_name")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Program/Course Enrolled</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "program_course")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Year Level</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "year_level")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">School Year</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "school_year")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Permanent Address</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "permanent_address")) ?>
+                      </span>
                       <label class="ml-4 w-14">Gender</label>
                       <span>:</span>
-                      <span class="border-b border-black w-20 ml-2 h-4"></span>
+                      <span class="data-value border-b border-black w-20 ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "gender")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Date of Birth</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "date_of_birth")) ?>
+                      </span>
                       <label class="ml-4 w-14">Age</label>
                       <span>:</span>
-                      <span class="border-b border-black w-20 ml-2 h-4"></span>
+                      <span class="data-value border-b border-black w-20 ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "age")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Contact Number</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "contact_number")) ?>
+                      </span>
+                    </div>
+                    <div class="flex items-center">
+                      <label class="w-44">Email Address</label>
+                      <span>:</span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "email_address")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-72">Estimated Gross Income of the Family/Month</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "estimated_income")) ?>
+                      </span>
                     </div>
                   </div>
 
@@ -257,26 +496,38 @@
                     <div class="flex items-center">
                       <label class="w-44">Mother's Name</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "mother_name")) ?>
+                      </span>
                       <label class="ml-4 w-14">Age:</label>
-                      <span class="border-b border-black w-20 ml-2 h-4"></span>
+                      <span class="data-value border-b border-black w-20 ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "mother_age")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Contact Number</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "mother_contact")) ?>
+                      </span>
                       <label class="ml-4 w-20">Occupation:</label>
-                      <span class="border-b border-black w-44 ml-2 h-4"></span>
+                      <span class="data-value border-b border-black w-44 ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "mother_occupation")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Company's Name</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "mother_company_name")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Company's Address</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "mother_company_address")) ?>
+                      </span>
                     </div>
                   </div>
 
@@ -284,31 +535,43 @@
                     <div class="flex items-center">
                       <label class="w-44">Father's Name</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "father_name")) ?>
+                      </span>
                       <label class="ml-4 w-14">Age:</label>
-                      <span class="border-b border-black w-20 ml-2 h-4"></span>
+                      <span class="data-value border-b border-black w-20 ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "father_age")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Contact Number</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "father_contact")) ?>
+                      </span>
                       <label class="ml-4 w-20">Occupation:</label>
-                      <span class="border-b border-black w-44 ml-2 h-4"></span>
+                      <span class="data-value border-b border-black w-44 ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "father_occupation")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Company's Name</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "father_company_name")) ?>
+                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Company's Address</label>
                       <span>:</span>
-                      <span class="border-b border-black flex-grow ml-2 h-4"></span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "father_company_address")) ?>
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <p class="text-xs font-serif mt-6 mb-6 max-w-3xl mx-auto">I certify that the above information is true and correct.</p>
+                <p class="certify-text text-xs font-serif mt-6 mb-6 max-w-3xl mx-auto">I certify that the above information is true and correct.</p>
 
                 <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8">
                   <div class="w-full sm:w-[45%]">
@@ -354,11 +617,13 @@
         </section>
 
         <!-- Uploaded requirements display -->
-        <section class="px-4 sm:px-6 pb-8">
+        <section class="px-4 sm:px-6 pb-8 no-print">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6">
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-sm font-semibold text-[#052c6a]">Uploaded Requirements</h2>
-              <span class="text-[11px] text-slate-600">Replace with dynamic list from backend</span>
+              <?php if ($uploadsError !== ""): ?>
+                <span class="text-[11px] text-red-600"><?= htmlspecialchars($uploadsError) ?></span>
+              <?php endif; ?>
             </div>
             <div class="overflow-x-auto">
               <table class="min-w-full border text-xs">
@@ -370,29 +635,102 @@
                   </tr>
                 </thead>
                 <tbody class="text-[#052c6a]">
-                  <tr>
-                    <td class="border px-3 py-2">Certificate of Registration</td>
-                    <td class="border px-3 py-2 truncate">cor.pdf</td>
-                    <td class="border px-3 py-2 text-center">
-                      <a href="#" class="text-[#0d8ddb] hover:underline">View / Download</a>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="border px-3 py-2">Report Card / Grades</td>
-                    <td class="border px-3 py-2 truncate">grades.pdf</td>
-                    <td class="border px-3 py-2 text-center">
-                      <a href="#" class="text-[#0d8ddb] hover:underline">View / Download</a>
-                    </td>
-                  </tr>
-                  <tr>
-                    <td class="border px-3 py-2">Good Moral Certificate</td>
-                    <td class="border px-3 py-2 truncate">good-moral.jpg</td>
-                    <td class="border px-3 py-2 text-center">
-                      <a href="#" class="text-[#0d8ddb] hover:underline">View / Download</a>
-                    </td>
-                  </tr>
+                  <?php if (!empty($selectedRequirements)): ?>
+                    <?php foreach ($selectedRequirements as $requirementLabel): ?>
+                      <?php
+                        $uploadsForRequirement = $uploadsByLabel[$requirementLabel] ?? [];
+                        $primaryUpload = $uploadsForRequirement[0] ?? null;
+                        $storedPath = $primaryUpload["stored_path"] ?? "";
+                        $downloadPath = $storedPath !== "" ? "../" . ltrim((string)$storedPath, "/") : "";
+                        $extraCount = count($uploadsForRequirement) - 1;
+                      ?>
+                      <tr>
+                        <td class="border px-3 py-2">
+                          <?= htmlspecialchars($requirementLabel) ?>
+                        </td>
+                        <td class="border px-3 py-2 truncate">
+                          <?php if ($primaryUpload): ?>
+                            <?= htmlspecialchars((string)($primaryUpload["original_file_name"] ?? "")) ?>
+                            <?php if ($extraCount > 0): ?>
+                              <span class="text-[10px] text-slate-600">(<?= $extraCount ?> more)</span>
+                            <?php endif; ?>
+                          <?php else: ?>
+                            <span class="text-slate-500">Not uploaded</span>
+                          <?php endif; ?>
+                        </td>
+                        <td class="border px-3 py-2 text-center">
+                          <?php if ($downloadPath !== ""): ?>
+                            <div class="flex items-center justify-center gap-3">
+                              <a href="<?= htmlspecialchars($downloadPath) ?>" class="text-[#0d8ddb] hover:underline" target="_blank" rel="noopener">
+                                View
+                              </a>
+                              <a href="<?= htmlspecialchars($downloadPath) ?>" class="text-[#0d8ddb] hover:underline" download>
+                                Download
+                              </a>
+                            </div>
+                          <?php else: ?>
+                            <span class="text-slate-500">Unavailable</span>
+                          <?php endif; ?>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                  <?php elseif (empty($uploadedRequirements)): ?>
+                    <tr>
+                      <td colspan="3" class="border px-3 py-3 text-center text-[#052c6a]">
+                        No uploaded requirements found.
+                      </td>
+                    </tr>
+                  <?php else: ?>
+                    <?php foreach ($uploadedRequirements as $upload): ?>
+                      <?php
+                        $storedPath = isset($upload["stored_path"]) ? (string)$upload["stored_path"] : "";
+                        $downloadPath = "../" . ltrim($storedPath, "/");
+                      ?>
+                      <tr>
+                        <td class="border px-3 py-2">
+                          <?= htmlspecialchars((string)($upload["requirement_label"] ?? "Document")) ?>
+                        </td>
+                        <td class="border px-3 py-2 truncate">
+                          <?= htmlspecialchars((string)($upload["original_file_name"] ?? "")) ?>
+                        </td>
+                        <td class="border px-3 py-2 text-center">
+                          <?php if ($storedPath !== ""): ?>
+                            <div class="flex items-center justify-center gap-3">
+                              <a href="<?= htmlspecialchars($downloadPath) ?>" class="text-[#0d8ddb] hover:underline" target="_blank" rel="noopener">
+                                View
+                              </a>
+                              <a href="<?= htmlspecialchars($downloadPath) ?>" class="text-[#0d8ddb] hover:underline" download>
+                                Download
+                              </a>
+                            </div>
+                          <?php else: ?>
+                            <span class="text-slate-500">Unavailable</span>
+                          <?php endif; ?>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                  <?php endif; ?>
                 </tbody>
               </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="px-4 sm:px-6 pb-10 no-print">
+          <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6">
+            <div class="flex flex-wrap items-center justify-end gap-3">
+              <button
+                class="rounded bg-[#16a34a] px-4 py-2 text-xs font-semibold text-white hover:bg-[#15803d] transition"
+                type="button"
+              >
+                Approve Application
+              </button>
+              <button
+                class="rounded border border-[#f44336] px-4 py-2 text-xs font-semibold text-[#f44336] hover:bg-[#f44336] hover:text-white transition"
+                type="button"
+              >
+                Decline Application
+              </button>
             </div>
           </div>
         </section>

@@ -44,6 +44,7 @@ if (empty($errors)) {
     age,
     date_of_birth,
     contact_number,
+    email_address,
     estimated_income,
     mother_name,
     mother_contact,
@@ -59,7 +60,7 @@ if (empty($errors)) {
     father_occupation,
     created_at
   ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
   )";
 
   if ($stmt = $conn->prepare($sql)) {
@@ -75,6 +76,7 @@ if (empty($errors)) {
     $age = draft_int($draft, "age");
     $dateOfBirth = draft_value($draft, "date_of_birth");
     $contactNumber = draft_value($draft, "contact_number");
+    $emailAddress = draft_value($draft, "email_address");
     $estimatedIncome = draft_int($draft, "estimated_income");
     $motherName = draft_value($draft, "mother_name");
     $motherContact = draft_value($draft, "mother_contact");
@@ -90,7 +92,7 @@ if (empty($errors)) {
     $fatherOccupation = draft_value($draft, "father_occupation");
 
     $stmt->bind_param(
-      "isssssssssississssisssssis",
+      "isssssssssisssissssisssssis",
       $grantId,
       $scholarshipType,
       $kabayaniSpecify,
@@ -104,6 +106,7 @@ if (empty($errors)) {
       $age,
       $dateOfBirth,
       $contactNumber,
+      $emailAddress,
       $estimatedIncome,
       $motherName,
       $motherContact,
