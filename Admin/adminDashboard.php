@@ -95,6 +95,73 @@ foreach ($pendingApplicants as &$applicant) {
 unset($applicant);
 
 $pendingCount = count($pendingApplicants);
+
+$chartYears = [];
+$barData = [];
+$lineData = [];
+
+$barQuery = "SELECT school_year, semester, COUNT(*) AS total
+  FROM applications
+  WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''
+    AND semester IS NOT NULL AND TRIM(semester) <> ''
+  GROUP BY school_year, semester
+  ORDER BY school_year ASC";
+if ($result = $conn->query($barQuery)) {
+  while ($row = $result->fetch_assoc()) {
+    $year = (string)($row["school_year"] ?? "");
+    $semester = (string)($row["semester"] ?? "");
+    $total = (int)($row["total"] ?? 0);
+    if ($year !== "") {
+      if (!in_array($year, $chartYears, true)) {
+        $chartYears[] = $year;
+      }
+      if (!isset($barData[$year])) {
+        $barData[$year] = [
+          "1st Semester" => 0,
+          "2nd Semester" => 0,
+        ];
+      }
+      if (isset($barData[$year][$semester])) {
+        $barData[$year][$semester] = $total;
+      }
+    }
+  }
+  $result->free();
+}
+
+$lineQuery = "SELECT school_year,
+    COUNT(*) AS total,
+    SUM(CASE WHEN LOWER(TRIM(status)) = 'approved' THEN 1 ELSE 0 END) AS qualified
+  FROM applications
+  WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''
+  GROUP BY school_year
+  ORDER BY school_year ASC";
+if ($result = $conn->query($lineQuery)) {
+  while ($row = $result->fetch_assoc()) {
+    $year = (string)($row["school_year"] ?? "");
+    if ($year !== "") {
+      if (!in_array($year, $chartYears, true)) {
+        $chartYears[] = $year;
+      }
+      $lineData[$year] = [
+        "total" => (int)($row["total"] ?? 0),
+        "qualified" => (int)($row["qualified"] ?? 0),
+      ];
+    }
+  }
+  $result->free();
+}
+
+$firstSemCounts = [];
+$secondSemCounts = [];
+$lineApplicants = [];
+$lineQualified = [];
+foreach ($chartYears as $year) {
+  $firstSemCounts[] = $barData[$year]["1st Semester"] ?? 0;
+  $secondSemCounts[] = $barData[$year]["2nd Semester"] ?? 0;
+  $lineApplicants[] = $lineData[$year]["total"] ?? 0;
+  $lineQualified[] = $lineData[$year]["qualified"] ?? 0;
+}
 ?>
 
 <html lang="en">
@@ -582,10 +649,9 @@ $pendingCount = count($pendingApplicants);
 
       document.addEventListener("DOMContentLoaded", () => {
         // === BAR CHART: grouped by YEAR with 1st & 2nd Sem per year ===
-        const barLabels = ["2024-2025", "2025-2026", "2026-2027", "2027-2028"];
-        // values per year
-        const firstSem = [190, 270, 380, 330];
-        const secondSem = [250, 210, 300, 160];
+        const barLabels = <?php echo json_encode($chartYears); ?>;
+        const firstSem = <?php echo json_encode($firstSemCounts); ?>;
+        const secondSem = <?php echo json_encode($secondSemCounts); ?>;
 
         const barCtx = document.getElementById("applicantsBarChart");
         if (barCtx && window.Chart) {
@@ -642,11 +708,11 @@ $pendingCount = count($pendingApplicants);
           new Chart(trendCtx, {
             type: "line",
             data: {
-              labels: ["2024-2025", "2025-2026", "2026-2027", "2027-2028"],
+              labels: <?php echo json_encode($chartYears); ?>,
               datasets: [
                 {
                   label: "Applicants",
-                  data: [320, 150, 290, 40],
+                  data: <?php echo json_encode($lineApplicants); ?>,
                   borderColor: "#c81dff",
                   backgroundColor: "rgba(200, 29, 255, 0.15)",
                   pointBackgroundColor: "#ffffff",
@@ -656,7 +722,7 @@ $pendingCount = count($pendingApplicants);
                 },
                 {
                   label: "Qualified",
-                  data: [310, 160, 300, 45],
+                  data: <?php echo json_encode($lineQualified); ?>,
                   borderColor: "#ccff33",
                   backgroundColor: "rgba(204, 255, 51, 0.15)",
                   pointBackgroundColor: "#ffffff",

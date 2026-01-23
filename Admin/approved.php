@@ -1,33 +1,90 @@
 <?php
-$approvedApplicants = [
-  ["name" => "Maria Johnson", "grant" => "Student Assistant", "category" => "student-assistant", "status" => "Approved"],
-  ["name" => "James Smith", "grant" => "Student Assistant", "category" => "student-assistant", "status" => "Approved"],
-  ["name" => "Mark Christian Joven Balatayo", "grant" => "Kabayani Scholarship", "category" => "kabayani", "status" => "Approved"],
-  ["name" => "Daniel Lee", "grant" => "Kabayani Scholarship", "category" => "kabayani", "status" => "Approved"],
-  ["name" => "Aisha Khan", "grant" => "Academic Scholar", "category" => "academic", "status" => "Approved"],
-  ["name" => "Fatima Al-Sayed", "grant" => "Academic Scholar", "category" => "academic", "status" => "Approved"],
-  ["name" => "Sophia Nguyen", "grant" => "Others", "category" => "others", "status" => "Approved"],
-  ["name" => "Emily Davis", "grant" => "Others", "category" => "others", "status" => "Approved"],
+session_start();
+require_once '../db.php';
+
+$categoryDefinitions = [
+  [
+    "label" => "Student Assistant",
+    "slug" => "student-assistant",
+    "keywords" => ["student assistant"],
+  ],
+  [
+    "label" => "Kabayani Scholarship",
+    "slug" => "kabayani",
+    "keywords" => ["kabayani"],
+  ],
+  [
+    "label" => "Academic Scholar",
+    "slug" => "academic",
+    "keywords" => ["academic"],
+  ],
+  [
+    "label" => "Others",
+    "slug" => "others",
+    "keywords" => [],
+  ],
 ];
 
-$categoryLabels = [
-  "student-assistant" => "Student Assistant",
-  "kabayani" => "Kabayani",
-  "academic" => "Academic",
-  "others" => "Others",
+$grantLabels = [
+  1 => "Student Assistant",
+  2 => "Academic Scholarship Program",
+  3 => "Executive Student Government (ESG) President Scholarship Program",
+  4 => "Kabayani Scholarship Program",
+  5 => "Kabayani Loyalty Grant",
+  6 => "Discount for Persons with Disability (PWD)",
+  7 => "Discount for Children of Employees",
+  8 => "Discount for Sibling of Employees",
+  9 => "Sibling Discount",
+  10 => "DXSM-FM Grant",
+  11 => "Michaelinian Mirror Grant (Editor-in-Chief)",
+  12 => "Grant for the Dependents of a Lot Donor",
+  13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
+  14 => "SMCC Alumni Discount",
 ];
+
+$approvedApplicants = [];
+$approvedQuery = "SELECT id, applicant_name, grant_id, status FROM applications WHERE status = 'Approved' ORDER BY created_at DESC";
+if ($result = $conn->query($approvedQuery)) {
+  while ($row = $result->fetch_assoc()) {
+    $grantId = (int)($row["grant_id"] ?? 0);
+    $grantLabel = $grantLabels[$grantId] ?? "Others";
+    $status = isset($row["status"]) ? trim((string)$row["status"]) : "Approved";
+    if ($status === "") {
+      $status = "Approved";
+    }
+
+    $approvedApplicants[] = [
+      "id" => (int)($row["id"] ?? 0),
+      "name" => $row["applicant_name"] ?? "",
+      "grant" => $grantLabel,
+      "status" => $status,
+    ];
+  }
+  $result->free();
+}
 
 $groupedApproved = [];
-foreach ($categoryLabels as $slug => $label) {
-  $groupedApproved[$slug] = ["label" => $label, "items" => []];
+foreach ($categoryDefinitions as $definition) {
+  $groupedApproved[$definition["slug"]] = ["label" => $definition["label"], "items" => []];
 }
 
 foreach ($approvedApplicants as $applicant) {
-  $slug = $applicant["category"] ?? "others";
-  if (!isset($groupedApproved[$slug])) {
-    $slug = "others";
+  $grant = strtolower($applicant["grant"]);
+  $matchedSlug = "others";
+
+  foreach ($categoryDefinitions as $definition) {
+    foreach ($definition["keywords"] as $keyword) {
+      if (stripos($grant, strtolower($keyword)) !== false) {
+        $matchedSlug = $definition["slug"];
+        break 2;
+      }
+    }
   }
-  $groupedApproved[$slug]["items"][] = $applicant;
+
+  if (!isset($groupedApproved[$matchedSlug])) {
+    $matchedSlug = "others";
+  }
+  $groupedApproved[$matchedSlug]["items"][] = $applicant;
 }
 ?>
 <html lang="en">

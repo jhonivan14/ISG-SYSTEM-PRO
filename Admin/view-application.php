@@ -6,6 +6,7 @@ $applicationId = (int)($_GET["id"] ?? 0);
 $application = [];
 $uploadedRequirements = [];
 $loadError = "";
+$actionMessage = "";
 $grantRequirements = [
   1 => [
     "Application Form",
@@ -108,6 +109,26 @@ if ($applicationId <= 0) {
     $stmt->close();
   } else {
     $loadError = "Failed to prepare application lookup.";
+  }
+}
+
+$postAction = isset($_POST["application_action"]) ? (string)$_POST["application_action"] : "";
+$postId = (int)($_POST["application_id"] ?? 0);
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  if ($postId <= 0 || ($postAction !== "approve" && $postAction !== "decline")) {
+    $actionMessage = "Invalid action request.";
+  } else {
+    $newStatus = $postAction === "approve" ? "Approved" : "Rejected";
+    $updateStmt = $conn->prepare("UPDATE applications SET status = ? WHERE id = ?");
+    if ($updateStmt) {
+      $updateStmt->bind_param("si", $newStatus, $postId);
+      $updateStmt->execute();
+      $updateStmt->close();
+      header("Location: applicant.php");
+      exit;
+    } else {
+      $actionMessage = "Failed to update application status.";
+    }
   }
 }
 
@@ -346,6 +367,11 @@ foreach ($uploadedRequirements as $upload) {
                   <?= htmlspecialchars($loadError) ?>
                 </div>
               <?php endif; ?>
+              <?php if ($actionMessage !== ""): ?>
+                <div class="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <?= htmlspecialchars($actionMessage) ?>
+                </div>
+              <?php endif; ?>
               <header>
                 <div class="header-top">
                   <div class="header-left">
@@ -443,6 +469,13 @@ foreach ($uploadedRequirements as $upload) {
                       <span>:</span>
                       <span class="data-value border-b border-black flex-grow ml-2 h-4">
                         <?= htmlspecialchars(app_value($application, "school_year")) ?>
+                      </span>
+                    </div>
+                    <div class="flex items-center">
+                      <label class="w-44">Semester</label>
+                      <span>:</span>
+                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "semester")) ?>
                       </span>
                     </div>
                     <div class="flex items-center">
@@ -718,25 +751,34 @@ foreach ($uploadedRequirements as $upload) {
 
         <section class="px-4 sm:px-6 pb-10 no-print">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6">
-            <div class="flex flex-wrap items-center justify-end gap-3">
+            <form
+              id="applicationActionForm"
+              class="flex flex-wrap items-center justify-end gap-3"
+              method="post"
+            >
+              <input type="hidden" name="application_id" value="<?= htmlspecialchars((string)$applicationId) ?>" />
+              <input type="hidden" name="application_action" id="applicationActionInput" value="" />
               <button
                 class="rounded bg-[#16a34a] px-4 py-2 text-xs font-semibold text-white hover:bg-[#15803d] transition"
                 type="button"
+                data-action="approve"
               >
                 Approve Application
               </button>
               <button
                 class="rounded border border-[#f44336] px-4 py-2 text-xs font-semibold text-[#f44336] hover:bg-[#f44336] hover:text-white transition"
                 type="button"
+                data-action="decline"
               >
                 Decline Application
               </button>
-            </div>
+            </form>
           </div>
         </section>
       </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         const sidebar = document.getElementById("sidebar");
@@ -755,6 +797,51 @@ foreach ($uploadedRequirements as $upload) {
             });
           });
         }
+      });
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const form = document.getElementById("applicationActionForm");
+        const actionInput = document.getElementById("applicationActionInput");
+        const actionButtons = document.querySelectorAll("[data-action]");
+
+        const labels = {
+          approve: {
+            title: "Approve application?",
+            text: "This applicant will move to approved list.",
+            confirm: "Yes, approve",
+          },
+          decline: {
+            title: "Decline application?",
+            text: "This applicant will move to declined list.",
+            confirm: "Yes, decline",
+          },
+        };
+
+        if (!form || !actionInput || actionButtons.length === 0) return;
+
+        actionButtons.forEach((button) => {
+          button.addEventListener("click", () => {
+            const action = button.dataset.action || "";
+            const label = labels[action];
+            if (!label) return;
+
+            Swal.fire({
+              title: label.title,
+              text: label.text,
+              icon: "warning",
+              showCancelButton: true,
+              confirmButtonText: label.confirm,
+              cancelButtonText: "Cancel",
+              confirmButtonColor: "#0d8ddb",
+              cancelButtonColor: "#9ca3af",
+            }).then((result) => {
+              if (result.isConfirmed) {
+                actionInput.value = action;
+                form.submit();
+              }
+            });
+          });
+        });
       });
     </script>
   </body>

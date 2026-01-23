@@ -41,12 +41,59 @@ $grantLabels = [
   14 => "SMCC Alumni Discount",
 ];
 
+$currentYear = (int)date("Y");
+$currentMonth = (int)date("n");
+$schoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
+$schoolYearOptions = [];
+for ($i = 0; $i < 5; $i++) {
+  $start = $schoolYearStart + $i;
+  $schoolYearOptions[] = $start . "-" . ($start + 1);
+}
+$semesterOptions = ["1st Semester", "2nd Semester"];
+
+$selectedSchoolYear = isset($_GET["school_year"]) ? trim((string)$_GET["school_year"]) : "";
+$selectedSemester = isset($_GET["semester"]) ? trim((string)$_GET["semester"]) : "";
+if ($selectedSchoolYear !== "" && !in_array($selectedSchoolYear, $schoolYearOptions, true)) {
+  array_unshift($schoolYearOptions, $selectedSchoolYear);
+}
+if ($selectedSemester !== "" && !in_array($selectedSemester, $semesterOptions, true)) {
+  array_unshift($semesterOptions, $selectedSemester);
+}
+
+$filterClauses = [];
+$filterParams = [];
+$filterTypes = "";
+if ($selectedSchoolYear !== "") {
+  $filterClauses[] = "school_year = ?";
+  $filterParams[] = $selectedSchoolYear;
+  $filterTypes .= "s";
+}
+if ($selectedSemester !== "") {
+  $filterClauses[] = "semester = ?";
+  $filterParams[] = $selectedSemester;
+  $filterTypes .= "s";
+}
+
 $pendingApplicants = [];
-$pendingQuery = "SELECT id, created_at, applicant_name, program_course, grant_id, status FROM applications ORDER BY created_at DESC";
-if ($result = $conn->query($pendingQuery)) {
-  while ($row = $result->fetch_assoc()) {
-    $applicationId = (int)($row["id"] ?? 0);
-    $grantId = (int)($row["grant_id"] ?? 0);
+$pendingQuery = "SELECT id, created_at, applicant_name, program_course, grant_id, status
+  FROM applications
+  WHERE (status IS NULL
+    OR TRIM(status) = ''
+    OR LOWER(TRIM(status)) = 'pending')";
+if (!empty($filterClauses)) {
+  $pendingQuery .= " AND " . implode(" AND ", $filterClauses);
+}
+$pendingQuery .= " ORDER BY created_at DESC";
+if ($stmt = $conn->prepare($pendingQuery)) {
+  if (!empty($filterParams)) {
+    $stmt->bind_param($filterTypes, ...$filterParams);
+  }
+  $stmt->execute();
+  $result = $stmt->get_result();
+  if ($result) {
+    while ($row = $result->fetch_assoc()) {
+      $applicationId = (int)($row["id"] ?? 0);
+      $grantId = (int)($row["grant_id"] ?? 0);
     $grantLabel = $grantLabels[$grantId] ?? "Others";
     $submittedAtRaw = $row["created_at"] ?? "";
     $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
@@ -61,10 +108,12 @@ if ($result = $conn->query($pendingQuery)) {
       "name" => $row["applicant_name"] ?? "",
       "program_course" => $row["program_course"] ?? "",
       "grant" => $grantLabel,
-      "status" => $status,
-    ];
+        "status" => $status,
+      ];
+    }
+    $result->free();
   }
-  $result->free();
+  $stmt->close();
 }
 
 $categories = [];
@@ -97,6 +146,46 @@ foreach ($pendingApplicants as &$applicant) {
 unset($applicant);
 
 $pendingCount = count($pendingApplicants);
+
+$declinedApplicants = [];
+$declinedQuery = "SELECT id, created_at, applicant_name, program_course, grant_id, status
+  FROM applications
+  WHERE LOWER(TRIM(status)) IN ('declined', 'rejected')";
+if (!empty($filterClauses)) {
+  $declinedQuery .= " AND " . implode(" AND ", $filterClauses);
+}
+$declinedQuery .= " ORDER BY created_at DESC";
+if ($stmt = $conn->prepare($declinedQuery)) {
+  if (!empty($filterParams)) {
+    $stmt->bind_param($filterTypes, ...$filterParams);
+  }
+  $stmt->execute();
+  $result = $stmt->get_result();
+  if ($result) {
+    while ($row = $result->fetch_assoc()) {
+      $applicationId = (int)($row["id"] ?? 0);
+      $grantId = (int)($row["grant_id"] ?? 0);
+    $grantLabel = $grantLabels[$grantId] ?? "Others";
+    $submittedAtRaw = $row["created_at"] ?? "";
+    $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
+    $status = isset($row["status"]) ? trim((string)$row["status"]) : "Rejected";
+    if ($status === "") {
+      $status = "Declined";
+    }
+
+    $declinedApplicants[] = [
+      "id" => $applicationId,
+      "submitted_at" => $submittedAt,
+      "name" => $row["applicant_name"] ?? "",
+      "program_course" => $row["program_course"] ?? "",
+      "grant" => $grantLabel,
+        "status" => $status,
+      ];
+    }
+    $result->free();
+  }
+  $stmt->close();
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -319,25 +408,42 @@ $pendingCount = count($pendingApplicants);
         </section>
 
         <!-- Academic Year / Semester Filters -->
-        <div class="px-4 sm:px-6 mt-4 flex flex-wrap justify-end gap-2">
+        <form class="px-4 sm:px-6 mt-4 flex flex-wrap justify-end gap-2" method="get" action="applicant.php">
           <select
             class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+            name="school_year"
             aria-label="Select academic year"
+            onchange="this.form.submit()"
           >
-            <option selected>Academic Year</option>
-            <option>2024-2025</option>
-            <option>2025-2026</option>
-            <option>2026-2027</option>
+            <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+            <?php foreach ($schoolYearOptions as $option): ?>
+              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                <?php echo htmlspecialchars($option); ?>
+              </option>
+            <?php endforeach; ?>
           </select>
           <select
             class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+            name="semester"
             aria-label="Select semester"
+            onchange="this.form.submit()"
           >
-            <option selected>Semester</option>
-            <option>1st Semester</option>
-            <option>2nd Semester</option>
+            <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+            <?php foreach ($semesterOptions as $option): ?>
+              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                <?php echo htmlspecialchars($option); ?>
+              </option>
+            <?php endforeach; ?>
           </select>
-        </div>
+          <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+            <a
+              href="applicant.php"
+              class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
+            >
+              Clear
+            </a>
+          <?php endif; ?>
+        </form>
 
         <!-- Table -->
         <section class="px-4 sm:px-6 pb-6 mt-4">
@@ -455,6 +561,86 @@ $pendingCount = count($pendingApplicants);
                               type="button"
                             >
                               Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                  <?php endif; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="px-4 sm:px-6 pb-10 mt-2">
+          <div class="rounded-lg border border-[#f44336] bg-white p-4 shadow-sm">
+            <div class="flex flex-col gap-2">
+              <p class="text-[#f44336] text-sm font-semibold">Declined Applicants</p>
+              <p class="text-xs text-[#052c6a]">
+                Showing <?= htmlspecialchars((string)count($declinedApplicants)) ?> declined applicants.
+              </p>
+            </div>
+
+            <div class="mt-4 overflow-x-auto">
+              <table class="min-w-full border border-[#f44336] text-xs text-center">
+                <thead>
+                  <tr class="bg-white border-b border-[#f44336]">
+                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
+                      Timestamp
+                    </th>
+                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
+                      Applicant Name
+                    </th>
+                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
+                      Program / Course
+                    </th>
+                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
+                      ISG Grant
+                    </th>
+                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
+                      Application Status
+                    </th>
+                    <th class="py-2 px-2 font-semibold text-[#f44336]">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php if (empty($declinedApplicants)): ?>
+                    <tr>
+                      <td colspan="6" class="py-3 text-center text-[#052c6a]">
+                        No declined applicants at the moment.
+                      </td>
+                    </tr>
+                  <?php else: ?>
+                    <?php foreach ($declinedApplicants as $applicant): ?>
+                      <tr class="border-b border-[#f44336]">
+                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["submitted_at"]) ?>
+                        </td>
+                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["name"]) ?>
+                        </td>
+                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["program_course"]) ?>
+                        </td>
+                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["grant"]) ?>
+                        </td>
+                        <td class="border-r border-[#f44336] py-2">
+                          <span class="bg-red-500 text-white rounded px-2 py-0.5 inline-block">
+                            <?= htmlspecialchars($applicant["status"]) ?>
+                          </span>
+                        </td>
+                        <td class="py-2">
+                          <div class="flex flex-wrap justify-center gap-2">
+                            <button
+                              class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
+                              type="button"
+                              onclick="window.location.href='view-application.php?id=<?= htmlspecialchars((string)$applicant['id']) ?>'"
+                            >
+                              View Details
                             </button>
                           </div>
                         </td>

@@ -39,6 +39,7 @@ if (empty($errors)) {
     program_course,
     year_level,
     school_year,
+    semester,
     permanent_address,
     gender,
     age,
@@ -60,7 +61,7 @@ if (empty($errors)) {
     father_occupation,
     created_at
   ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
   )";
 
   if ($stmt = $conn->prepare($sql)) {
@@ -71,6 +72,7 @@ if (empty($errors)) {
     $programCourse = draft_value($draft, "program_course");
     $yearLevel = draft_value($draft, "year_level");
     $schoolYear = draft_value($draft, "school_year");
+    $semester = draft_value($draft, "semester");
     $permanentAddress = draft_value($draft, "permanent_address");
     $gender = draft_value($draft, "gender");
     $age = draft_int($draft, "age");
@@ -92,7 +94,7 @@ if (empty($errors)) {
     $fatherOccupation = draft_value($draft, "father_occupation");
 
     $stmt->bind_param(
-      "isssssssssisssissssisssssis",
+      "issssssssssisssissssisssssis",
       $grantId,
       $scholarshipType,
       $kabayaniSpecify,
@@ -101,6 +103,7 @@ if (empty($errors)) {
       $programCourse,
       $yearLevel,
       $schoolYear,
+      $semester,
       $permanentAddress,
       $gender,
       $age,

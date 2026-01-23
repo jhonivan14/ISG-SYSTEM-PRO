@@ -7,6 +7,17 @@ function read_post_field($key) {
   return isset($_POST[$key]) ? trim($_POST[$key]) : "";
 }
 
+$currentYear = (int)date("Y");
+$currentMonth = (int)date("n");
+$schoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
+$schoolYearOptions = [];
+for ($i = 0; $i < 5; $i++) {
+  $start = $schoolYearStart + $i;
+  $schoolYearOptions[] = $start . "-" . ($start + 1);
+}
+$selectedSchoolYear = read_post_field("schoolYear");
+$selectedSemester = read_post_field("semester");
+ 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $grantId = (int)($_POST["grant_id"] ?? 0);
 
@@ -21,6 +32,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     "programCourse" => "Program/course is required.",
     "yearLevel" => "Year level is required.",
     "schoolYear" => "School year is required.",
+    "semester" => "Semester is required.",
     "permanentAddress" => "Permanent address is required.",
     "gender" => "Gender is required.",
     "age" => "Age is required.",
@@ -58,6 +70,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       "program_course" => read_post_field("programCourse"),
       "year_level" => read_post_field("yearLevel"),
       "school_year" => read_post_field("schoolYear"),
+      "semester" => read_post_field("semester"),
       "permanent_address" => read_post_field("permanentAddress"),
       "gender" => read_post_field("gender"),
       "age" => (int)read_post_field("age"),
@@ -375,19 +388,47 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               </select>
             </div>
 
-            <div>
-              <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="schoolYear">
-                School Year <span class="text-red-600">*</span>
-              </label>
-              <input
-                class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
-                       focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
-                id="schoolYear"
-                name="schoolYear"
-                placeholder="e.g. 2025–2026"
-                required
-                type="text"
-              />
+            <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+              <div>
+                <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="schoolYear">
+                  School Year <span class="text-red-600">*</span>
+                </label>
+                <select
+                  class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+                         focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
+                  id="schoolYear"
+                  name="schoolYear"
+                  required
+                >
+                  <option disabled selected value="">Select school year</option>
+                  <?php foreach ($schoolYearOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="semester">
+                  Semester <span class="text-red-600">*</span>
+                </label>
+                <select
+                  class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+                         focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
+                  id="semester"
+                  name="semester"
+                  required
+                >
+                  <option disabled selected value="">Select semester</option>
+                  <?php $semesterOptions = ["1st Semester", "2nd Semester"]; ?>
+                  <?php foreach ($semesterOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
             </div>
 
             <div class="md:col-span-2">
@@ -774,3 +815,4 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   </script>
 </body>
 </html>
+
