@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once "../db.php";
 
 $errors = [];
 
@@ -9,12 +10,9 @@ function read_post_field($key) {
 
 $currentYear = (int)date("Y");
 $currentMonth = (int)date("n");
-$schoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
-$schoolYearOptions = [];
-for ($i = 0; $i < 5; $i++) {
-  $start = $schoolYearStart + $i;
-  $schoolYearOptions[] = $start . "-" . ($start + 1);
-}
+$currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
+$currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
+$schoolYearOptions = [$currentSchoolYear];
 $selectedSchoolYear = read_post_field("schoolYear");
 $selectedSemester = read_post_field("semester");
  

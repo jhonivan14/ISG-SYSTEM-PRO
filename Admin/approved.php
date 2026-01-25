@@ -42,12 +42,77 @@ $grantLabels = [
   14 => "SMCC Alumni Discount",
 ];
 
+$currentYear = (int)date("Y");
+$currentMonth = (int)date("n");
+$currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
+$currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
+$schoolYearOptions = [];
+
+$schoolYearResult = $conn->query("SELECT DISTINCT school_year FROM applications WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''");
+if ($schoolYearResult) {
+  while ($row = $schoolYearResult->fetch_assoc()) {
+    $value = trim((string)($row["school_year"] ?? ""));
+    if ($value !== "") {
+      $schoolYearOptions[] = $value;
+    }
+  }
+  $schoolYearResult->free();
+}
+
+if (!in_array($currentSchoolYear, $schoolYearOptions, true)) {
+  $schoolYearOptions[] = $currentSchoolYear;
+}
+
+$schoolYearOptions = array_values(array_unique($schoolYearOptions));
+usort($schoolYearOptions, function ($a, $b) {
+  $aYear = (int)substr($a, 0, 4);
+  $bYear = (int)substr($b, 0, 4);
+  if ($aYear === $bYear) {
+    return strcmp($a, $b);
+  }
+  return $aYear <=> $bYear;
+});
+$semesterOptions = ["1st Semester", "2nd Semester"];
+
+$selectedSchoolYear = isset($_GET["school_year"]) ? trim((string)$_GET["school_year"]) : "";
+$selectedSemester = isset($_GET["semester"]) ? trim((string)$_GET["semester"]) : "";
+if ($selectedSchoolYear !== "" && !in_array($selectedSchoolYear, $schoolYearOptions, true)) {
+  array_unshift($schoolYearOptions, $selectedSchoolYear);
+}
+if ($selectedSemester !== "" && !in_array($selectedSemester, $semesterOptions, true)) {
+  array_unshift($semesterOptions, $selectedSemester);
+}
+
+$filterClauses = [];
+$filterParams = [];
+$filterTypes = "";
+if ($selectedSchoolYear !== "") {
+  $filterClauses[] = "school_year = ?";
+  $filterParams[] = $selectedSchoolYear;
+  $filterTypes .= "s";
+}
+if ($selectedSemester !== "") {
+  $filterClauses[] = "semester = ?";
+  $filterParams[] = $selectedSemester;
+  $filterTypes .= "s";
+}
+
 $approvedApplicants = [];
-$approvedQuery = "SELECT id, applicant_name, grant_id, status FROM applications WHERE status = 'Approved' ORDER BY created_at DESC";
-if ($result = $conn->query($approvedQuery)) {
-  while ($row = $result->fetch_assoc()) {
-    $grantId = (int)($row["grant_id"] ?? 0);
-    $grantLabel = $grantLabels[$grantId] ?? "Others";
+$approvedQuery = "SELECT id, applicant_name, grant_id, status FROM applications WHERE status = 'Approved'";
+if (!empty($filterClauses)) {
+  $approvedQuery .= " AND " . implode(" AND ", $filterClauses);
+}
+$approvedQuery .= " ORDER BY created_at DESC";
+if ($stmt = $conn->prepare($approvedQuery)) {
+  if (!empty($filterParams)) {
+    $stmt->bind_param($filterTypes, ...$filterParams);
+  }
+  $stmt->execute();
+  $result = $stmt->get_result();
+  if ($result) {
+    while ($row = $result->fetch_assoc()) {
+      $grantId = (int)($row["grant_id"] ?? 0);
+      $grantLabel = $grantLabels[$grantId] ?? "Others";
     $status = isset($row["status"]) ? trim((string)$row["status"]) : "Approved";
     if ($status === "") {
       $status = "Approved";
@@ -60,15 +125,21 @@ if ($result = $conn->query($approvedQuery)) {
       "status" => $status,
     ];
   }
-  $result->free();
+    $result->free();
+  }
+  $stmt->close();
 }
 
-$groupedApproved = [];
+$categories = [];
 foreach ($categoryDefinitions as $definition) {
-  $groupedApproved[$definition["slug"]] = ["label" => $definition["label"], "items" => []];
+  $categories[$definition["slug"]] = [
+    "label" => $definition["label"],
+    "slug" => $definition["slug"],
+    "count" => 0,
+  ];
 }
 
-foreach ($approvedApplicants as $applicant) {
+foreach ($approvedApplicants as &$applicant) {
   $grant = strtolower($applicant["grant"]);
   $matchedSlug = "others";
 
@@ -81,11 +152,12 @@ foreach ($approvedApplicants as $applicant) {
     }
   }
 
-  if (!isset($groupedApproved[$matchedSlug])) {
-    $matchedSlug = "others";
+  $applicant["category_slug"] = $matchedSlug;
+  if (isset($categories[$matchedSlug])) {
+    $categories[$matchedSlug]["count"]++;
   }
-  $groupedApproved[$matchedSlug]["items"][] = $applicant;
 }
+unset($applicant);
 ?>
 <html lang="en">
   <head>
@@ -105,6 +177,12 @@ foreach ($approvedApplicants as $applicant) {
       ::-webkit-scrollbar-thumb {
         background-color: #052c6a; /* navy blue */
         border-radius: 3px;
+      }
+      .filter-button.active {
+        background-color: #0d8ddb;
+        color: #ffffff;
+        border-color: #0d8ddb;
+        box-shadow: 0 10px 20px rgba(13, 141, 219, 0.18);
       }
     </style>
   </head>
@@ -300,7 +378,7 @@ foreach ($approvedApplicants as $applicant) {
         <section class="px-4 sm:px-6 mt-4">
           <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#0d8ddb] bg-white p-3 shadow-sm">
             <span class="text-sm font-semibold text-[#052c6a]">Approved Applicants</span>
-            <div class="flex flex-wrap items-center gap-2">
+            <form class="flex flex-wrap items-center gap-2" method="get" action="approved.php">
               <div class="flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-2 shadow-sm">
                 <i class="fas fa-search text-[#7c8191] text-xs"></i>
                 <input
@@ -313,94 +391,122 @@ foreach ($approvedApplicants as $applicant) {
               </div>
               <select
                 class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                name="school_year"
                 aria-label="Select academic year"
+                onchange="this.form.submit()"
               >
-                <option selected>Academic Year</option>
-                <option>2024-2025</option>
-                <option>2025-2026</option>
-                <option>2026-2027</option>
+                <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                <?php foreach ($schoolYearOptions as $option): ?>
+                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                    <?php echo htmlspecialchars($option); ?>
+                  </option>
+                <?php endforeach; ?>
               </select>
               <select
                 class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                name="semester"
                 aria-label="Select semester"
+                onchange="this.form.submit()"
               >
-                <option selected>Semester</option>
-                <option>1st Semester</option>
-                <option>2nd Semester</option>
+                <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                <?php foreach ($semesterOptions as $option): ?>
+                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                    <?php echo htmlspecialchars($option); ?>
+                  </option>
+                <?php endforeach; ?>
               </select>
-            </div>
+              <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+                <a
+                  href="approved.php"
+                  class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
+                >
+                  Clear
+                </a>
+              <?php endif; ?>
+            </form>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <?php foreach ($categories as $category): ?>
+              <button
+                type="button"
+                class="filter-button rounded-full border border-[#0d8ddb] px-3 py-2 text-xs font-semibold text-[#0d8ddb] transition"
+                data-filter-category="<?= htmlspecialchars($category["slug"]) ?>"
+                data-filter-label="<?= htmlspecialchars($category["label"]) ?>"
+              >
+                <?= htmlspecialchars($category["label"]) ?>
+                <span class="ml-1 rounded-full bg-[#e5f1ff] px-2 py-0.5 text-[10px] font-bold text-[#052c6a]">
+                  <?= htmlspecialchars($category["count"]) ?>
+                </span>
+              </button>
+            <?php endforeach; ?>
           </div>
         </section>
 
-        <!-- Approved tables grouped by category -->
-        <section class="px-4 sm:px-6 pb-10 mt-4 space-y-6">
-          <?php foreach ($groupedApproved as $slug => $group): ?>
-            <div class="border border-[#0d8ddb] rounded-lg shadow-sm overflow-hidden" data-approved-group>
-              <div class="bg-[#0d8ddb] bg-opacity-5 px-4 py-3 flex items-center justify-between">
-                <div class="flex items-center gap-2 text-[#052c6a] text-sm font-semibold">
-                  <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#0d8ddb] text-white text-xs">
-                    <?= strtoupper(substr($group["label"], 0, 2)) ?>
-                  </span>
-                  <span><?= htmlspecialchars($group["label"]) ?></span>
-                </div>
-                <div class="text-xs font-semibold text-[#0d8ddb]">
-                  <?= count($group["items"]) ?> approved
-                </div>
-              </div>
-
-              <div class="overflow-x-auto">
-                <table class="min-w-full border-t border-[#0d8ddb] text-xs text-center">
-                  <thead>
-                    <tr class="bg-white border-b border-[#0d8ddb]">
-                      <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">Applicant Name</th>
-                      <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">ISG Grant</th>
-                      <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">Status</th>
-                      <th class="py-2 px-2 font-semibold text-[#fcdc2f]">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <?php if (empty($group["items"])): ?>
-                      <tr>
-                        <td colspan="4" class="py-3 text-center text-[#052c6a]">No approved applicants in this category.</td>
-                      </tr>
-                    <?php else: ?>
-                      <?php foreach ($group["items"] as $applicant): ?>
-                        <?php
-                          $searchText = strtolower($applicant["name"] . " " . $applicant["grant"] . " " . $applicant["status"]);
-                        ?>
-                        <tr class="border-b border-[#0d8ddb]" data-approved-row data-search-text="<?= htmlspecialchars($searchText) ?>">
-                          <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
-                            <?= htmlspecialchars($applicant["name"]) ?>
-                          </td>
-                          <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
-                            <?= htmlspecialchars($applicant["grant"]) ?>
-                          </td>
-                          <td class="border-r border-[#0d8ddb] py-2">
-                            <span class="bg-green-500 text-white rounded px-2 py-0.5 inline-block">
-                              <?= htmlspecialchars($applicant["status"]) ?>
-                            </span>
-                          </td>
-                          <td class="py-2">
-                            <div class="flex items-center justify-center gap-2">
-                              <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
-                                View Details
-                              </button>
-                              <button class="border border-[#f44336] text-[#f44336] rounded px-3 py-1 text-xs hover:bg-[#f44336] hover:text-white" type="button">
-                                Remove
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      <?php endforeach; ?>
-                      <tr data-approved-empty class="hidden">
-                        <td colspan="4" class="py-3 text-center text-[#052c6a]">No matching approved applicants.</td>
-                      </tr>
-                    <?php endif; ?>
-                  </tbody>
-                </table>
-              </div>
+        <!-- Approved table -->
+        <section class="px-4 sm:px-6 pb-10 mt-4">
+          <div class="border border-[#0d8ddb] rounded-lg shadow-sm overflow-hidden">
+            <div class="bg-[#0d8ddb] bg-opacity-5 px-4 py-3">
+              <p id="approvedTableTitle" class="text-xs sm:text-sm font-semibold text-[#052c6a]">
+                All Approved Applicants
+              </p>
             </div>
-          <?php endforeach; ?>
+            <div class="overflow-x-auto">
+              <table class="min-w-full border-t border-[#0d8ddb] text-xs text-center">
+                <thead>
+                  <tr class="bg-white border-b border-[#0d8ddb]">
+                    <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">Applicant Name</th>
+                    <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">ISG Grant</th>
+                    <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">Status</th>
+                    <th class="py-2 px-2 font-semibold text-[#fcdc2f]">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php if (empty($approvedApplicants)): ?>
+                    <tr>
+                      <td colspan="4" class="py-3 text-center text-[#052c6a]">No approved applicants.</td>
+                    </tr>
+                  <?php else: ?>
+                    <?php foreach ($approvedApplicants as $applicant): ?>
+                      <?php
+                        $searchText = strtolower($applicant["name"] . " " . $applicant["grant"] . " " . $applicant["status"]);
+                      ?>
+                      <tr
+                        class="border-b border-[#0d8ddb]"
+                        data-approved-row
+                        data-search-text="<?= htmlspecialchars($searchText) ?>"
+                        data-category="<?= htmlspecialchars($applicant["category_slug"]) ?>"
+                      >
+                        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["name"]) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["grant"]) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] py-2">
+                          <span class="bg-green-500 text-white rounded px-2 py-0.5 inline-block">
+                            <?= htmlspecialchars($applicant["status"]) ?>
+                          </span>
+                        </td>
+                        <td class="py-2">
+                          <div class="flex items-center justify-center gap-2">
+                            <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+                              View Details
+                            </button>
+                            <button class="border border-[#f44336] text-[#f44336] rounded px-3 py-1 text-xs hover:bg-[#f44336] hover:text-white" type="button">
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                    <tr data-approved-empty class="hidden">
+                      <td colspan="4" class="py-3 text-center text-[#052c6a]">No matching approved applicants.</td>
+                    </tr>
+                  <?php endif; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
       </main>
     </div>
@@ -427,36 +533,65 @@ foreach ($approvedApplicants as $applicant) {
         }
       });
 
-      // Search filter for approved applicants
+      // Search + category filter for approved applicants
       document.addEventListener("DOMContentLoaded", () => {
         const searchInput = document.getElementById("approvedSearch");
-        const groups = document.querySelectorAll("[data-approved-group]");
+        const filterButtons = document.querySelectorAll("[data-filter-category]");
+        const rows = document.querySelectorAll("[data-approved-row]");
+        const emptyRow = document.querySelector("[data-approved-empty]");
+        let activeCategory = "";
 
-        const applySearch = () => {
+        const approvedTitle = document.getElementById("approvedTableTitle");
+
+        const applyFilters = () => {
           const query = (searchInput?.value || "").trim().toLowerCase();
+          let visible = 0;
 
-          groups.forEach((group) => {
-            const rows = group.querySelectorAll("[data-approved-row]");
-            const emptyRow = group.querySelector("[data-approved-empty]");
-            let visible = 0;
-
-            rows.forEach((row) => {
-              const text = row.dataset.searchText || "";
-              const matches = query === "" || text.includes(query);
-              row.style.display = matches ? "table-row" : "none";
-              if (matches) visible++;
-            });
-
-            if (emptyRow) {
-              emptyRow.style.display = visible === 0 ? "table-row" : "none";
-            }
+          rows.forEach((row) => {
+            const text = row.dataset.searchText || "";
+            const category = row.dataset.category || "";
+            const matchesCategory = activeCategory === "" || category === activeCategory;
+            const matchesSearch = query === "" || text.includes(query);
+            const matches = matchesCategory && matchesSearch;
+            row.style.display = matches ? "table-row" : "none";
+            if (matches) visible++;
           });
+
+          if (emptyRow) {
+            emptyRow.style.display = visible === 0 ? "table-row" : "none";
+          }
+
+          filterButtons.forEach((button) => {
+            const isActive = button.dataset.filterCategory === activeCategory;
+            button.classList.toggle("active", isActive);
+          });
+
+          if (approvedTitle) {
+            if (activeCategory === "") {
+              approvedTitle.textContent = "All Approved Applicants";
+            } else {
+              const activeButton = document.querySelector(
+                `[data-filter-category="${activeCategory}"]`
+              );
+              const label = activeButton?.dataset.filterLabel || "Filtered Approved Applicants";
+              approvedTitle.textContent = label.toUpperCase();
+            }
+          }
         };
 
+        filterButtons.forEach((button) => {
+          button.addEventListener("click", () => {
+            const slug = button.dataset.filterCategory || "";
+            activeCategory = activeCategory === slug ? "" : slug;
+            applyFilters();
+          });
+        });
+
         if (searchInput) {
-          searchInput.addEventListener("input", applySearch);
-          applySearch();
+          searchInput.addEventListener("input", applyFilters);
         }
+
+        applyFilters();
       });
     </script>
   </body>

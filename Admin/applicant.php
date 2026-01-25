@@ -43,12 +43,34 @@ $grantLabels = [
 
 $currentYear = (int)date("Y");
 $currentMonth = (int)date("n");
-$schoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
+$currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
+$currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
 $schoolYearOptions = [];
-for ($i = 0; $i < 5; $i++) {
-  $start = $schoolYearStart + $i;
-  $schoolYearOptions[] = $start . "-" . ($start + 1);
+
+$schoolYearResult = $conn->query("SELECT DISTINCT school_year FROM applications WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''");
+if ($schoolYearResult) {
+  while ($row = $schoolYearResult->fetch_assoc()) {
+    $value = trim((string)($row["school_year"] ?? ""));
+    if ($value !== "") {
+      $schoolYearOptions[] = $value;
+    }
+  }
+  $schoolYearResult->free();
 }
+
+if (!in_array($currentSchoolYear, $schoolYearOptions, true)) {
+  $schoolYearOptions[] = $currentSchoolYear;
+}
+
+$schoolYearOptions = array_values(array_unique($schoolYearOptions));
+usort($schoolYearOptions, function ($a, $b) {
+  $aYear = (int)substr($a, 0, 4);
+  $bYear = (int)substr($b, 0, 4);
+  if ($aYear === $bYear) {
+    return strcmp($a, $b);
+  }
+  return $aYear <=> $bYear;
+});
 $semesterOptions = ["1st Semester", "2nd Semester"];
 
 $selectedSchoolYear = isset($_GET["school_year"]) ? trim((string)$_GET["school_year"]) : "";

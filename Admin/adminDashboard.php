@@ -100,6 +100,34 @@ $chartYears = [];
 $barData = [];
 $lineData = [];
 
+$currentYear = (int)date("Y");
+$currentMonth = (int)date("n");
+$currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
+$currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
+
+$yearResult = $conn->query("SELECT DISTINCT school_year FROM applications WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''");
+if ($yearResult) {
+  while ($row = $yearResult->fetch_assoc()) {
+    $value = trim((string)($row["school_year"] ?? ""));
+    if ($value !== "") {
+      $chartYears[] = $value;
+    }
+  }
+  $yearResult->free();
+}
+if (!in_array($currentSchoolYear, $chartYears, true)) {
+  $chartYears[] = $currentSchoolYear;
+}
+$chartYears = array_values(array_unique($chartYears));
+usort($chartYears, function ($a, $b) {
+  $aYear = (int)substr($a, 0, 4);
+  $bYear = (int)substr($b, 0, 4);
+  if ($aYear === $bYear) {
+    return strcmp($a, $b);
+  }
+  return $aYear <=> $bYear;
+});
+
 $barQuery = "SELECT school_year, semester, COUNT(*) AS total
   FROM applications
   WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''
@@ -112,9 +140,6 @@ if ($result = $conn->query($barQuery)) {
     $semester = (string)($row["semester"] ?? "");
     $total = (int)($row["total"] ?? 0);
     if ($year !== "") {
-      if (!in_array($year, $chartYears, true)) {
-        $chartYears[] = $year;
-      }
       if (!isset($barData[$year])) {
         $barData[$year] = [
           "1st Semester" => 0,
@@ -140,9 +165,6 @@ if ($result = $conn->query($lineQuery)) {
   while ($row = $result->fetch_assoc()) {
     $year = (string)($row["school_year"] ?? "");
     if ($year !== "") {
-      if (!in_array($year, $chartYears, true)) {
-        $chartYears[] = $year;
-      }
       $lineData[$year] = [
         "total" => (int)($row["total"] ?? 0),
         "qualified" => (int)($row["qualified"] ?? 0),
