@@ -1,7 +1,7 @@
 <?php
 session_start();
 require_once "../db.php";
-
+// If already logged in, redirect to dashboard
 $loginError = "";
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $panelistName = trim((string)($_POST["panelist_name"] ?? ""));
