@@ -1,3 +1,86 @@
+<?php
+session_start();
+require_once "../db.php";
+
+$resetMessage = "";
+$resetError = "";
+$panelistAccounts = [];
+$headOfficeAccounts = [];
+$panelistError = "";
+$headOfficeError = "";
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["reset_account_password"])) {
+  $accountType = trim((string)($_POST["account_type"] ?? ""));
+  $resetUsername = trim((string)($_POST["reset_username"] ?? ""));
+  $resetPassword = (string)($_POST["reset_password"] ?? "");
+
+  $tableMap = [
+    "panelist" => "panelists",
+    "head_office" => "head_offices",
+  ];
+
+  if (!isset($tableMap[$accountType])) {
+    $resetError = "Invalid account type.";
+  } elseif ($resetUsername === "" || $resetPassword === "") {
+    $resetError = "Please complete all fields.";
+  } else {
+    $tableName = $tableMap[$accountType];
+    $checkStmt = $conn->prepare("SELECT id FROM {$tableName} WHERE username = ? LIMIT 1");
+    if ($checkStmt) {
+      $checkStmt->bind_param("s", $resetUsername);
+      $checkStmt->execute();
+      $checkStmt->store_result();
+
+      if ($checkStmt->num_rows === 0) {
+        $resetError = "Username not found.";
+      } else {
+        $passwordHash = password_hash($resetPassword, PASSWORD_DEFAULT);
+        if ($passwordHash === false) {
+          $resetError = "Unable to reset password. Please try again.";
+        } else {
+          $updateStmt = $conn->prepare("UPDATE {$tableName} SET password_hash = ? WHERE username = ? LIMIT 1");
+          if ($updateStmt) {
+            $updateStmt->bind_param("ss", $passwordHash, $resetUsername);
+            if ($updateStmt->execute()) {
+              $resetMessage = "Password reset successful.";
+            } else {
+              $resetError = "Unable to update the password.";
+            }
+            $updateStmt->close();
+          } else {
+            $resetError = "Unable to update the password.";
+          }
+        }
+      }
+      $checkStmt->close();
+    } else {
+      $resetError = "Unable to reset the password.";
+    }
+  }
+}
+
+$panelistResult = $conn->query("SELECT username, full_name, password_hash, status FROM panelists ORDER BY username ASC");
+if ($panelistResult) {
+  while ($row = $panelistResult->fetch_assoc()) {
+    $panelistAccounts[] = $row;
+  }
+  $panelistResult->free();
+} else {
+  $panelistError = "Panelist accounts table is not available.";
+}
+
+$headOfficeResult = $conn->query("SELECT username, full_name, office, password_hash, status FROM head_offices ORDER BY username ASC");
+if ($headOfficeResult) {
+  while ($row = $headOfficeResult->fetch_assoc()) {
+    $headOfficeAccounts[] = $row;
+  }
+  $headOfficeResult->free();
+} else {
+  $headOfficeError = "Head of office accounts table is not available.";
+}
+?>
+
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -8,8 +91,6 @@
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
     />
-    <!-- Charts CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
       /* Custom scrollbar for sidebar */
       ::-webkit-scrollbar {
@@ -237,321 +318,201 @@
           </div>
         </section>
 
-        <!-- Stats cards above charts -->
-        <section
-          class="px-4 sm:px-6 pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
-        >
-          <!-- Total Scholars -->
-          <div
-            class="bg-[#052c6a] text-white rounded-lg p-4 flex items-center justify-between shadow"
-          >
-            <div>
-              <p class="text-xs text-[#fcdc2f] uppercase tracking-wide">
-                Total Scholars
-              </p>
-              <p class="text-2xl font-bold mt-1">120</p>
-              <p class="text-[11px] text-gray-200 mt-1">
-                Currently enrolled scholars
-              </p>
+        <section class="px-4 sm:px-6 pt-6">
+          <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
+            <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-[#0d8ddb] text-sm font-semibold">Account Passwords</p>
+                <p class="text-xs text-[#052c6a]">
+                  View hashed passwords and reset credentials for panelists and head of offices.
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded-full bg-[#052c6a] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b3d86]"
+                  onclick="window.location.href='add-panelist.php'"
+                >
+                  Add Panelist
+                </button>
+                <button
+                  type="button"
+                  class="rounded-full bg-[#0d8ddb] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
+                  onclick="window.location.href='add-head-office.php'"
+                >
+                  Add Head of Office
+                </button>
+              </div>
             </div>
-            <div class="text-3xl opacity-80">
-              <i class="fas fa-user-graduate"></i>
-            </div>
-          </div>
 
-          <!-- Applicants -->
-          <div
-            class="bg-white border border-[#0d8ddb] text-[#052c6a] rounded-lg p-4 flex items-center justify-between shadow-sm"
-          >
-            <div>
-              <p class="text-xs text-[#0d8ddb] uppercase tracking-wide">
-                Applicants
-              </p>
-              <p class="text-2xl font-bold mt-1">450</p>
-              <p class="text-[11px] text-gray-500 mt-1">
-                Total application submitted
-              </p>
-            </div>
-            <div class="text-3xl text-[#0d8ddb] opacity-90">
-              <i class="fas fa-users"></i>
-            </div>
-          </div>
+            <?php if ($resetError !== ""): ?>
+              <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= htmlspecialchars($resetError) ?>
+              </div>
+            <?php endif; ?>
 
-          <!-- Panelists -->
-          <div
-            class="bg-[#fcdc2f] text-[#052c6a] rounded-lg p-4 flex items-center justify-between shadow"
-          >
-            <div>
-              <p class="text-xs uppercase tracking-wide">Panelists</p>
-              <p class="text-2xl font-bold mt-1">18</p>
-              <p class="text-[11px] text-[#052c6a] mt-1">
-                Waiting for interview schedule
-              </p>
-            </div>
-            <div class="text-3xl opacity-90">
-              <i class="fas fa-user-tie"></i>
-            </div>
-          </div>
-
-          <!-- Head of Offices -->
-          <div
-            class="bg-green-500 text-white rounded-lg p-4 flex items-center justify-between shadow-sm"
-          >
-            <div>
-              <p class="text-xs uppercase tracking-wide">Head of Offices</p>
-              <p class="text-2xl font-bold mt-1">20</p>
-              <p class="text-[11px] text-white mt-1">Active evaluators</p>
-            </div>
-            <div class="text-3xl opacity-90">
-              <i class="fas fa-user-tie"></i>
-            </div>
+            <?php if ($resetMessage !== ""): ?>
+              <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                <?= htmlspecialchars($resetMessage) ?>
+              </div>
+            <?php endif; ?>
           </div>
         </section>
 
-        <!-- Charts -->
-        <section class="px-4 sm:px-6 space-y-6 mt-4">
-          <!-- Applicants Statistical Report (Bar Chart) -->
-          <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4">
-            <div class="text-[#052c6a] text-sm font-semibold mb-2">
-              Applicants Statistical Report
-            </div>
-            <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
-              <canvas id="applicantsBarChart" class="w-full h-full"></canvas>
-            </div>
-          </div>
-
-          <!-- Trends (Line Chart) -->
-          <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4">
-            <div class="text-[#052c6a] text-sm font-semibold mb-2">
-              Yearly Trend
-            </div>
-            <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
-              <canvas id="trendLineChart" class="w-full h-full"></canvas>
-            </div>
+        <section class="px-4 sm:px-6 pt-6">
+          <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">Panelists</p>
+            <?php if ($panelistError !== ""): ?>
+              <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= htmlspecialchars($panelistError) ?>
+              </div>
+            <?php else: ?>
+              <div class="mt-3 overflow-x-auto">
+                <table class="min-w-full border border-[#0d8ddb] text-xs text-left">
+                  <thead class="bg-[#052c6a] text-white">
+                    <tr>
+                      <th class="border-r border-white/10 px-3 py-2">Username</th>
+                      <th class="border-r border-white/10 px-3 py-2">Full Name</th>
+                      <th class="border-r border-white/10 px-3 py-2">Password Hash</th>
+                      <th class="border-r border-white/10 px-3 py-2">Status</th>
+                      <th class="px-3 py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php if (empty($panelistAccounts)): ?>
+                      <tr>
+                        <td colspan="5" class="px-3 py-3 text-center text-[#052c6a]">
+                          No panelist accounts found.
+                        </td>
+                      </tr>
+                    <?php else: ?>
+                      <?php foreach ($panelistAccounts as $account): ?>
+                        <tr class="border-b border-[#0d8ddb]">
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                            <?= htmlspecialchars((string)($account["username"] ?? "")) ?>
+                          </td>
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                            <?= htmlspecialchars((string)($account["full_name"] ?? "")) ?>
+                          </td>
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 font-mono text-[10px] text-[#052c6a] break-all">
+                            <?= htmlspecialchars((string)($account["password_hash"] ?? "")) ?>
+                          </td>
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                            <?= htmlspecialchars((string)($account["status"] ?? "")) ?>
+                          </td>
+                          <td class="px-3 py-2">
+                            <form method="POST" class="flex flex-wrap items-center gap-2">
+                              <input type="hidden" name="account_type" value="panelist" />
+                              <input
+                                type="hidden"
+                                name="reset_username"
+                                value="<?= htmlspecialchars((string)($account["username"] ?? "")) ?>"
+                              />
+                              <input
+                                type="password"
+                                name="reset_password"
+                                class="w-36 rounded border border-[#0d8ddb]/40 px-2 py-1 text-[11px]"
+                                placeholder="New password"
+                                required
+                              />
+                              <button
+                                type="submit"
+                                name="reset_account_password"
+                                value="1"
+                                class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
+                              >
+                                Reset
+                              </button>
+                            </form>
+                          </td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+            <?php endif; ?>
           </div>
         </section>
 
-        <!-- Table -->
-        <section class="px-4 sm:px-6 pb-6 mt-4 overflow-x-auto">
-          <table
-            class="min-w-full border border-[#0d8ddb] text-xs text-center"
-          >
-            <thead>
-              <tr class="bg-white border-b border-[#0d8ddb]">
-                <th
-                  class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                >
-                  Applicant Name
-                </th>
-                <th
-                  class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                >
-                  Application Status
-                </th>
-                <th class="py-2 px-2 font-semibold text-[#fcdc2f]">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Maria Johnson
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  James Smith
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-green-500 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Approved
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Aisha Khan
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-red-600 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Rejected
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Carlos Martinez
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Fatima Al-Sayed
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-green-500 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Approved
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Daniel Lee
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Sophia Nguyen
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-red-600 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Rejected
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr class="border-b border-[#0d8ddb]">
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Michael Brown
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-green-500 text-white rounded px-2 py-0.5 inline-block"
-                  >
-                    Approved
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    View Details
-                  </button>
-                </td>
-              </tr>
-              <tr>
-                <td
-                  class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                >
-                  Emily Davis
-                </td>
-                <td class="border-r border-[#0d8ddb] py-2">
-                  <span
-                    class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                  >
-                    Pending
-                  </span>
-                </td>
-                <td class="py-2">
-                  <button
-                    class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                    type="button"
-                  >
-                    Review Application
-                  </button>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <section class="px-4 sm:px-6 pt-6 pb-6">
+          <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
+            <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">Head of Offices</p>
+            <?php if ($headOfficeError !== ""): ?>
+              <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= htmlspecialchars($headOfficeError) ?>
+              </div>
+            <?php else: ?>
+              <div class="mt-3 overflow-x-auto">
+                <table class="min-w-full border border-[#0d8ddb] text-xs text-left">
+                  <thead class="bg-[#052c6a] text-white">
+                    <tr>
+                      <th class="border-r border-white/10 px-3 py-2">Username</th>
+                      <th class="border-r border-white/10 px-3 py-2">Full Name</th>
+                      <th class="border-r border-white/10 px-3 py-2">Office</th>
+                      <th class="border-r border-white/10 px-3 py-2">Password Hash</th>
+                      <th class="border-r border-white/10 px-3 py-2">Status</th>
+                      <th class="px-3 py-2">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php if (empty($headOfficeAccounts)): ?>
+                      <tr>
+                        <td colspan="6" class="px-3 py-3 text-center text-[#052c6a]">
+                          No head of office accounts found.
+                        </td>
+                      </tr>
+                    <?php else: ?>
+                      <?php foreach ($headOfficeAccounts as $account): ?>
+                        <tr class="border-b border-[#0d8ddb]">
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                            <?= htmlspecialchars((string)($account["username"] ?? "")) ?>
+                          </td>
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                            <?= htmlspecialchars((string)($account["full_name"] ?? "")) ?>
+                          </td>
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                            <?= htmlspecialchars((string)($account["office"] ?? "")) ?>
+                          </td>
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 font-mono text-[10px] text-[#052c6a] break-all">
+                            <?= htmlspecialchars((string)($account["password_hash"] ?? "")) ?>
+                          </td>
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                            <?= htmlspecialchars((string)($account["status"] ?? "")) ?>
+                          </td>
+                          <td class="px-3 py-2">
+                            <form method="POST" class="flex flex-wrap items-center gap-2">
+                              <input type="hidden" name="account_type" value="head_office" />
+                              <input
+                                type="hidden"
+                                name="reset_username"
+                                value="<?= htmlspecialchars((string)($account["username"] ?? "")) ?>"
+                              />
+                              <input
+                                type="password"
+                                name="reset_password"
+                                class="w-36 rounded border border-[#0d8ddb]/40 px-2 py-1 text-[11px]"
+                                placeholder="New password"
+                                required
+                              />
+                              <button
+                                type="submit"
+                                name="reset_account_password"
+                                value="1"
+                                class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
+                              >
+                                Reset
+                              </button>
+                            </form>
+                          </td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              </div>
+            <?php endif; ?>
+          </div>
         </section>
       </main>
     </div>
@@ -578,123 +539,6 @@
         }
       });
 
-      // Chart.js helpers for consistent styling
-      const brandBlue = "#0d8ddb";
-      const brandNavy = "#052c6a";
-      const brandYellow = "#fcdc2f";
-
-      // handy RGBA for brand colors
-      const purpleBlueFill = "rgba(106, 110, 230, 0.9)";
-      const tealBlueFill = "rgba(65, 155, 180, 0.9)";
-
-      document.addEventListener("DOMContentLoaded", () => {
-        // === BAR CHART: grouped by YEAR with 1st & 2nd Sem per year ===
-        const barLabels = ["2025", "2026", "2027", "2028"];
-        // values per year
-        const firstSem = [190, 270, 380, 330];
-        const secondSem = [250, 210, 300, 160];
-
-        const barCtx = document.getElementById("applicantsBarChart");
-        if (barCtx && window.Chart) {
-          new Chart(barCtx, {
-            type: "bar",
-            data: {
-              labels: barLabels,
-              datasets: [
-                {
-                  label: "1st Sem",
-                  data: firstSem,
-                  backgroundColor: purpleBlueFill,
-                  borderColor: brandNavy,
-                  borderWidth: 1,
-                  barPercentage: 0.8,
-                  categoryPercentage: 0.7,
-                },
-                {
-                  label: "2nd Sem",
-                  data: secondSem,
-                  backgroundColor: tealBlueFill,
-                  borderColor: brandNavy,
-                  borderWidth: 1,
-                  barPercentage: 0.8,
-                  categoryPercentage: 0.7,
-                },
-              ],
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                x: {
-                  ticks: { color: brandNavy },
-                  grid: { color: "rgba(0,0,0,0.05)" },
-                },
-                y: {
-                  beginAtZero: true,
-                  ticks: { color: brandNavy },
-                  grid: { color: "rgba(0,0,0,0.08)" },
-                },
-              },
-              plugins: {
-                legend: { labels: { color: brandNavy } },
-                tooltip: { enabled: true },
-              },
-            },
-          });
-        }
-
-        // === LINE CHART (yearly trend) ===
-        const trendCtx = document.getElementById("trendLineChart");
-        if (trendCtx && window.Chart) {
-          new Chart(trendCtx, {
-            type: "line",
-            data: {
-              labels: ["2025", "2026", "2027", "2028"],
-              datasets: [
-                {
-                  label: "Applicants",
-                  data: [320, 150, 290, 40],
-                  borderColor: "#c81dff",
-                  backgroundColor: "rgba(200, 29, 255, 0.15)",
-                  pointBackgroundColor: "#ffffff",
-                  pointBorderColor: "#c81dff",
-                  pointRadius: 4,
-                  tension: 0.3,
-                },
-                {
-                  label: "Qualified",
-                  data: [310, 160, 300, 45],
-                  borderColor: "#ccff33",
-                  backgroundColor: "rgba(204, 255, 51, 0.15)",
-                  pointBackgroundColor: "#ffffff",
-                  pointBorderColor: "#ccff33",
-                  pointRadius: 4,
-                  tension: 0.3,
-                },
-              ],
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              scales: {
-                x: {
-                  ticks: { color: brandNavy },
-                  grid: { color: "rgba(0,0,0,0.05)" },
-                },
-                y: {
-                  beginAtZero: true,
-                  ticks: { color: brandNavy },
-                  grid: { color: "rgba(0,0,0,0.08)" },
-                },
-              },
-              plugins: {
-                legend: { labels: { color: brandNavy } },
-                tooltip: { enabled: true },
-              },
-            },
-          });
-        }
-      });
     </script>
   </body>
 </html>

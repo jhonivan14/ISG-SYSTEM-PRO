@@ -1,3 +1,57 @@
+<?php
+session_start();
+require_once "../db.php";
+
+$loginError = "";
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  $panelistName = trim((string)($_POST["panelist_name"] ?? ""));
+  $panelistPassword = trim((string)($_POST["panelist_password"] ?? ""));
+
+  if ($panelistName === "" || $panelistPassword === "") {
+    $loginError = "Please enter your username and password.";
+  } else {
+    $stmt = $conn->prepare("SELECT full_name, password_hash, status FROM panelists WHERE username = ? LIMIT 1");
+    if ($stmt) {
+      $stmt->bind_param("s", $panelistName);
+      $stmt->execute();
+      $result = $stmt->get_result();
+      $row = $result ? $result->fetch_assoc() : null;
+      $stmt->close();
+
+      if (!$row || (string)($row["status"] ?? "") !== "active") {
+        $loginError = "Invalid username or password.";
+      } else {
+        $storedHash = (string)($row["password_hash"] ?? "");
+        $verified = false;
+        if ($storedHash !== "") {
+          if (strpos($storedHash, "$2y$") === 0 || strpos($storedHash, "$argon2") === 0) {
+            $verified = password_verify($panelistPassword, $storedHash);
+          } else {
+            $verified = hash("sha256", $panelistPassword) === $storedHash;
+          }
+        }
+
+      if ($verified) {
+        $displayName = trim((string)($row["full_name"] ?? ""));
+        if ($displayName === "") {
+          $displayName = $panelistName;
+        }
+        $_SESSION["panelist_username"] = $panelistName;
+        $_SESSION["panelist_name"] = $displayName;
+        $_SESSION["panelist_login_success"] = true;
+        header("Location: panelistDashboard.php");
+        exit();
+        }
+        $loginError = "Invalid username or password.";
+      }
+    } else {
+      $loginError = "Login error. Please try again.";
+    }
+  }
+}
+?>
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
@@ -103,6 +157,11 @@
       </h1>
 
       <form method="POST" class="space-y-6">
+        <?php if ($loginError !== ""): ?>
+          <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <?= htmlspecialchars($loginError) ?>
+          </div>
+        <?php endif; ?>
 
         <!-- username -->
         <div>
@@ -113,6 +172,7 @@
             </span>
             <input 
               id="username" 
+              name="panelist_name"
               type="text"
               placeholder="Enter username"
               class="w-full pl-10 pr-4 py-3 rounded-lg border border-yellow-300/70 bg-white text-gray-900
@@ -132,6 +192,7 @@
 
             <input 
               id="password"
+              name="panelist_password"
               type="password"
               placeholder="Enter password"
               class="w-full pl-10 pr-10 py-3 rounded-lg border border-yellow-300/70 bg-white text-gray-900
@@ -152,8 +213,7 @@
         <!-- login button -->
         <button
           class="w-full bg-yellow-400 hover:bg-yellow-300 text-blue-900 font-bold py-3 rounded-lg shadow-md transition"
-          type="button"
-          onclick="window.location.href='adminDashboard.php'"
+          type="submit"
         >
           Log In
         </button>

@@ -74,7 +74,7 @@
       <header>
         <div class="header-top">
           <div class="header-left">
-            <img src="img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
+            <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
             <div class="header-left-text">
               <h1 class="text-center">Saint Michael College of Caraga</h1>
               <p class="text-center">
@@ -88,7 +88,7 @@
             </div>
           </div>
           <div class="header-right">
-            <img src="img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" />
+            <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" />
           </div>
         </div>
       </header>

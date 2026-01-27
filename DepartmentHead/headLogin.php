@@ -1,3 +1,56 @@
+<?php
+session_start();
+require_once "../db.php";
+
+$loginError = "";
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  $username = trim((string)($_POST["head_username"] ?? ""));
+  $password = trim((string)($_POST["head_password"] ?? ""));
+
+  if ($username === "" || $password === "") {
+    $loginError = "Please enter your username and password.";
+  } else {
+    $stmt = $conn->prepare("SELECT full_name, password_hash, status FROM head_offices WHERE username = ? LIMIT 1");
+    if ($stmt) {
+      $stmt->bind_param("s", $username);
+      $stmt->execute();
+      $result = $stmt->get_result();
+      $row = $result ? $result->fetch_assoc() : null;
+      $stmt->close();
+
+      if (!$row || (string)($row["status"] ?? "") !== "active") {
+        $loginError = "Invalid username or password.";
+      } else {
+        $storedHash = (string)($row["password_hash"] ?? "");
+        $verified = false;
+        if ($storedHash !== "") {
+          if (strpos($storedHash, "$2y$") === 0 || strpos($storedHash, "$argon2") === 0) {
+            $verified = password_verify($password, $storedHash);
+          } else {
+            $verified = hash("sha256", $password) === $storedHash;
+          }
+        }
+
+        if ($verified) {
+          $displayName = trim((string)($row["full_name"] ?? ""));
+          if ($displayName === "") {
+            $displayName = $username;
+          }
+          $_SESSION["head_username"] = $username;
+          $_SESSION["head_name"] = $displayName;
+          header("Location: headDashboard.php");
+          exit();
+        }
+        $loginError = "Invalid username or password.";
+      }
+    } else {
+      $loginError = "Login error. Please try again.";
+    }
+  }
+}
+?>
+
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
@@ -103,6 +156,11 @@
       </h1>
 
       <form method="POST" class="space-y-6">
+        <?php if ($loginError !== ""): ?>
+          <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <?= htmlspecialchars($loginError) ?>
+          </div>
+        <?php endif; ?>
 
         <!-- username -->
         <div>
@@ -113,6 +171,7 @@
             </span>
             <input 
               id="username" 
+              name="head_username"
               type="text"
               placeholder="Enter username"
               class="w-full pl-10 pr-4 py-3 rounded-lg border border-yellow-300/70 bg-white text-gray-900
@@ -132,6 +191,7 @@
 
             <input 
               id="password"
+              name="head_password"
               type="password"
               placeholder="Enter password"
               class="w-full pl-10 pr-10 py-3 rounded-lg border border-yellow-300/70 bg-white text-gray-900
@@ -152,8 +212,7 @@
         <!-- login button -->
         <button
           class="w-full bg-yellow-400 hover:bg-yellow-300 text-blue-900 font-bold py-3 rounded-lg shadow-md transition"
-          type="button"
-          onclick="window.location.href='adminDashboard.php'"
+          type="submit"
         >
           Log In
         </button>
