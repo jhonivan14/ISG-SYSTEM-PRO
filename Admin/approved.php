@@ -98,7 +98,7 @@ if ($selectedSemester !== "") {
 }
 
 $approvedApplicants = [];
-$approvedQuery = "SELECT id, applicant_name, grant_id, status FROM applications WHERE status = 'Approved'";
+$approvedQuery = "SELECT id, applicant_name, email_address, grant_id, status FROM applications WHERE status = 'Approved'";
 if (!empty($filterClauses)) {
   $approvedQuery .= " AND " . implode(" AND ", $filterClauses);
 }
@@ -121,6 +121,8 @@ if ($stmt = $conn->prepare($approvedQuery)) {
     $approvedApplicants[] = [
       "id" => (int)($row["id"] ?? 0),
       "name" => $row["applicant_name"] ?? "",
+      "email" => $row["email_address"] ?? "",
+      "grant_id" => $grantId,
       "grant" => $grantLabel,
       "status" => $status,
     ];
@@ -376,6 +378,27 @@ unset($applicant);
 
         <!-- Academic Year / Semester Filters -->
         <section class="px-4 sm:px-6 mt-4">
+          <?php if (isset($_GET["message_status"])): ?>
+            <?php
+              $status = $_GET["message_status"];
+              $isSuccess = $status === "sent";
+              $isError = $status === "error";
+              $errorMessage = $_SESSION["message_error"] ?? "";
+              unset($_SESSION["message_error"]);
+            ?>
+            <?php if ($isSuccess || $isError): ?>
+              <div class="mb-3 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $isSuccess ? "border-green-400 bg-green-50 text-green-700" : "border-red-400 bg-red-50 text-red-700"; ?>">
+                <?php
+                  if ($isSuccess) {
+                    echo "Message sent successfully.";
+                  } else {
+                    $fallback = "Failed to send message. Please try again.";
+                    echo $errorMessage !== "" ? htmlspecialchars($errorMessage) : $fallback;
+                  }
+                ?>
+              </div>
+            <?php endif; ?>
+          <?php endif; ?>
           <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#0d8ddb] bg-white p-3 shadow-sm">
             <span class="text-sm font-semibold text-[#052c6a]">Approved Applicants</span>
             <form class="flex flex-wrap items-center gap-2" method="get" action="approved.php">
@@ -489,9 +512,24 @@ unset($applicant);
                         </td>
                         <td class="py-2">
                           <div class="flex items-center justify-center gap-2">
-                            <button class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs" type="button">
+                            <button
+                              class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
+                              type="button"
+                              onclick="window.location.href='view-application.php?id=<?= htmlspecialchars((string)$applicant['id']) ?>'"
+                            >
                               View Details
                             </button>
+                            <?php if ((int)$applicant["grant_id"] === 1): ?>
+                              <button
+                                class="bg-[#052c6a] text-white rounded px-3 py-1 text-xs hover:bg-[#031f4d]"
+                                type="button"
+                                data-send-message
+                                data-applicant-name="<?= htmlspecialchars($applicant["name"]) ?>"
+                                data-applicant-email="<?= htmlspecialchars($applicant["email"]) ?>"
+                              >
+                                Send Message
+                              </button>
+                            <?php endif; ?>
                             <button class="border border-[#f44336] text-[#f44336] rounded px-3 py-1 text-xs hover:bg-[#f44336] hover:text-white" type="button">
                               Remove
                             </button>
@@ -508,6 +546,60 @@ unset($applicant);
             </div>
           </div>
         </section>
+
+        <!-- Send Message Modal -->
+        <div
+          id="sendMessageModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-black/40 px-4"
+          aria-hidden="true"
+        >
+          <div class="w-full max-w-md rounded-lg bg-white shadow-lg">
+            <div class="flex items-center justify-between border-b border-[#0d8ddb] px-4 py-3">
+              <h2 class="text-sm font-semibold text-[#052c6a]">Send Message</h2>
+              <button id="sendMessageClose" class="text-[#052c6a] hover:text-[#0d8ddb]" type="button">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <form action="send_message.php" method="post" class="px-4 py-3 space-y-3">
+              <input type="hidden" name="recipient_email" id="recipientEmail" value="" />
+              <div>
+                <label class="block text-xs font-semibold text-[#052c6a] mb-1">Recipient</label>
+                <input
+                  type="text"
+                  id="recipientName"
+                  class="w-full rounded border border-[#0d8ddb] px-3 py-2 text-xs text-[#052c6a] bg-gray-50"
+                  readonly
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-[#052c6a] mb-1" for="messageBody">Message</label>
+                <textarea
+                  id="messageBody"
+                  name="message_body"
+                  rows="5"
+                  required
+                  class="w-full rounded border border-[#0d8ddb] px-3 py-2 text-xs text-[#052c6a] focus:outline-none"
+                  placeholder="Type your message here..."
+                ></textarea>
+              </div>
+              <div class="flex justify-end gap-2">
+                <button
+                  type="button"
+                  id="sendMessageCancel"
+                  class="rounded border border-[#0d8ddb] px-3 py-2 text-xs font-semibold text-[#052c6a]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  class="rounded bg-[#0d8ddb] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0b7cc0]"
+                >
+                  Send
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       </main>
     </div>
 
@@ -592,6 +684,54 @@ unset($applicant);
         }
 
         applyFilters();
+      });
+
+      // Send message modal
+      document.addEventListener("DOMContentLoaded", () => {
+        const modal = document.getElementById("sendMessageModal");
+        const closeBtn = document.getElementById("sendMessageClose");
+        const cancelBtn = document.getElementById("sendMessageCancel");
+        const recipientName = document.getElementById("recipientName");
+        const recipientEmail = document.getElementById("recipientEmail");
+        const messageBody = document.getElementById("messageBody");
+
+        const closeModal = () => {
+          if (modal) {
+            modal.classList.add("hidden");
+            modal.classList.remove("flex");
+          }
+          if (messageBody) {
+            messageBody.value = "";
+          }
+        };
+
+        document.querySelectorAll("[data-send-message]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const name = button.getAttribute("data-applicant-name") || "";
+            const email = button.getAttribute("data-applicant-email") || "";
+
+            if (recipientName) recipientName.value = name;
+            if (recipientEmail) recipientEmail.value = email;
+            if (modal) {
+              modal.classList.remove("hidden");
+              modal.classList.add("flex");
+            }
+          });
+        });
+
+        [closeBtn, cancelBtn].forEach((btn) => {
+          if (btn) {
+            btn.addEventListener("click", closeModal);
+          }
+        });
+
+        if (modal) {
+          modal.addEventListener("click", (event) => {
+            if (event.target === modal) {
+              closeModal();
+            }
+          });
+        }
       });
     </script>
   </body>

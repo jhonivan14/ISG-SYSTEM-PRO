@@ -8,6 +8,7 @@ $_SESSION["from_index"] = true;
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Institutional Scholarship Application</title>
+  <base href="/isg-system/" />
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link
@@ -83,7 +84,7 @@ $_SESSION["from_index"] = true;
   <!-- Background image (subtle) -->
   <div class="absolute inset-0 -z-20 opacity-30">
     <img
-      src="img/smccbackandlogo (2).png"
+      src="img/smccbackandlogo%20(2).png"
       alt="Background"
       class="w-full h-full object-cover"
     />
@@ -96,7 +97,7 @@ $_SESSION["from_index"] = true;
   <div class="relative z-10 max-w-3xl mx-auto animate-fade-in-up">
     <img
       class="w-20 h-20 mx-auto rounded-full bg-white shadow-xl border-4 border-white animate-float"
-      src="img/SMCCNEWLOGO.png"
+      src="img/admission-logo.jpg"
       alt="SMCC Logo"
     />
 
@@ -199,7 +200,7 @@ $_SESSION["from_index"] = true;
       <button
         class="bg-[#fcdc2f] text-[#052c6a] font-semibold rounded-full w-full py-2 text-sm hover:bg-[#ffe45c] shadow transition"
         type="button"
-        onclick="window.location.href='panelLogin.html'"
+        onclick="window.location.href='Panelist/panelLogin.php'"
       >
         Login
       </button>
@@ -221,7 +222,7 @@ $_SESSION["from_index"] = true;
       <button
         class="bg-[#fcdc2f] text-[#052c6a] font-semibold rounded-full w-full py-2 text-sm hover:bg-[#ffe45c] shadow transition"
         type="button"
-        onclick="window.location.href='headOfOffice.html'"
+        onclick="window.location.href='DepartmentHead/headLogin.php'"
       >
         Login
       </button>
