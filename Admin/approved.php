@@ -525,7 +525,7 @@ unset($applicant);
                                 type="button"
                                 data-send-message
                                 data-applicant-name="<?= htmlspecialchars($applicant["name"]) ?>"
-                                data-applicant-email="<?= htmlspecialchars($applicant["email"]) ?>"
+                                data-applicant-id="<?= htmlspecialchars((string)$applicant["id"]) ?>"
                               >
                                 Send Message
                               </button>
@@ -561,7 +561,7 @@ unset($applicant);
               </button>
             </div>
             <form action="send_message.php" method="post" class="px-4 py-3 space-y-3">
-              <input type="hidden" name="recipient_email" id="recipientEmail" value="" />
+              <input type="hidden" name="applicant_id" id="recipientId" value="" />
               <div>
                 <label class="block text-xs font-semibold text-[#052c6a] mb-1">Recipient</label>
                 <input
@@ -692,7 +692,7 @@ unset($applicant);
         const closeBtn = document.getElementById("sendMessageClose");
         const cancelBtn = document.getElementById("sendMessageCancel");
         const recipientName = document.getElementById("recipientName");
-        const recipientEmail = document.getElementById("recipientEmail");
+        const recipientId = document.getElementById("recipientId");
         const messageBody = document.getElementById("messageBody");
 
         const closeModal = () => {
@@ -708,10 +708,10 @@ unset($applicant);
         document.querySelectorAll("[data-send-message]").forEach((button) => {
           button.addEventListener("click", () => {
             const name = button.getAttribute("data-applicant-name") || "";
-            const email = button.getAttribute("data-applicant-email") || "";
+            const id = button.getAttribute("data-applicant-id") || "";
 
             if (recipientName) recipientName.value = name;
-            if (recipientEmail) recipientEmail.value = email;
+            if (recipientId) recipientId.value = id;
             if (modal) {
               modal.classList.remove("hidden");
               modal.classList.add("flex");

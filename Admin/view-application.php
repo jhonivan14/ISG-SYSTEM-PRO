@@ -180,8 +180,8 @@ foreach ($uploadedRequirements as $upload) {
     <link href="https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap" rel="stylesheet" />
     <style>
       @page {
-        size: auto;
-        margin: 6mm 6mm 0mm 6mm;
+        size: 8.5in 13in;
+        margin: 6mm 6mm 0mm 0mm;
       }
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-thumb { background-color: #052c6a; border-radius: 3px; }
@@ -197,7 +197,7 @@ foreach ($uploadedRequirements as $upload) {
       .header-right img { width: 100px; height: 80px; object-fit: contain; }
       .data-value { font-family: Arial, sans-serif; }
       @media print {
-        body { background: #ffffff; }
+        body { background: #ffffff; margin: 0 !important; }
         .no-print { display: none !important; }
         .print-area { margin: 0; padding: 0; }
         .print-area .header-top {
@@ -211,15 +211,26 @@ foreach ($uploadedRequirements as $upload) {
         .print-area .max-w-5xl {
           max-width: none !important;
         }
+        .print-area .max-w-5xl {
+          min-height: 12.7in;
+          display: flex;
+          flex-direction: column;
+        }
+        .print-area .max-w-3xl {
+          max-width: 100% !important;
+        }
         .print-area { margin-top: 0 !important; }
-        .print-area .mb-6 { margin-bottom: 0.5rem !important; }
-        .print-area .mt-6 { margin-top: 0.5rem !important; }
-        .print-area .mt-8 { margin-top: 0.75rem !important; }
-        .print-area .gap-y-8 { row-gap: 0.75rem !important; }
+        .print-area .mb-6 { margin-bottom: 0.35rem !important; }
+        .print-area .mt-6 { margin-top: 0.35rem !important; }
+        .print-area .mt-8 { margin-top: 0.5rem !important; }
+        .print-area .gap-y-8 { row-gap: 0.5rem !important; }
         .print-area {
-          transform: scale(0.95);
+          transform: scale(1);
           transform-origin: top center;
         }
+        .print-area { line-height: 1.45; }
+        .print-area .text-xs { line-height: 1.45 !important; }
+        .print-area .text-sm { line-height: 1.5 !important; }
         .print-area .header-left img { width: 64px !important; height: 64px !important; }
         .print-area .header-right img { width: 84px !important; height: 68px !important; }
         .print-area .header-left-text h1 { font-size: 14pt !important; }
@@ -235,7 +246,20 @@ foreach ($uploadedRequirements as $upload) {
           outline: 0 !important;
           background: transparent !important;
         }
-        .print-area .certify-text { margin-bottom: 0.5rem !important; }
+        .print-area .certify-text { margin-bottom: 0.35rem !important; }
+        .print-area .footer-print {
+          margin-top: 0.2rem !important;
+          margin-bottom: 0 !important;
+        }
+        .print-area .footer-print img {
+          display: block !important;
+          width: 100% !important;
+          height: auto !important;
+        }
+        .print-area .signature-group { row-gap: 0.9rem !important; }
+        .print-area .signature-block { line-height: 1.8 !important; }
+        .print-area .box-print { width: 160px !important; }
+        .print-area .print-spacer { flex: 1 1 auto; }
       }
     </style>
   </head>
@@ -606,12 +630,12 @@ foreach ($uploadedRequirements as $upload) {
 
                 <p class="certify-text text-xs font-serif mt-6 mb-6 max-w-3xl mx-auto">I certify that the above information is true and correct.</p>
 
-                <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8">
-                  <div class="w-full sm:w-[45%]">
+                <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8 signature-group">
+                  <div class="w-full sm:w-[45%] signature-block">
                     <div class="border-b border-black w-full h-4 mb-1"></div>
                     <p class="text-xs font-serif">Name and signature of applicant</p>
                   </div>
-                  <div class="w-full sm:w-[45%]">
+                  <div class="w-full sm:w-[45%] signature-block">
                     <div class="border-b border-black w-full h-4 mb-1"></div>
                     <p class="text-xs font-serif">
                       Name and signature of personnel<br />
@@ -620,13 +644,13 @@ foreach ($uploadedRequirements as $upload) {
                   </div>
                 </div>
 
-                <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8 mt-8">
-                  <div class="w-full sm:w-[45%]">
+                <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8 mt-8 signature-group">
+                  <div class="w-full sm:w-[45%] signature-block">
                     <p class="text-xs font-serif mb-6">Recommending approval:</p>
                     <div class="border-b border-black w-full h-4 mb-1"></div>
                     <p class="text-xs font-serif">Head, Admission &amp; Scholarship</p>
                   </div>
-                  <div class="w-full sm:w-[45%]">
+                  <div class="w-full sm:w-[45%] signature-block">
                     <p class="text-xs font-serif mb-6">Approved by:</p>
                     <div class="border-b border-black w-full h-4 mb-1"></div>
                     <p class="text-xs font-serif">Head, HRMDO</p>
@@ -635,12 +659,12 @@ foreach ($uploadedRequirements as $upload) {
 
                 <div class="max-w-3xl mx-auto mt-6">
                   <div class="flex items-center">
-                    <img src="../img/box.png" alt="Box" class="w-48 h-auto" />
+                    <img src="../img/box.png" alt="Box" class="w-48 h-auto box-print" />
                   </div>
                 </div>
               </form>
 
-              <footer class="max-w-3xl mx-auto mt-6">
+              <footer class="max-w-3xl mx-auto mt-6 footer-print">
                 <div class="flex items-center justify-between text-[10px] font-semibold text-black">
                   <img src="../img/footer.png" alt="Footer" />
                 </div>
