@@ -3,11 +3,32 @@ use PHPMailer\PHPMailer\PHPMailer;
 
 session_start();
 require_once "../db.php";
+require_once __DIR__ . "/../vendor/autoload.php";
 
-$applicationId = (int)($_POST["application_id"] ?? 0);
+$maskEmail = function (string $email): string {
+  $email = trim($email);
+  if ($email === "" || strpos($email, "@") === false) {
+    return "";
+  }
+  [$local, $domain] = explode("@", $email, 2);
+  $local = trim($local);
+  if ($local === "") {
+    return "";
+  }
+  if (strlen($local) <= 2) {
+    $maskedLocal = substr($local, 0, 1) . "***";
+  } else {
+    $maskedLocal = substr($local, 0, 1) . str_repeat("*", max(1, strlen($local) - 2)) . substr($local, -1);
+  }
+  return $maskedLocal . "@" . $domain;
+};
+
+$applicantId = (int)($_POST["applicant_id"] ?? 0);
 $messageBody = isset($_POST["message_body"]) ? trim((string)$_POST["message_body"]) : "";
+$postedRecipientEmail = isset($_POST["recipient_email"]) ? trim((string)$_POST["recipient_email"]) : "";
 
 if ($applicantId <= 0 || $messageBody === "") {
+  $_SESSION["message_error"] = "Invalid applicant or empty message.";
   header("Location: approved.php?message_status=error");
   exit;
 }
@@ -27,12 +48,16 @@ try {
   if ($recipientEmail === "" || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
     throw new RuntimeException("Recipient email not found for this applicant.");
   }
-
-  // Manual PHPMailer includes (downloaded ZIP)
-  $phpMailerBase = dirname(__DIR__) . "/lib/PHPMailer/PHPMailer-7.0.2/src";
-  require_once $phpMailerBase . "/Exception.php";
-  require_once $phpMailerBase . "/PHPMailer.php";
-  require_once $phpMailerBase . "/SMTP.php";
+  if ($postedRecipientEmail !== "" && strcasecmp($postedRecipientEmail, $recipientEmail) !== 0) {
+    $maskedPosted = $maskEmail($postedRecipientEmail);
+    $maskedDb = $maskEmail($recipientEmail);
+    $hint = "";
+    if ($maskedPosted !== "" || $maskedDb !== "") {
+      $hint = " Posted: " . ($maskedPosted !== "" ? $maskedPosted : "[empty]") .
+        ", DB: " . ($maskedDb !== "" ? $maskedDb : "[empty]");
+    }
+    throw new RuntimeException("Recipient email mismatch. Refresh the page and try again." . $hint);
+  }
 
   $smtpConfigPath = dirname(__DIR__) . "/smtp_config.php";
   if (!file_exists($smtpConfigPath)) {
@@ -48,8 +73,8 @@ try {
   $mail->isSMTP();
   $mail->Host       = $smtp["host"] ?? "smtp.gmail.com";
   $mail->SMTPAuth   = true;
-  $mail->Username   = $smtp["jhontabz14@gmail.com"] ?? "";
-  $mail->Password   = $smtp["uljizrjkyzyslzvr"] ?? "";
+  $mail->Username   = $smtp["username"] ?? "";
+  $mail->Password   = $smtp["password"] ?? "";
   $mail->Port       = (int)($smtp["port"] ?? 587);
 
   $secure = $smtp["secure"] ?? "tls";
@@ -58,16 +83,26 @@ try {
     : PHPMailer::ENCRYPTION_STARTTLS;
 
   if (!filter_var($mail->Username, FILTER_VALIDATE_EMAIL)) {
-    throw new RuntimeException("Invalid SMTP username email. Update smtp_config.php (username).");
+    $maskedUser = $maskEmail($mail->Username);
+    $hint = $maskedUser !== "" ? " Current: " . $maskedUser : " Current: [empty]";
+    if (stripos($mail->Username, "yourgmail@gmail.com") !== false) {
+      $hint .= " (still placeholder)";
+    }
+    throw new RuntimeException("Invalid SMTP username email. Update smtp_config.php (username)." . $hint);
   }
   if ($mail->Password === "") {
     throw new RuntimeException("SMTP password is missing. Update smtp_config.php (password).");
   }
 
-  $fromEmail = $smtp["jhontabz14@gmail.com"] ?? $mail->Username;
-  $fromName  = $smtp["SMCC"] ?? "ISG Admin";
+  $fromEmail = $smtp["from_email"] ?? $mail->Username;
+  $fromName  = $smtp["from_name"] ?? "ISG Admin";
   if (!filter_var($fromEmail, FILTER_VALIDATE_EMAIL)) {
-    throw new RuntimeException("Invalid From email. Update smtp_config.php (from_email).");
+    $maskedFrom = $maskEmail($fromEmail);
+    $hint = $maskedFrom !== "" ? " Current: " . $maskedFrom : " Current: [empty]";
+    if (stripos($fromEmail, "yourgmail@gmail.com") !== false) {
+      $hint .= " (still placeholder)";
+    }
+    throw new RuntimeException("Invalid From email. Update smtp_config.php (from_email)." . $hint);
   }
 
   $mail->setFrom($fromEmail, $fromName);
@@ -76,17 +111,19 @@ try {
   $mail->Body    = $messageBody;
   $mail->isHTML(false);
 
-  // TEMP DEBUG (remove after testing)
-  // $mail->SMTPDebug = 2;
-  // $mail->Debugoutput = 'error_log';
-
   $mail->send();
 
   header("Location: approved.php?message_status=sent");
   exit;
-
 } catch (Throwable $error) {
-  $_SESSION["message_error"] = $error->getMessage();
+  $recipientHint = "";
+  if (isset($recipientEmail) && is_string($recipientEmail)) {
+    $masked = $maskEmail($recipientEmail);
+    if ($masked !== "") {
+      $recipientHint = " Recipient: " . $masked;
+    }
+  }
+  $_SESSION["message_error"] = $error->getMessage() . $recipientHint;
   header("Location: approved.php?message_status=error");
   exit;
 }

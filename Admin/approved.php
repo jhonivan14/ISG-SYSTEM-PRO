@@ -129,7 +129,25 @@ if ($stmt = $conn->prepare($approvedQuery)) {
   }
     $result->free();
   }
-  $stmt->close();
+$stmt->close();
+}
+
+$panelists = [];
+$panelistError = "";
+$panelistResult = $conn->query("SELECT username, full_name, status FROM panelists ORDER BY full_name ASC");
+if ($panelistResult) {
+  while ($row = $panelistResult->fetch_assoc()) {
+    $status = strtolower(trim((string)($row["status"] ?? "active")));
+    if ($status !== "inactive") {
+      $panelists[] = [
+        "username" => $row["username"] ?? "",
+        "full_name" => $row["full_name"] ?? "",
+      ];
+    }
+  }
+  $panelistResult->free();
+} else {
+  $panelistError = "Panelist accounts table is not available.";
 }
 
 $categories = [];
@@ -399,6 +417,31 @@ unset($applicant);
               </div>
             <?php endif; ?>
           <?php endif; ?>
+          <?php if (isset($_GET["panelist_status"])): ?>
+            <?php
+              $status = $_GET["panelist_status"];
+              $isSuccess = $status === "sent";
+              $isError = $status === "error";
+              $errorMessage = $_SESSION["panelist_error"] ?? "";
+              $sentCount = (int)($_SESSION["panelist_sent_count"] ?? 0);
+              unset($_SESSION["panelist_sent_count"]);
+              unset($_SESSION["panelist_error"]);
+            ?>
+            <?php if ($isSuccess || $isError): ?>
+              <div class="mb-3 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $isSuccess ? "border-green-400 bg-green-50 text-green-700" : "border-red-400 bg-red-50 text-red-700"; ?>">
+                <?php
+                  if ($isSuccess) {
+                    echo $sentCount > 0
+                      ? "Sent to panelist successfully (" . htmlspecialchars((string)$sentCount) . ")."
+                      : "Sent to panelist successfully.";
+                  } else {
+                    $fallback = "Failed to send to panelist. Please try again.";
+                    echo $errorMessage !== "" ? htmlspecialchars($errorMessage) : $fallback;
+                  }
+                ?>
+              </div>
+            <?php endif; ?>
+          <?php endif; ?>
           <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#0d8ddb] bg-white p-3 shadow-sm">
             <span class="text-sm font-semibold text-[#052c6a]">Approved Applicants</span>
             <form class="flex flex-wrap items-center gap-2" method="get" action="approved.php">
@@ -519,15 +562,25 @@ unset($applicant);
                             >
                               View Details
                             </button>
+                            <button
+                              class="bg-[#052c6a] text-white rounded px-3 py-1 text-xs hover:bg-[#031f4d]"
+                              type="button"
+                              data-send-message
+                              data-applicant-name="<?= htmlspecialchars($applicant["name"]) ?>"
+                              data-applicant-id="<?= htmlspecialchars((string)$applicant["id"]) ?>"
+                              data-applicant-email="<?= htmlspecialchars($applicant["email"]) ?>"
+                            >
+                              Send Message
+                            </button>
                             <?php if ((int)$applicant["grant_id"] === 1): ?>
                               <button
-                                class="bg-[#052c6a] text-white rounded px-3 py-1 text-xs hover:bg-[#031f4d]"
+                                class="border border-[#0d8ddb] text-[#0d8ddb] rounded px-3 py-1 text-xs hover:bg-[#0d8ddb] hover:text-white"
                                 type="button"
-                                data-send-message
+                                data-send-panelist
                                 data-applicant-name="<?= htmlspecialchars($applicant["name"]) ?>"
                                 data-applicant-id="<?= htmlspecialchars((string)$applicant["id"]) ?>"
                               >
-                                Send Message
+                                Send to Panelist
                               </button>
                             <?php endif; ?>
                             <button class="border border-[#f44336] text-[#f44336] rounded px-3 py-1 text-xs hover:bg-[#f44336] hover:text-white" type="button">
@@ -572,6 +625,16 @@ unset($applicant);
                 />
               </div>
               <div>
+                <label class="block text-xs font-semibold text-[#052c6a] mb-1">Recipient Email</label>
+                <input
+                  type="text"
+                  id="recipientEmail"
+                  name="recipient_email"
+                  class="w-full rounded border border-[#0d8ddb] px-3 py-2 text-xs text-[#052c6a] bg-gray-50"
+                  readonly
+                />
+              </div>
+              <div>
                 <label class="block text-xs font-semibold text-[#052c6a] mb-1" for="messageBody">Message</label>
                 <textarea
                   id="messageBody"
@@ -593,6 +656,88 @@ unset($applicant);
                 <button
                   type="submit"
                   class="rounded bg-[#0d8ddb] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0b7cc0]"
+                >
+                  Send
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Send to Panelist Modal -->
+        <div
+          id="sendPanelistModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-black/40 px-4"
+          aria-hidden="true"
+        >
+          <div class="w-full max-w-md rounded-lg bg-white shadow-lg">
+            <div class="flex items-center justify-between border-b border-[#0d8ddb] px-4 py-3">
+              <h2 class="text-sm font-semibold text-[#052c6a]">Send to Panelist</h2>
+              <button id="sendPanelistClose" class="text-[#052c6a] hover:text-[#0d8ddb]" type="button">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <form action="send_to_panelist.php" method="post" class="px-4 py-3 space-y-3">
+              <input type="hidden" name="applicant_id" id="panelistApplicantId" value="" />
+              <div>
+                <label class="block text-xs font-semibold text-[#052c6a] mb-1">Applicant</label>
+                <input
+                  type="text"
+                  id="panelistApplicantName"
+                  class="w-full rounded border border-[#0d8ddb] px-3 py-2 text-xs text-[#052c6a] bg-gray-50"
+                  readonly
+                />
+              </div>
+              <div>
+                <div class="flex items-center justify-between">
+                  <label class="block text-xs font-semibold text-[#052c6a] mb-1">Panelists</label>
+                  <div class="flex items-center gap-2 text-[10px] text-[#0d8ddb]">
+                    <button type="button" id="panelistSelectAll" class="underline">Select all</button>
+                    <button type="button" id="panelistClearAll" class="underline">Clear</button>
+                  </div>
+                </div>
+                <?php if ($panelistError !== ""): ?>
+                  <div class="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                    <?= htmlspecialchars($panelistError) ?>
+                  </div>
+                <?php elseif (empty($panelists)): ?>
+                  <div class="rounded border border-yellow-200 bg-yellow-50 px-3 py-2 text-xs text-yellow-800">
+                    No active panelist accounts found.
+                  </div>
+                <?php else: ?>
+                  <div class="max-h-40 space-y-2 overflow-y-auto rounded border border-[#0d8ddb] px-3 py-2 text-xs text-[#052c6a]">
+                    <?php foreach ($panelists as $panelist): ?>
+                      <label class="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          class="panelist-checkbox"
+                          name="panelist_usernames[]"
+                          value="<?= htmlspecialchars($panelist["username"]) ?>"
+                        />
+                        <span>
+                          <?= htmlspecialchars($panelist["full_name"] !== "" ? $panelist["full_name"] : $panelist["username"]) ?>
+                        </span>
+                      </label>
+                    <?php endforeach; ?>
+                  </div>
+                <?php endif; ?>
+                <p id="panelistSelectError" class="mt-2 text-[10px] text-red-600 hidden">
+                  Please select at least one panelist.
+                </p>
+              </div>
+              <div class="flex justify-end gap-2">
+                <button
+                  type="button"
+                  id="sendPanelistCancel"
+                  class="rounded border border-[#0d8ddb] px-3 py-2 text-xs font-semibold text-[#052c6a]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  id="sendPanelistSubmit"
+                  class="rounded bg-[#0d8ddb] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0b7cc0]"
+                  <?php echo (!empty($panelistError) || empty($panelists)) ? "disabled" : ""; ?>
                 >
                   Send
                 </button>
@@ -692,6 +837,7 @@ unset($applicant);
         const closeBtn = document.getElementById("sendMessageClose");
         const cancelBtn = document.getElementById("sendMessageCancel");
         const recipientName = document.getElementById("recipientName");
+        const recipientEmail = document.getElementById("recipientEmail");
         const recipientId = document.getElementById("recipientId");
         const messageBody = document.getElementById("messageBody");
 
@@ -709,8 +855,10 @@ unset($applicant);
           button.addEventListener("click", () => {
             const name = button.getAttribute("data-applicant-name") || "";
             const id = button.getAttribute("data-applicant-id") || "";
+            const email = button.getAttribute("data-applicant-email") || "";
 
             if (recipientName) recipientName.value = name;
+            if (recipientEmail) recipientEmail.value = email;
             if (recipientId) recipientId.value = id;
             if (modal) {
               modal.classList.remove("hidden");
@@ -718,6 +866,85 @@ unset($applicant);
             }
           });
         });
+
+        [closeBtn, cancelBtn].forEach((btn) => {
+          if (btn) {
+            btn.addEventListener("click", closeModal);
+          }
+        });
+
+        if (modal) {
+          modal.addEventListener("click", (event) => {
+            if (event.target === modal) {
+              closeModal();
+            }
+          });
+        }
+      });
+
+      // Send to panelist modal
+      document.addEventListener("DOMContentLoaded", () => {
+        const modal = document.getElementById("sendPanelistModal");
+        const closeBtn = document.getElementById("sendPanelistClose");
+        const cancelBtn = document.getElementById("sendPanelistCancel");
+        const applicantName = document.getElementById("panelistApplicantName");
+        const applicantId = document.getElementById("panelistApplicantId");
+        const selectAllBtn = document.getElementById("panelistSelectAll");
+        const clearAllBtn = document.getElementById("panelistClearAll");
+        const checkboxes = () => Array.from(document.querySelectorAll(".panelist-checkbox"));
+        const errorEl = document.getElementById("panelistSelectError");
+        const form = modal ? modal.querySelector("form") : null;
+
+        const closeModal = () => {
+          if (modal) {
+            modal.classList.add("hidden");
+            modal.classList.remove("flex");
+          }
+        };
+
+        document.querySelectorAll("[data-send-panelist]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const name = button.getAttribute("data-applicant-name") || "";
+            const id = button.getAttribute("data-applicant-id") || "";
+            if (applicantName) applicantName.value = name;
+            if (applicantId) applicantId.value = id;
+            if (errorEl) {
+              errorEl.classList.add("hidden");
+            }
+            if (modal) {
+              modal.classList.remove("hidden");
+              modal.classList.add("flex");
+            }
+          });
+        });
+
+        if (selectAllBtn) {
+          selectAllBtn.addEventListener("click", () => {
+            checkboxes().forEach((box) => {
+              box.checked = true;
+            });
+            if (errorEl) errorEl.classList.add("hidden");
+          });
+        }
+
+        if (clearAllBtn) {
+          clearAllBtn.addEventListener("click", () => {
+            checkboxes().forEach((box) => {
+              box.checked = false;
+            });
+            if (errorEl) errorEl.classList.add("hidden");
+          });
+        }
+
+        if (form) {
+          form.addEventListener("submit", (event) => {
+            const hasSelection = checkboxes().some((box) => box.checked);
+            if (!hasSelection) {
+              event.preventDefault();
+              if (errorEl) errorEl.classList.remove("hidden");
+            }
+          });
+        }
 
         [closeBtn, cancelBtn].forEach((btn) => {
           if (btn) {

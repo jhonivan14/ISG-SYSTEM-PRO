@@ -1,37 +1,97 @@
 <?php
+session_start();
+if (empty($_SESSION["panelist_username"])) {
+    header("Location: panelLogin.php");
+    exit;
+}
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
 require_once __DIR__ . '/../db.php';
+
+$panelistName = trim((string)($_SESSION["panelist_name"] ?? ""));
+$panelistUsername = trim((string)($_SESSION["panelist_username"] ?? ""));
+if ($panelistName === "") {
+    $panelistName = $panelistUsername !== "" ? $panelistUsername : "Panelist";
+}
+
+$applicantId = (int)($_GET["applicant_id"] ?? ($_POST["applicant_id"] ?? 0));
+$prefillApplicantName = "";
+$loadError = "";
+
+if ($applicantId > 0 && $panelistUsername !== "") {
+    $stmt = $conn->prepare(
+        "SELECT a.applicant_name
+         FROM applications a
+         INNER JOIN panelist_queue pq ON pq.application_id = a.id
+         WHERE a.id = ? AND pq.panelist_username = ?
+         LIMIT 1"
+    );
+    if ($stmt) {
+        $stmt->bind_param("is", $applicantId, $panelistUsername);
+        if ($stmt->execute()) {
+            $result = $stmt->get_result();
+            if ($row = $result->fetch_assoc()) {
+                $prefillApplicantName = (string)($row["applicant_name"] ?? "");
+            }
+            $result->free();
+        }
+        $stmt->close();
+    }
+}
+
+if ($panelistUsername === "") {
+    $loadError = "Panelist account not found in session.";
+} elseif ($applicantId <= 0) {
+    $loadError = "Applicant not found.";
+} elseif ($prefillApplicantName === "") {
+    $loadError = "Applicant is not assigned to this panelist.";
+}
 
 $save_success = null;
 $save_error = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $applicant_name = trim($_POST['applicant_name'] ?? '');
-    $interview_date = $_POST['interview_date'] ?? '';
-    $interviewer_name = trim($_POST['interviewer_name'] ?? '');
-    $total_points = $_POST['total_points'] ?? null;
+    $applicant_name = $prefillApplicantName;
+    $interview_date = date('Y-m-d');
+    $interviewer_name = $panelistName;
     $overall_assessment = $_POST['overall_assessment'] ?? null;
     $strengths = trim($_POST['strengths'] ?? '');
     $areas_for_improvement = trim($_POST['areas_for_improvement'] ?? '');
     $signature_data = $_POST['signature_data'] ?? null;
 
-    $total_points = ($total_points === '' || $total_points === null) ? null : (string) ((int) $total_points);
+    $ratings = $_POST['rating'] ?? [];
+    $comments = $_POST['comment'] ?? [];
+    $computed_total = 0;
+    foreach (range(1, 12) as $criterion_id) {
+        if (!isset($ratings[$criterion_id])) {
+            continue;
+        }
+        $rating_value = (int) $ratings[$criterion_id];
+        if ($rating_value < 1 || $rating_value > 5) {
+            continue;
+        }
+        $computed_total += $rating_value;
+    }
+    $total_points = (string) $computed_total;
     $overall_assessment = ($overall_assessment === '' || $overall_assessment === null) ? null : $overall_assessment;
     $strengths = $strengths === '' ? null : $strengths;
     $areas_for_improvement = $areas_for_improvement === '' ? null : $areas_for_improvement;
     $signature_data = $signature_data === '' ? null : $signature_data;
 
-    if ($applicant_name === '' || $interview_date === '' || $interviewer_name === '') {
-        $save_error = 'Please fill out the applicant name, interview date, and interviewer name.';
+    if ($loadError !== "" || $applicant_name === '' || $interviewer_name === '') {
+        $save_error = $loadError !== "" ? $loadError : 'Applicant or panelist details are missing.';
     } else {
         try {
             $conn->begin_transaction();
 
             $stmt = $conn->prepare(
                 'INSERT INTO interview_evaluations (applicant_id, applicant_name, interview_date, interviewer_name, total_points, overall_assessment, strengths, areas_for_improvement, signature_data)
-                 VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)'
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
             );
             $stmt->bind_param(
-                'ssssssss',
+                'issssssss',
+                $applicantId,
                 $applicant_name,
                 $interview_date,
                 $interviewer_name,
@@ -45,8 +105,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $evaluation_id = $stmt->insert_id;
             $stmt->close();
 
-            $ratings = $_POST['rating'] ?? [];
-            $comments = $_POST['comment'] ?? [];
             $item_stmt = $conn->prepare(
                 'INSERT INTO interview_evaluation_items (evaluation_id, criterion_id, rating, comment)
                  VALUES (?, ?, ?, ?)'
@@ -89,6 +147,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="max-w-5xl mx-auto px-4">
         <div class="bg-white shadow-2xl shadow-blue-100/60 rounded-2xl overflow-hidden border border-slate-200">
             <div class="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-600 px-8 py-10 text-white">
+                <div class="mb-4">
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-xs font-bold uppercase tracking-wide text-blue-900 shadow-lg shadow-blue-900/20 hover:bg-blue-50 focus:outline-none focus:ring focus:ring-white/40"
+                        onclick="window.location.href='panelistDashboard.php'"
+                    >
+                        <span aria-hidden="true">&larr;</span>
+                        Back to Dashboard
+                    </button>
+                </div>
                 <p class="text-sm uppercase tracking-[0.35em] text-blue-100">Student Assistance Scholarship Program</p>
                 <h1 class="mt-3 text-3xl font-bold tracking-tight">Interview Evaluation Sheet</h1>
                 <p class="mt-4 max-w-3xl text-blue-100 text-sm leading-relaxed">
@@ -102,6 +170,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         <?php echo htmlspecialchars($save_success); ?>
                     </div>
                 <?php endif; ?>
+                <?php if ($loadError !== ""): ?>
+                    <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                        <?php echo htmlspecialchars($loadError); ?>
+                    </div>
+                <?php endif; ?>
                 <?php if ($save_error): ?>
                     <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                         <?php echo htmlspecialchars($save_error); ?>
@@ -110,17 +183,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <section class="grid gap-6 md:grid-cols-3">
                     <div class="space-y-2">
                         <label class="text-sm font-semibold text-slate-700" for="applicant-name">Applicant&apos;s Name</label>
-                        <input id="applicant-name" name="applicant_name" type="text" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring focus:ring-blue-500/20" placeholder="__________________________" />
+                        <input id="applicant-name" name="applicant_name" type="text" value="<?php echo htmlspecialchars($prefillApplicantName); ?>" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring focus:ring-blue-500/20" readonly />
                     </div>
                     <div class="space-y-2">
                         <label class="text-sm font-semibold text-slate-700" for="interview-date">Date of Interview</label>
-                        <input id="interview-date" name="interview_date" type="date" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring focus:ring-blue-500/20" />
+                        <input id="interview-date" name="interview_date" type="date" value="<?php echo htmlspecialchars(date('Y-m-d')); ?>" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring focus:ring-blue-500/20" readonly />
                     </div>
                     <div class="space-y-2 md:col-span-1">
                         <label class="text-sm font-semibold text-slate-700" for="interviewer-name">Interviewer&apos;s Name</label>
-                        <input id="interviewer-name" name="interviewer_name" type="text" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring focus:ring-blue-500/20" placeholder="__________________________" />
+                        <input id="interviewer-name" name="interviewer_name" type="text" value="<?php echo htmlspecialchars($panelistName); ?>" class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring focus:ring-blue-500/20" readonly />
                     </div>
                 </section>
+                <input type="hidden" name="applicant_id" value="<?php echo htmlspecialchars((string)$applicantId); ?>" />
 
                 <section class="rounded-2xl border border-slate-200 bg-slate-50/70 p-6">
                     <p class="text-sm font-semibold uppercase text-slate-600">Direction</p>
@@ -193,11 +267,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">1. Academic Performance</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[1]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[1]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr class="bg-slate-50/70">
@@ -211,65 +285,65 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">2. Related Work Experience</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[2]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[2]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">3. Computer Skills</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[3]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[3]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">4. Communication Skills</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[4]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[4]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">5. Multitasking Abilities</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[5]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[5]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">6. Time Management</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[6]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[6]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">7. Interpersonal Skills</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[7]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[7]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">8. Stress Tolerance</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[8]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[8]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr class="bg-slate-50/70">
@@ -283,38 +357,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">9. Work Ethics and Reliability</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[9]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[9]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">10. Initiative</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[10]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[10]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">11. Integrity and Cooperation</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[11]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[11]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr>
                                     <td class="px-6 py-4 text-slate-700">12. Attitude Towards the Position</td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" class="accent-blue-600" /></td>
-                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" value="5" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" value="4" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" value="3" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" value="2" class="accent-blue-600" /></td>
+                                    <td class="px-4 py-4 text-center"><input type="radio" name="rating[12]" value="1" class="accent-blue-600" /></td>
                                     <td class="px-6 py-4"><input type="text" name="comment[12]" class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700" /></td>
                                 </tr>
                                 <tr class="bg-slate-50/70">
@@ -325,7 +399,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     <td class="px-4 py-3"></td>
                                     <td class="px-4 py-3"></td>
                                     <td class="px-6 py-3">
-                                        <input type="number" name="total_points" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-blue-900" placeholder="0" />
+                                        <input id="total-points" type="number" name="total_points" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-blue-900" placeholder="0" value="0" readonly />
                                     </td>
                                 </tr>
                             </tbody>
@@ -387,7 +461,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </section>
                 <div class="flex flex-col gap-3 border-t border-slate-200 pt-8 md:flex-row md:items-center md:justify-between">
                     <p class="text-xs text-slate-500">Finalize the evaluation by verifying that all sections are complete and ratings align with the applicant&apos;s demonstrated competencies.</p>
-                    <button type="submit" class="rounded-full bg-gradient-to-r from-blue-700 to-blue-500 px-6 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg shadow-blue-500/30 transition hover:from-blue-800 hover:to-blue-600 focus:outline-none focus:ring focus:ring-blue-400/40">
+                    <button type="submit" class="rounded-full bg-gradient-to-r from-blue-700 to-blue-500 px-6 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg shadow-blue-500/30 transition hover:from-blue-800 hover:to-blue-600 focus:outline-none focus:ring focus:ring-blue-400/40 disabled:cursor-not-allowed disabled:opacity-60" <?php echo $loadError !== "" ? "disabled" : ""; ?>>
                         Submit Evaluation
                     </button>
                 </div>
@@ -396,6 +470,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     <script>
         (function () {
+            const totalInput = document.getElementById('total-points');
+            const ratingInputs = Array.from(
+                document.querySelectorAll('input[type="radio"][name^="rating["]')
+            );
+
+            const updateTotal = () => {
+                if (!totalInput) return;
+                let total = 0;
+                ratingInputs.forEach((input) => {
+                    if (!input.checked) return;
+                    const value = parseInt(input.value, 10);
+                    if (!Number.isNaN(value)) {
+                        total += value;
+                    }
+                });
+                totalInput.value = total;
+            };
+
+            ratingInputs.forEach((input) => {
+                input.addEventListener('change', updateTotal);
+            });
+            updateTotal();
+
             const canvas = document.getElementById('signature-pad');
             const clearBtn = document.getElementById('signature-clear');
             const signatureInput = document.getElementById('signature-data');
@@ -465,5 +562,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </script>
 </body>
 </html>
-
-

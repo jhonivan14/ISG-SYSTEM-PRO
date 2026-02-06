@@ -1,60 +1,120 @@
 <?php
 session_start();
+if (empty($_SESSION["panelist_username"])) {
+  header("Location: panelLogin.php");
+  exit;
+}
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
 require_once "../db.php";
 
 $grantId = 1;
 $grantLabel = "Student Assistant";
 
-$applicants = [];
+$panelistName = trim((string)($_SESSION["panelist_name"] ?? ""));
+if ($panelistName === "") {
+  $panelistName = "Panelist";
+}
+$panelistUsername = trim((string)($_SESSION["panelist_username"] ?? ""));
+
+$activeApplicants = [];
+$archivedApplicants = [];
+$panelistError = "";
 $totalCount = 0;
 $pendingCount = 0;
-$approvedCount = 0;
-$declinedCount = 0;
+$evaluatedCount = 0;
 
-$query = "SELECT created_at, applicant_name, program_course, status
-  FROM applications
-  WHERE grant_id = ?
-  ORDER BY created_at DESC";
+$queueExists = false;
+$queueResult = $conn->query("SHOW TABLES LIKE 'panelist_queue'");
+if ($queueResult && $queueResult->num_rows > 0) {
+  $queueExists = true;
+} else {
+  $panelistError = "Panelist queue is not set up yet. Ask the admin to create panelist_queue table.";
+}
 
-if ($stmt = $conn->prepare($query)) {
-  $stmt->bind_param("i", $grantId);
+$hasEvaluationTimestamp = false;
+$columnResult = $conn->query("SHOW COLUMNS FROM interview_evaluations LIKE 'created_at'");
+if ($columnResult && $columnResult->num_rows > 0) {
+  $hasEvaluationTimestamp = true;
+  $columnResult->free();
+}
+
+$timestampSelect = $hasEvaluationTimestamp ? "MAX(created_at) AS evaluation_created_at" : "MAX(interview_date) AS evaluation_created_at";
+
+$query = "SELECT a.id, a.created_at, a.applicant_name, a.program_course, a.status, pq.sent_by, pq.sent_at,
+    ie.evaluation_id, ie.evaluation_created_at
+  FROM applications a
+  INNER JOIN panelist_queue pq ON pq.application_id = a.id
+  LEFT JOIN (
+    SELECT applicant_id, interviewer_name, MAX(id) AS evaluation_id, {$timestampSelect}
+    FROM interview_evaluations
+    GROUP BY applicant_id, interviewer_name
+  ) ie ON ie.applicant_id = a.id AND ie.interviewer_name = ?
+  WHERE a.grant_id = ? AND pq.panelist_username = ?
+  ORDER BY pq.sent_at DESC";
+
+if ($queueExists && $stmt = $conn->prepare($query)) {
+  if ($panelistUsername === "") {
+    $panelistError = "Panelist account not found in session.";
+  }
+  $stmt->bind_param("sis", $panelistName, $grantId, $panelistUsername);
   if ($stmt->execute()) {
     $result = $stmt->get_result();
     while ($row = $result->fetch_assoc()) {
       $submittedAtRaw = $row["created_at"] ?? "";
       $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
+      $sentAtRaw = $row["sent_at"] ?? "";
+      $sentAt = $sentAtRaw ? date("Y-m-d h:i A", strtotime($sentAtRaw)) : "";
       $status = isset($row["status"]) ? trim((string)$row["status"]) : "";
       if ($status === "") {
         $status = "Pending";
       }
 
-      $normalizedStatus = strtolower($status);
-      if ($normalizedStatus === "approved") {
-        $approvedCount++;
-      } elseif ($normalizedStatus === "declined" || $normalizedStatus === "rejected") {
-        $declinedCount++;
+      $isEvaluated = !empty($row["evaluation_id"]);
+      $evaluationTimestampRaw = (string)($row["evaluation_created_at"] ?? "");
+      $evaluationTimestamp = $evaluationTimestampRaw !== "" ? strtotime($evaluationTimestampRaw) : false;
+      $isArchived = false;
+      if ($isEvaluated && $evaluationTimestamp !== false) {
+        $isArchived = $evaluationTimestamp <= (time() - 86400);
+      }
+      if ($isEvaluated) {
+        $evaluatedCount++;
       } else {
         $pendingCount++;
       }
 
-      $applicants[] = [
+      $evaluatedAtDisplay = "";
+      if ($evaluationTimestamp !== false) {
+        $evaluatedAtDisplay = date("Y-m-d h:i A", $evaluationTimestamp);
+      } elseif ($evaluationTimestampRaw !== "") {
+        $evaluatedAtDisplay = $evaluationTimestampRaw;
+      }
+
+      $applicantData = [
+        "id" => $row["id"] ?? null,
         "submitted_at" => $submittedAt,
         "name" => $row["applicant_name"] ?? "",
         "program_course" => $row["program_course"] ?? "",
         "status" => $status,
+        "sent_by" => $row["sent_by"] ?? "Admin",
+        "sent_at" => $sentAt,
+        "evaluated" => $isEvaluated,
+        "evaluated_at" => $evaluatedAtDisplay,
       ];
+
+      if ($isArchived) {
+        $archivedApplicants[] = $applicantData;
+      } else {
+        $activeApplicants[] = $applicantData;
+      }
     }
     $result->free();
   }
   $stmt->close();
 }
 
-$totalCount = count($applicants);
-$panelistName = trim((string)($_SESSION["panelist_name"] ?? ""));
-if ($panelistName === "") {
-  $panelistName = "Panelist";
-}
-$panelistUsername = trim((string)($_SESSION["panelist_username"] ?? ""));
+$totalCount = count($activeApplicants) + count($archivedApplicants);
 $showLoginSuccess = !empty($_SESSION["panelist_login_success"]);
 unset($_SESSION["panelist_login_success"]);
 
@@ -72,11 +132,105 @@ unset($_SESSION["panelist_login_success"]);
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
     />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+      :root {
+        --navy: #052c6a;
+        --navy-deep: #041c43;
+        --blue: #0d8ddb;
+        --gold: #fcdc2f;
+        --ink: #0b1b3a;
+      }
+
+      body {
+        font-family: "Space Grotesk", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(1200px 700px at 12% -10%, #e7f3ff 0%, transparent 60%),
+          radial-gradient(800px 480px at 92% 8%, #fff2c9 0%, transparent 60%),
+          linear-gradient(180deg, #f7fbff 0%, #eef4ff 50%, #f4f7fb 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(transparent 23px, rgba(5, 44, 106, 0.045) 24px),
+          linear-gradient(90deg, transparent 23px, rgba(5, 44, 106, 0.045) 24px);
+        background-size: 24px 24px;
+        opacity: 0.7;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .page-shell {
+        position: relative;
+        z-index: 1;
+      }
+
+      .heading-font {
+        font-family: "Fraunces", serif;
+      }
+
+      .glass-card {
+        background: rgba(255, 255, 255, 0.88);
+        border: 1px solid rgba(13, 141, 219, 0.25);
+        box-shadow: 0 18px 45px rgba(5, 44, 106, 0.12);
+        backdrop-filter: blur(12px);
+      }
+
+      .stat-card {
+        border: 1px solid rgba(13, 141, 219, 0.25);
+        box-shadow: 0 12px 28px rgba(5, 44, 106, 0.12);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        background: rgba(13, 141, 219, 0.12);
+        color: var(--blue);
+      }
+
+      .table-hover tbody tr:hover {
+        background-color: #f5f9ff;
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(18px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .stagger > * {
+        opacity: 0;
+        animation: rise 0.6s ease forwards;
+      }
+
+      .stagger > *:nth-child(1) { animation-delay: 0.05s; }
+      .stagger > *:nth-child(2) { animation-delay: 0.12s; }
+      .stagger > *:nth-child(3) { animation-delay: 0.2s; }
+    </style>
   </head>
-  <body class="bg-white font-sans">
-    <div class="min-h-screen bg-gradient-to-br from-white via-blue-50 to-slate-100">
-      <header class="bg-[#052c6a] text-white">
+  <body class="text-[#0b1b3a]">
+    <div class="min-h-screen page-shell">
+      <header class="bg-gradient-to-r from-[#052c6a] via-[#0b3f8f] to-[#052c6a] text-white shadow-lg">
         <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div class="flex items-center gap-3">
             <img
@@ -96,7 +250,7 @@ unset($_SESSION["panelist_login_success"]);
                 <?= htmlspecialchars($panelistName) ?>
               </p>
             </div>
-            <span class="rounded-full bg-[#fcdc2f] px-3 py-1 text-[#052c6a]">
+            <span class="rounded-full bg-[#fcdc2f] px-3 py-1 text-[#052c6a] shadow">
               Panelist View
             </span>
             <button
@@ -118,118 +272,133 @@ unset($_SESSION["panelist_login_success"]);
       </header>
 
       <main class="mx-auto max-w-6xl px-4 pb-10">
-        <section class="flex flex-col gap-4 border-b border-[#0d8ddb] py-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p class="text-xs uppercase tracking-[0.25em] text-[#0d8ddb]">
-              Student Assistant Grant
-            </p>
-            <h1 class="text-2xl font-semibold text-[#052c6a]">
+        <section class="mt-6 glass-card rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div class="space-y-2">
+            <span class="badge">Student Assistant Grant</span>
+            <h1 class="heading-font text-3xl text-[#052c6a]">
               Panelist Dashboard
             </h1>
-            <p class="text-xs text-[#052c6a]">
-              Review applications submitted for the student assistant grant.
+            <p class="text-xs text-[#42506a]">
+              Review applications assigned to you for evaluation.
             </p>
-            <p class="mt-2 text-sm font-semibold text-[#052c6a]">
+            <p class="text-sm font-semibold text-[#052c6a]">
               Welcome, <?= htmlspecialchars($panelistName) ?>.
             </p>
           </div>
-          <div class="flex items-center gap-4 text-right text-xs text-[#052c6a]">
-            <div>
-              <p class="text-[#0d8ddb]">Total Applicants</p>
-              <p class="text-lg font-semibold text-[#052c6a]">
-                <?= htmlspecialchars((string)$totalCount) ?>
-              </p>
-            </div>
-            <div class="h-10 w-px bg-[#0d8ddb]/40"></div>
-            <div>
-              <p class="text-[#0d8ddb]">Pending</p>
-              <p class="text-lg font-semibold text-[#fcdc2f]">
-                <?= htmlspecialchars((string)$pendingCount) ?>
-              </p>
-            </div>
-          </div>
+          <div></div>
         </section>
 
-        <section class="grid gap-4 pt-6 md:grid-cols-3">
-          <div class="rounded-xl bg-[#052c6a] p-4 text-white shadow">
+        <section class="stagger grid gap-4 pt-6 md:grid-cols-3">
+          <div class="stat-card rounded-2xl bg-gradient-to-br from-[#052c6a] to-[#0b3f8f] p-5 text-white">
             <p class="text-xs uppercase tracking-wide text-[#fcdc2f]">
-              Total Applicants
+              Total Assigned
             </p>
-            <p class="mt-2 text-2xl font-bold">
+            <p class="mt-2 text-3xl font-bold">
               <?= htmlspecialchars((string)$totalCount) ?>
             </p>
             <p class="mt-1 text-[11px] text-blue-100">
-              Overall student assistant submissions.
+              Applicants sent to you for evaluation.
             </p>
           </div>
-          <div class="rounded-xl border border-[#0d8ddb] bg-white p-4 text-[#052c6a] shadow-sm">
+          <div class="stat-card rounded-2xl bg-white p-5 text-[#052c6a]">
             <p class="text-xs uppercase tracking-wide text-[#0d8ddb]">
               Pending Reviews
             </p>
-            <p class="mt-2 text-2xl font-bold">
+            <p class="mt-2 text-3xl font-bold">
               <?= htmlspecialchars((string)$pendingCount) ?>
             </p>
-            <p class="mt-1 text-[11px] text-gray-500">
+            <p class="mt-1 text-[11px] text-slate-500">
               Applications waiting for panelist review.
             </p>
           </div>
-          <div class="rounded-xl bg-[#fcdc2f] p-4 text-[#052c6a] shadow">
-            <p class="text-xs uppercase tracking-wide">Approved</p>
-            <p class="mt-2 text-2xl font-bold">
-              <?= htmlspecialchars((string)$approvedCount) ?>
+          <div class="stat-card rounded-2xl bg-gradient-to-br from-[#fcdc2f] to-[#f7b500] p-5 text-[#052c6a]">
+            <p class="text-xs uppercase tracking-wide">Evaluated</p>
+            <p class="mt-2 text-3xl font-bold">
+              <?= htmlspecialchars((string)$evaluatedCount) ?>
             </p>
             <p class="mt-1 text-[11px] text-[#052c6a]">
-              Marked as approved by evaluators.
+              Already evaluated by you.
             </p>
           </div>
         </section>
 
-        <section class="mt-6 rounded-2xl border border-[#0d8ddb] bg-white p-4 shadow-sm">
+        <section class="mt-6 glass-card rounded-3xl p-5">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p class="text-sm font-semibold text-[#0d8ddb]">
                 Student Assistant Applicants
               </p>
               <p class="text-xs text-[#052c6a]">
-                Showing <?= htmlspecialchars((string)$totalCount) ?> applicants for
+                Showing <?= htmlspecialchars((string)count($activeApplicants)) ?> active applicants for
                 <?= htmlspecialchars($grantLabel) ?>.
               </p>
             </div>
-            <div class="flex items-center gap-2 text-xs">
-              <span class="rounded-full bg-[#052c6a] px-3 py-1 text-white">
-                Approved: <?= htmlspecialchars((string)$approvedCount) ?>
-              </span>
-              <span class="rounded-full bg-[#fcdc2f] px-3 py-1 text-[#052c6a]">
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+              <div class="flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-2 shadow-sm">
+                <i class="fas fa-search text-[#7c8191] text-xs"></i>
+                <input
+                  id="panelistSearch"
+                  type="text"
+                  class="w-44 bg-transparent text-xs font-semibold text-[#052c6a] outline-none placeholder:text-[#7c8191]"
+                  placeholder="Search applicants..."
+                  aria-label="Search applicants"
+                />
+              </div>
+              <button
+                id="toggleArchive"
+                type="button"
+                class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm hover:bg-[#0d8ddb] hover:text-white"
+              >
+                Show Evaluated (<?= htmlspecialchars((string)count($archivedApplicants)) ?>)
+              </button>
+              <span class="rounded-full bg-[#fcdc2f] px-3 py-1 text-[#052c6a] shadow-sm">
                 Pending: <?= htmlspecialchars((string)$pendingCount) ?>
               </span>
-              <span class="rounded-full bg-red-100 px-3 py-1 text-red-700">
-                Declined: <?= htmlspecialchars((string)$declinedCount) ?>
+              <span class="rounded-full bg-[#052c6a] px-3 py-1 text-white shadow-sm">
+                Evaluated: <?= htmlspecialchars((string)$evaluatedCount) ?>
+              </span>
+              <span class="rounded-full bg-blue-100 px-3 py-1 text-blue-700 shadow-sm">
+                Total: <?= htmlspecialchars((string)$totalCount) ?>
               </span>
             </div>
           </div>
 
           <div class="mt-4 overflow-x-auto">
-            <table class="min-w-full border border-[#0d8ddb] text-xs text-left">
+            <?php if ($panelistError !== ""): ?>
+              <div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                <?= htmlspecialchars($panelistError) ?>
+              </div>
+            <?php endif; ?>
+            <table class="table-hover min-w-full overflow-hidden rounded-2xl border border-[#0d8ddb] text-xs text-left">
               <thead>
-                <tr class="bg-[#052c6a] text-white">
+                <tr class="bg-gradient-to-r from-[#052c6a] to-[#0b3f8f] text-white">
                   <th class="border-r border-white/10 px-3 py-3">Timestamp</th>
                   <th class="border-r border-white/10 px-3 py-3">Applicant Name</th>
                   <th class="border-r border-white/10 px-3 py-3">Program / Course</th>
                   <th class="border-r border-white/10 px-3 py-3">Grant</th>
                   <th class="border-r border-white/10 px-3 py-3">Status</th>
+                  <th class="border-r border-white/10 px-3 py-3">Sent By</th>
                   <th class="px-3 py-3">Action</th>
                 </tr>
               </thead>
               <tbody>
-                <?php if (empty($applicants)): ?>
+                <?php if (empty($activeApplicants)): ?>
                   <tr>
-                    <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
-                      No student assistant applicants found.
+                    <td colspan="7" class="px-3 py-4 text-center text-[#052c6a]">
+                      No active applicants found.
                     </td>
                   </tr>
                 <?php else: ?>
-                  <?php foreach ($applicants as $applicant): ?>
-                    <tr class="border-b border-[#0d8ddb]">
+                  <?php foreach ($activeApplicants as $applicant): ?>
+                    <?php
+                      $searchText = strtolower(
+                        ($applicant["name"] ?? "") . " " .
+                        ($applicant["program_course"] ?? "") . " " .
+                        ($applicant["status"] ?? "") . " " .
+                        ($applicant["sent_by"] ?? "")
+                      );
+                    ?>
+                    <tr class="border-b border-[#0d8ddb]" data-panelist-row data-search-text="<?= htmlspecialchars($searchText) ?>">
                       <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
                         <?= htmlspecialchars($applicant["submitted_at"]) ?>
                       </td>
@@ -243,29 +412,135 @@ unset($_SESSION["panelist_login_success"]);
                         <?= htmlspecialchars($grantLabel) ?>
                       </td>
                       <td class="border-r border-[#0d8ddb] px-3 py-2">
-                        <span class="rounded-full bg-[#fcdc2f] px-2 py-1 text-[#052c6a]">
+                        <span class="rounded-full bg-[#fcdc2f] px-2 py-1 text-[#052c6a] font-semibold shadow-sm">
                           <?= htmlspecialchars($applicant["status"]) ?>
                         </span>
                       </td>
+                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                        <div class="text-xs font-semibold">
+                          <?= htmlspecialchars($applicant["sent_by"]) ?>
+                        </div>
+                        <?php if ($applicant["sent_at"] !== ""): ?>
+                          <div class="text-[10px] text-slate-500">
+                            <?= htmlspecialchars($applicant["sent_at"]) ?>
+                          </div>
+                        <?php endif; ?>
+                      </td>
                       <td class="px-3 py-2">
                         <div class="flex flex-wrap gap-2">
+                          <?php if (!empty($applicant["evaluated"])): ?>
+                            <button
+                              class="cursor-not-allowed rounded-full bg-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-500 shadow-sm"
+                              type="button"
+                              disabled
+                            >
+                              Evaluated
+                            </button>
+                          <?php else: ?>
+                            <button
+                              class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
+                              type="button"
+                              onclick="window.location.href='panelist_eval.php?applicant_id=<?= urlencode((string) ($applicant['id'] ?? '')) ?>'"
+                            >
+                              Evaluate
+                            </button>
+                          <?php endif; ?>
                           <button
-                            class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] text-white"
+                            class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] font-semibold text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
                             type="button"
-                            onclick="window.location.href='Panelist_eval.php'"
+                            onclick="window.location.href='panelist_eval_view.php?applicant_id=<?= urlencode((string) ($applicant['id'] ?? '')) ?>'"
                           >
-                            Review
-                          </button>
-                          <button
-                            class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
-                            type="button"
-                          >
-                            View Profile
+                            View Evaluation
                           </button>
                         </div>
                       </td>
                     </tr>
                   <?php endforeach; ?>
+                  <tr data-panelist-empty class="hidden">
+                    <td colspan="7" class="px-3 py-4 text-center text-[#052c6a]">
+                      No matching applicants.
+                    </td>
+                  </tr>
+                <?php endif; ?>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="archiveSection" class="mt-6 glass-card rounded-3xl p-5 hidden">
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p class="text-sm font-semibold text-[#0d8ddb]">
+                Evaluated Applicants (Archived after 24 hours)
+              </p>
+              <p class="text-xs text-[#052c6a]">
+                Showing <?= htmlspecialchars((string)count($archivedApplicants)) ?> archived evaluations.
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-4 overflow-x-auto">
+            <table class="table-hover min-w-full overflow-hidden rounded-2xl border border-[#0d8ddb] text-xs text-left">
+              <thead>
+                <tr class="bg-gradient-to-r from-[#052c6a] to-[#0b3f8f] text-white">
+                  <th class="border-r border-white/10 px-3 py-3">Evaluated At</th>
+                  <th class="border-r border-white/10 px-3 py-3">Applicant Name</th>
+                  <th class="border-r border-white/10 px-3 py-3">Program / Course</th>
+                  <th class="border-r border-white/10 px-3 py-3">Grant</th>
+                  <th class="border-r border-white/10 px-3 py-3">Status</th>
+                  <th class="px-3 py-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                <?php if (empty($archivedApplicants)): ?>
+                  <tr>
+                    <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
+                      No archived evaluations yet.
+                    </td>
+                  </tr>
+                <?php else: ?>
+                  <?php foreach ($archivedApplicants as $applicant): ?>
+                    <?php
+                      $searchText = strtolower(
+                        ($applicant["name"] ?? "") . " " .
+                        ($applicant["program_course"] ?? "") . " " .
+                        ($applicant["status"] ?? "")
+                      );
+                    ?>
+                    <tr class="border-b border-[#0d8ddb]" data-archive-row data-search-text="<?= htmlspecialchars($searchText) ?>">
+                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                        <?= htmlspecialchars($applicant["evaluated_at"]) ?>
+                      </td>
+                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                        <?= htmlspecialchars($applicant["name"]) ?>
+                      </td>
+                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                        <?= htmlspecialchars($applicant["program_course"]) ?>
+                      </td>
+                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                        <?= htmlspecialchars($grantLabel) ?>
+                      </td>
+                      <td class="border-r border-[#0d8ddb] px-3 py-2">
+                        <span class="rounded-full bg-[#052c6a] px-2 py-1 text-white font-semibold shadow-sm">
+                          Evaluated
+                        </span>
+                      </td>
+                      <td class="px-3 py-2">
+                        <button
+                          class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] font-semibold text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
+                          type="button"
+                          onclick="window.location.href='panelist_eval_view.php?applicant_id=<?= urlencode((string) ($applicant['id'] ?? '')) ?>'"
+                        >
+                          View Evaluation
+                        </button>
+                      </td>
+                    </tr>
+                  <?php endforeach; ?>
+                  <tr data-archive-empty class="hidden">
+                    <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
+                      No matching archived applicants.
+                    </td>
+                  </tr>
                 <?php endif; ?>
               </tbody>
             </table>
@@ -286,5 +561,58 @@ unset($_SESSION["panelist_login_success"]);
         });
       </script>
     <?php endif; ?>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const searchInput = document.getElementById("panelistSearch");
+        const activeRows = Array.from(document.querySelectorAll("[data-panelist-row]"));
+        const activeEmpty = document.querySelector("[data-panelist-empty]");
+        const archiveRows = Array.from(document.querySelectorAll("[data-archive-row]"));
+        const archiveEmpty = document.querySelector("[data-archive-empty]");
+        const archiveSection = document.getElementById("archiveSection");
+        const toggleArchive = document.getElementById("toggleArchive");
+
+        const applySearch = () => {
+          const query = (searchInput?.value || "").trim().toLowerCase();
+          let activeVisible = 0;
+          let archiveVisible = 0;
+
+          activeRows.forEach((row) => {
+            const text = row.dataset.searchText || "";
+            const matches = query === "" || text.includes(query);
+            row.style.display = matches ? "table-row" : "none";
+            if (matches) activeVisible++;
+          });
+
+          archiveRows.forEach((row) => {
+            const text = row.dataset.searchText || "";
+            const matches = query === "" || text.includes(query);
+            row.style.display = matches ? "table-row" : "none";
+            if (matches) archiveVisible++;
+          });
+
+          if (activeEmpty) {
+            activeEmpty.style.display = activeVisible === 0 ? "table-row" : "none";
+          }
+          if (archiveEmpty) {
+            archiveEmpty.style.display = archiveVisible === 0 ? "table-row" : "none";
+          }
+        };
+
+        if (searchInput) {
+          searchInput.addEventListener("input", applySearch);
+        }
+        applySearch();
+
+        if (toggleArchive && archiveSection) {
+          toggleArchive.addEventListener("click", () => {
+            const isHidden = archiveSection.classList.contains("hidden");
+            archiveSection.classList.toggle("hidden", !isHidden);
+            toggleArchive.textContent = isHidden
+              ? "Hide Evaluated (<?= htmlspecialchars((string)count($archivedApplicants)) ?>)"
+              : "Show Evaluated (<?= htmlspecialchars((string)count($archivedApplicants)) ?>)";
+          });
+        }
+      });
+    </script>
   </body>
 </html>

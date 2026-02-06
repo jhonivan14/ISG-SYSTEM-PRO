@@ -9,7 +9,6 @@ $loadError = "";
 $actionMessage = "";
 $grantRequirements = [
   1 => [
-    "Application Form",
     "2x2 ID Picture",
     "Application Letter",
     "Resume",
@@ -25,64 +24,52 @@ $grantRequirements = [
     "Certificate of Good Moral Character"
   ],
   3 => [
-    "Application Form",
     "2x2 ID Picture",
     "Endorsement Letter from OSAS"
   ],
   4 => [
-    "Application Form",
     "2x2 ID Picture",
     "Endorsement Letter"
   ],
   5 => [
-    "Application Form",
     "2x2 ID Picture",
     "Certification from External Linkages Coordinator",
     "Proof of Relationship",
     "Endorsement Letter from Retiree"
   ],
   6 => [
-    "Application Form",
     "2x2 ID Picture",
     "PWD ID (2 photocopies)"
   ],
   7 => [
-    "Application Form",
     "2x2 ID Picture",
     "Certification from HRMDO"
   ],
   8 => [
-    "Application Form",
     "2x2 ID Picture",
     "Certification from HRMDO"
   ],
   9 => [
-    "Application Form",
     "2x2 ID Picture"
   ],
   10 => [
-    "Application Form",
     "2x2 ID Picture",
     "Endorsement Letter from Station Manager"
   ],
   11 => [
-    "Application Form",
     "2x2 ID Picture",
     "Endorsement Letter from Publication In-Charge"
   ],
   12 => [
-    "Application Form",
     "2x2 ID Picture",
     "Board Resolution / Certification"
   ],
   13 => [
-    "Application Form",
     "2x2 ID Picture",
     "Board Resolution / Certification",
     "Endorsement Letter"
   ],
   14 => [
-    "Application Form",
     "2x2 ID Picture",
     "Certification from Alumni Association"
   ],

@@ -9,7 +9,6 @@ $grants = [
   1 => [
     "title" => "Student Assistant",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Application Letter",
       "Resume",
@@ -33,7 +32,6 @@ $grants = [
   3 => [
     "title" => "ESG President Scholarship",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Endorsement Letter from OSAS"
     ]
@@ -42,7 +40,6 @@ $grants = [
   4 => [
     "title" => "Kabayani Scholarship Program",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Endorsement Letter"
     ]
@@ -51,7 +48,6 @@ $grants = [
   5 => [
     "title" => "Kabayani Loyalty Grant",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Certification from External Linkages Coordinator",
       "Proof of Relationship",
@@ -62,7 +58,6 @@ $grants = [
   6 => [
     "title" => "PWD Discount",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "PWD ID (2 photocopies)"
     ]
@@ -71,7 +66,6 @@ $grants = [
   7 => [
     "title" => "Discount for Children of Employees",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Certification from HRMDO"
     ]
@@ -80,7 +74,6 @@ $grants = [
   8 => [
     "title" => "Discount for Sibling of Employees",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Certification from HRMDO"
     ]
@@ -89,7 +82,6 @@ $grants = [
   9 => [
     "title" => "Sibling Discount",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture"
     ]
   ],
@@ -97,7 +89,6 @@ $grants = [
   10 => [
     "title" => "DXSM-FM Grant",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Endorsement Letter from Station Manager"
     ]
@@ -106,7 +97,6 @@ $grants = [
   11 => [
     "title" => "Michaelinian Mirror Grant",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Endorsement Letter from Publication In-Charge"
     ]
@@ -115,7 +105,6 @@ $grants = [
   12 => [
     "title" => "Lot Donor Grant",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Board Resolution / Certification"
     ]
@@ -124,7 +113,6 @@ $grants = [
   13 => [
     "title" => "BOT Member Dependent Grant",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Board Resolution / Certification",
       "Endorsement Letter"
@@ -134,7 +122,6 @@ $grants = [
   14 => [
     "title" => "SMCC Alumni Discount",
     "requirements" => [
-      "Application Form",
       "2x2 ID Picture",
       "Certification from Alumni Association"
     ]
