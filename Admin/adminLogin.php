@@ -158,6 +158,13 @@
           Log In
         </button>
 
+        <a
+          href="../index.php"
+          class="block w-full text-center border border-white/45 text-white hover:bg-white/15 font-semibold py-3 rounded-lg transition"
+        >
+          <i class="fas fa-arrow-left mr-2"></i>Back to Home
+        </a>
+
       </form>
     </div>
 

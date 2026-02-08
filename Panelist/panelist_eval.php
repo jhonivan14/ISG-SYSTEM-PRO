@@ -142,9 +142,111 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Panelist Evaluation Sheet</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
+        rel="stylesheet"
+    />
+    <style>
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #052c6a;
+            border-radius: 3px;
+        }
+        .panel-nav-item {
+            transition: background-color 150ms ease, color 150ms ease;
+        }
+        .panel-nav-item.active {
+            background-color: #fcdc2f;
+            color: #052c6a;
+        }
+    </style>
 </head>
-<body class="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-slate-200 py-10">
-    <div class="max-w-5xl mx-auto px-4">
+<body class="bg-slate-100 font-sans text-[#0b1b3a]">
+    <div class="min-h-screen">
+        <aside
+            id="sidebar"
+            class="flex flex-col bg-[#052c6a] text-white w-56 h-screen fixed left-0 top-0 z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out overflow-y-auto"
+        >
+            <div class="flex items-center gap-3 px-4 py-4 border-b border-[#0d8ddb]">
+                <img
+                    src="../img/SMCCNEWLOGO.png"
+                    class="rounded-full w-16 h-16 object-cover"
+                    alt="SMCC Logo"
+                />
+                <span class="text-sm font-normal">Admission and Scholarship Office</span>
+            </div>
+            <nav class="flex-1">
+                <ul class="text-xs font-semibold">
+                    <li class="panel-nav-item flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer" onclick="window.location.href='panelistDashboard.php'">
+                        <i class="fas fa-home w-5"></i>
+                        <span>Home</span>
+                    </li>
+                    <li class="panel-nav-item active flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer" onclick="window.location.href='panelistDashboard.php?tab=pending'">
+                        <i class="fas fa-user-clock w-5"></i>
+                        <span>Pending Applicants</span>
+                    </li>
+                    <li class="panel-nav-item flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer" onclick="window.location.href='panelistDashboard.php?tab=evaluated'">
+                        <i class="fas fa-check-circle w-5"></i>
+                        <span>Show Evaluated</span>
+                    </li>
+                    <li class="panel-nav-item flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer" onclick="window.location.href='change-password.php'">
+                        <i class="fas fa-key w-5"></i>
+                        <span>Change Password</span>
+                    </li>
+                </ul>
+            </nav>
+            <div class="absolute bottom-0 left-0 w-full">
+                <div class="h-px w-full bg-gradient-to-r from-transparent via-[#0d8ddb] to-transparent opacity-60"></div>
+                <div class="px-4 pt-2 pb-1 flex items-center gap-2 text-[11px] text-blue-100/90">
+                    <div class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+                        <i class="fas fa-user-tie text-[12px]"></i>
+                    </div>
+                    <div class="leading-tight min-w-0">
+                        <p class="font-semibold truncate"><?= htmlspecialchars($panelistName) ?></p>
+                        <p class="text-[10px] text-blue-200/80 truncate"><?= htmlspecialchars($panelistUsername !== "" ? $panelistUsername : "panelist") ?></p>
+                    </div>
+                </div>
+                <div class="px-3 pb-3 pt-1">
+                    <button
+                        onclick="window.location.href='../logout.php'"
+                        class="w-full flex items-center justify-center gap-2 text-[11px] font-semibold bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-3 py-2 rounded-full shadow-md hover:shadow-lg transition-all duration-150"
+                        type="button"
+                    >
+                        <i class="fas fa-sign-out-alt text-xs"></i>
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <main class="ml-0 md:ml-56 min-h-screen">
+            <header
+                class="fixed top-0 left-0 md:left-56 right-0 z-20 flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2"
+            >
+                <div class="flex items-center gap-2">
+                    <button
+                        id="sidebarToggle"
+                        class="md:hidden inline-flex items-center justify-center p-2 rounded bg-[#0d8ddb] focus:outline-none"
+                        type="button"
+                    >
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <span class="text-[11px] font-semibold md:hidden">Admission &amp; Scholarship</span>
+                </div>
+                <div class="flex gap-2 text-xs">
+                    <button class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 flex items-center gap-1 font-normal" type="button">
+                        <i class="fas fa-user"></i>
+                        Panelist View
+                    </button>
+                    <button class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal" type="button">
+                        <?= htmlspecialchars($panelistName) ?>
+                    </button>
+                </div>
+            </header>
+            <div class="px-4 py-6 pt-16 md:pt-20">
+                <div class="max-w-5xl mx-auto px-4">
         <div class="bg-white shadow-2xl shadow-blue-100/60 rounded-2xl overflow-hidden border border-slate-200">
             <div class="bg-gradient-to-r from-blue-900 via-blue-800 to-blue-600 px-8 py-10 text-white">
                 <div class="mb-4">
@@ -467,9 +569,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </div>
             </form>
         </div>
+                </div>
+            </div>
+        </main>
     </div>
     <script>
         (function () {
+            const sidebar = document.getElementById('sidebar');
+            const toggleBtn = document.getElementById('sidebarToggle');
+            if (toggleBtn && sidebar) {
+                toggleBtn.addEventListener('click', () => {
+                    sidebar.classList.toggle('-translate-x-full');
+                });
+            }
+
             const totalInput = document.getElementById('total-points');
             const ratingInputs = Array.from(
                 document.querySelectorAll('input[type="radio"][name^="rating["]')

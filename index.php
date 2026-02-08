@@ -68,6 +68,49 @@ $_SESSION["from_index"] = true;
     .delay-3 {
       animation-delay: 0.45s;
     }
+
+    .portal-main {
+      position: relative;
+      isolation: isolate;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 8% 18%, rgba(13, 141, 219, 0.16), transparent 34%),
+        radial-gradient(circle at 92% 16%, rgba(252, 220, 47, 0.2), transparent 36%),
+        linear-gradient(180deg, #f8fbff 0%, #edf4ff 45%, #e6eef9 100%);
+      border-top: 1px solid rgba(13, 141, 219, 0.2);
+    }
+
+    .portal-main::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      background-image:
+        linear-gradient(rgba(13, 141, 219, 0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(13, 141, 219, 0.07) 1px, transparent 1px);
+      background-size: 38px 38px;
+      opacity: 0.35;
+      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.28), transparent 80%);
+      pointer-events: none;
+    }
+
+    .portal-main::after {
+      content: "";
+      position: absolute;
+      width: 22rem;
+      height: 22rem;
+      left: -7rem;
+      bottom: -10rem;
+      z-index: -1;
+      border-radius: 9999px;
+      background: radial-gradient(circle, rgba(13, 141, 219, 0.2), rgba(13, 141, 219, 0));
+      pointer-events: none;
+    }
+
+    .portal-main-inner {
+      max-width: 80rem;
+      margin: 0 auto;
+    }
   </style>
 </head>
 <body class="bg-gradient-to-b from-[#e8f3ff] via-white to-[#e8f3ff] text-[#052c6a] overflow-x-hidden">
@@ -147,7 +190,8 @@ $_SESSION["from_index"] = true;
 </header>
 
 <!-- MAIN -->
-<main class="py-16 px-4 max-w-7xl mx-auto">
+<main class="portal-main py-16 px-4">
+  <div class="portal-main-inner">
   <!-- Login Portal Title -->
   <section class="text-center max-w-xl mx-auto mb-10 animate-fade-in-up delay-1">
     <h2 class="text-[#003b7d] font-extrabold text-2xl mb-2 uppercase tracking-wide">
@@ -228,6 +272,7 @@ $_SESSION["from_index"] = true;
       </button>
     </div>
   </section>
+  </div>
 </main>
 
 <script>

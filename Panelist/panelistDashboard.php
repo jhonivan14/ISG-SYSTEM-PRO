@@ -118,6 +118,14 @@ $totalCount = count($activeApplicants) + count($archivedApplicants);
 $showLoginSuccess = !empty($_SESSION["panelist_login_success"]);
 unset($_SESSION["panelist_login_success"]);
 
+$requestedTab = trim((string)($_GET["tab"] ?? ""));
+$initialSection = "homeSection";
+if ($requestedTab === "pending") {
+  $initialSection = "pendingSection";
+} elseif ($requestedTab === "evaluated") {
+  $initialSection = "evaluatedSection";
+}
+
 // Change password is handled in a separate page.
 ?>
 
@@ -226,103 +234,194 @@ unset($_SESSION["panelist_login_success"]);
       .stagger > *:nth-child(1) { animation-delay: 0.05s; }
       .stagger > *:nth-child(2) { animation-delay: 0.12s; }
       .stagger > *:nth-child(3) { animation-delay: 0.2s; }
+
+      ::-webkit-scrollbar {
+        width: 6px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: #052c6a;
+        border-radius: 3px;
+      }
+      .panel-nav-item {
+        transition: background-color 150ms ease, color 150ms ease;
+      }
+      .panel-nav-item.active {
+        background-color: #fcdc2f;
+        color: #052c6a;
+      }
     </style>
   </head>
-  <body class="text-[#0b1b3a]">
+  <body class="bg-white text-[#0b1b3a] font-sans">
     <div class="min-h-screen page-shell">
-      <header class="bg-gradient-to-r from-[#052c6a] via-[#0b3f8f] to-[#052c6a] text-white shadow-lg">
-        <div class="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div class="flex items-center gap-3">
-            <img
-              src="../img/SMCCNEWLOGO.png"
-              class="h-12 w-12 rounded-full object-cover"
-              alt="SMCC Logo"
-            />
-            <div class="text-xs">
-              <p class="font-semibold">Admission and Scholarship Office</p>
-              <p class="text-[11px] text-blue-100">Panelist Dashboard</p>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 text-xs">
-            <div class="text-right">
-              <p class="text-[11px] text-blue-100">Signed in as</p>
-              <p class="text-sm font-semibold">
-                <?= htmlspecialchars($panelistName) ?>
-              </p>
-            </div>
-            <span class="rounded-full bg-[#fcdc2f] px-3 py-1 text-[#052c6a] shadow">
-              Panelist View
-            </span>
-            <button
-              class="rounded-full border border-white/40 px-3 py-1 text-[11px] hover:bg-white/10"
-              type="button"
+      <aside
+        id="sidebar"
+        class="flex flex-col bg-[#052c6a] text-white w-56 h-screen fixed left-0 top-0 z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out overflow-y-auto"
+      >
+        <div class="flex items-center gap-3 px-4 py-4 border-b border-[#0d8ddb]">
+          <img
+            src="../img/SMCCNEWLOGO.png"
+            class="rounded-full w-16 h-16 object-cover"
+            alt="SMCC Logo"
+          />
+          <span class="text-sm font-normal">Admission and Scholarship Office</span>
+        </div>
+
+        <nav class="flex-1">
+          <ul class="text-xs font-semibold">
+            <li
+              class="panel-nav-item active flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-[#0d8ddb]"
+              data-target-section="homeSection"
+            >
+              <i class="fas fa-home w-5"></i>
+              <span>Home</span>
+            </li>
+            <li
+              class="panel-nav-item flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-[#0d8ddb]"
+              data-target-section="pendingSection"
+            >
+              <i class="fas fa-user-clock w-5"></i>
+              <span>Pending Applicants</span>
+            </li>
+            <li
+              class="panel-nav-item flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-[#0d8ddb]"
+              data-target-section="evaluatedSection"
+            >
+              <i class="fas fa-check-circle w-5"></i>
+              <span>Show Evaluated (<?= htmlspecialchars((string)count($archivedApplicants)) ?>)</span>
+            </li>
+            <li
+              class="panel-nav-item flex items-center gap-2 px-4 py-3 cursor-pointer hover:bg-[#0d8ddb]"
               onclick="window.location.href='change-password.php'"
             >
-              Change Password
-            </button>
+              <i class="fas fa-key w-5"></i>
+              <span>Change Password</span>
+            </li>
+          </ul>
+        </nav>
+
+        <div class="absolute bottom-0 left-0 w-full">
+          <div class="h-px w-full bg-gradient-to-r from-transparent via-[#0d8ddb] to-transparent opacity-60"></div>
+          <div class="px-4 pt-2 pb-1 flex items-center gap-2 text-[11px] text-blue-100/90">
+            <div class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+              <i class="fas fa-user-tie text-[12px]"></i>
+            </div>
+            <div class="leading-tight min-w-0">
+              <p class="font-semibold truncate"><?= htmlspecialchars($panelistName) ?></p>
+              <p class="text-[10px] text-blue-200/80 truncate">
+                <?= htmlspecialchars($panelistUsername !== "" ? $panelistUsername : "panelist") ?>
+              </p>
+            </div>
+          </div>
+          <div class="px-3 pb-3 pt-1">
             <button
-              class="rounded-full border border-white/40 px-3 py-1 text-[11px] hover:bg-white/10"
-              type="button"
               onclick="window.location.href='../logout.php'"
+              class="w-full flex items-center justify-center gap-2 text-[11px] font-semibold bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-3 py-2 rounded-full shadow-md hover:shadow-lg transition-all duration-150"
+              type="button"
             >
-              Logout
+              <i class="fas fa-sign-out-alt text-xs"></i>
+              <span>Logout</span>
             </button>
           </div>
         </div>
-      </header>
+      </aside>
 
-      <main class="mx-auto max-w-6xl px-4 pb-10">
-        <section class="mt-6 glass-card rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
-          <div class="space-y-2">
-            <span class="badge">Student Assistant Grant</span>
-            <h1 class="heading-font text-3xl text-[#052c6a]">
-              Panelist Dashboard
-            </h1>
-            <p class="text-xs text-[#42506a]">
-              Review applications assigned to you for evaluation.
-            </p>
-            <p class="text-sm font-semibold text-[#052c6a]">
-              Welcome, <?= htmlspecialchars($panelistName) ?>.
-            </p>
+      <main class="ml-0 md:ml-56 flex flex-col min-h-screen pb-8">
+        <header
+          class="fixed top-0 left-0 md:left-56 right-0 z-20 flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2"
+        >
+          <div class="flex items-center gap-2">
+            <button
+              id="sidebarToggle"
+              class="md:hidden inline-flex items-center justify-center p-2 rounded bg-[#0d8ddb] focus:outline-none"
+              type="button"
+            >
+              <i class="fas fa-bars"></i>
+            </button>
+            <span class="text-[11px] font-semibold md:hidden">
+              Admission &amp; Scholarship
+            </span>
           </div>
-          <div></div>
+          <div class="flex gap-2 text-xs">
+            <button
+              class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 flex items-center gap-1 font-normal"
+              type="button"
+            >
+              <i class="fas fa-user"></i>
+              Panelist View
+            </button>
+            <button
+              class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal"
+              type="button"
+            >
+              <?= htmlspecialchars($panelistName) ?>
+            </button>
+          </div>
+        </header>
+
+        <section
+          class="mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+        >
+          <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+            <i class="fas fa-columns"></i>
+            Panelist Dashboard
+          </h2>
+          <div class="flex text-xs text-[#052c6a] space-x-4 sm:space-x-6">
+            <div class="text-right">
+              <div class="text-[#0d8ddb]">Total Assigned</div>
+              <div class="text-[#052c6a] font-semibold"><?= htmlspecialchars((string)$totalCount) ?></div>
+            </div>
+            <div class="text-right">
+              <div class="text-[#0d8ddb]">Pending</div>
+              <div class="text-[#fcdc2f] font-semibold"><?= htmlspecialchars((string)$pendingCount) ?></div>
+            </div>
+            <div class="text-right">
+              <div class="text-[#0d8ddb]">Evaluated</div>
+              <div class="text-[#052c6a] font-semibold"><?= htmlspecialchars((string)$evaluatedCount) ?></div>
+            </div>
+          </div>
         </section>
 
-        <section class="stagger grid gap-4 pt-6 md:grid-cols-3">
-          <div class="stat-card rounded-2xl bg-gradient-to-br from-[#052c6a] to-[#0b3f8f] p-5 text-white">
-            <p class="text-xs uppercase tracking-wide text-[#fcdc2f]">
-              Total Assigned
-            </p>
-            <p class="mt-2 text-3xl font-bold">
-              <?= htmlspecialchars((string)$totalCount) ?>
-            </p>
-            <p class="mt-1 text-[11px] text-blue-100">
-              Applicants sent to you for evaluation.
-            </p>
-          </div>
-          <div class="stat-card rounded-2xl bg-white p-5 text-[#052c6a]">
-            <p class="text-xs uppercase tracking-wide text-[#0d8ddb]">
-              Pending Reviews
-            </p>
-            <p class="mt-2 text-3xl font-bold">
-              <?= htmlspecialchars((string)$pendingCount) ?>
-            </p>
-            <p class="mt-1 text-[11px] text-slate-500">
-              Applications waiting for panelist review.
-            </p>
-          </div>
-          <div class="stat-card rounded-2xl bg-gradient-to-br from-[#fcdc2f] to-[#f7b500] p-5 text-[#052c6a]">
-            <p class="text-xs uppercase tracking-wide">Evaluated</p>
-            <p class="mt-2 text-3xl font-bold">
-              <?= htmlspecialchars((string)$evaluatedCount) ?>
-            </p>
-            <p class="mt-1 text-[11px] text-[#052c6a]">
-              Already evaluated by you.
-            </p>
-          </div>
+        <section id="homeSection" data-panel-section class="px-4 sm:px-6">
+          <section class="mt-6 glass-card rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div class="space-y-2">
+              <span class="badge">Student Assistant Grant</span>
+              <h1 class="heading-font text-3xl text-[#052c6a]">Panelist Dashboard</h1>
+              <p class="text-xs text-[#42506a]">
+                Review applications assigned to you for evaluation.
+              </p>
+              <p class="text-sm font-semibold text-[#052c6a]">
+                Welcome, <?= htmlspecialchars($panelistName) ?>.
+              </p>
+            </div>
+            <div></div>
+          </section>
+
+          <section class="stagger grid gap-4 pt-6 md:grid-cols-3">
+            <div class="stat-card rounded-2xl bg-gradient-to-br from-[#052c6a] to-[#0b3f8f] p-5 text-white">
+              <p class="text-xs uppercase tracking-wide text-[#fcdc2f]">Total Assigned</p>
+              <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$totalCount) ?></p>
+              <p class="mt-1 text-[11px] text-blue-100">
+                Applicants sent to you for evaluation.
+              </p>
+            </div>
+            <div class="stat-card rounded-2xl bg-white p-5 text-[#052c6a]">
+              <p class="text-xs uppercase tracking-wide text-[#0d8ddb]">Pending Reviews</p>
+              <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$pendingCount) ?></p>
+              <p class="mt-1 text-[11px] text-slate-500">
+                Applications waiting for panelist review.
+              </p>
+            </div>
+            <div class="stat-card rounded-2xl bg-gradient-to-br from-[#fcdc2f] to-[#f7b500] p-5 text-[#052c6a]">
+              <p class="text-xs uppercase tracking-wide">Evaluated</p>
+              <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$evaluatedCount) ?></p>
+              <p class="mt-1 text-[11px] text-[#052c6a]">
+                Already evaluated by you.
+              </p>
+            </div>
+          </section>
         </section>
 
-        <section class="mt-6 glass-card rounded-3xl p-5">
+        <section id="pendingSection" data-panel-section class="hidden mt-6 glass-card rounded-3xl p-5 mx-4 sm:mx-6">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p class="text-sm font-semibold text-[#0d8ddb]">
@@ -344,13 +443,6 @@ unset($_SESSION["panelist_login_success"]);
                   aria-label="Search applicants"
                 />
               </div>
-              <button
-                id="toggleArchive"
-                type="button"
-                class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm hover:bg-[#0d8ddb] hover:text-white"
-              >
-                Show Evaluated (<?= htmlspecialchars((string)count($archivedApplicants)) ?>)
-              </button>
               <span class="rounded-full bg-[#fcdc2f] px-3 py-1 text-[#052c6a] shadow-sm">
                 Pending: <?= htmlspecialchars((string)$pendingCount) ?>
               </span>
@@ -467,7 +559,7 @@ unset($_SESSION["panelist_login_success"]);
           </div>
         </section>
 
-        <section id="archiveSection" class="mt-6 glass-card rounded-3xl p-5 hidden">
+        <section id="evaluatedSection" data-panel-section class="hidden mt-6 glass-card rounded-3xl p-5 mx-4 sm:mx-6">
           <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p class="text-sm font-semibold text-[#0d8ddb]">
@@ -563,13 +655,43 @@ unset($_SESSION["panelist_login_success"]);
     <?php endif; ?>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
+        const sidebar = document.getElementById("sidebar");
+        const toggleBtn = document.getElementById("sidebarToggle");
+        const navItems = Array.from(document.querySelectorAll("[data-target-section]"));
+        const sections = Array.from(document.querySelectorAll("[data-panel-section]"));
+
+        const setActiveSection = (sectionId) => {
+          sections.forEach((section) => {
+            section.classList.toggle("hidden", section.id !== sectionId);
+          });
+          navItems.forEach((item) => {
+            const isActive = item.dataset.targetSection === sectionId;
+            item.classList.toggle("active", isActive);
+          });
+        };
+
+        navItems.forEach((item) => {
+          item.addEventListener("click", () => {
+            setActiveSection(item.dataset.targetSection);
+            if (window.innerWidth < 768 && sidebar) {
+              sidebar.classList.add("-translate-x-full");
+            }
+          });
+        });
+
+        if (toggleBtn && sidebar) {
+          toggleBtn.addEventListener("click", () => {
+            sidebar.classList.toggle("-translate-x-full");
+          });
+        }
+
+        setActiveSection(<?= json_encode($initialSection) ?>);
+
         const searchInput = document.getElementById("panelistSearch");
         const activeRows = Array.from(document.querySelectorAll("[data-panelist-row]"));
         const activeEmpty = document.querySelector("[data-panelist-empty]");
         const archiveRows = Array.from(document.querySelectorAll("[data-archive-row]"));
         const archiveEmpty = document.querySelector("[data-archive-empty]");
-        const archiveSection = document.getElementById("archiveSection");
-        const toggleArchive = document.getElementById("toggleArchive");
 
         const applySearch = () => {
           const query = (searchInput?.value || "").trim().toLowerCase();
@@ -602,16 +724,6 @@ unset($_SESSION["panelist_login_success"]);
           searchInput.addEventListener("input", applySearch);
         }
         applySearch();
-
-        if (toggleArchive && archiveSection) {
-          toggleArchive.addEventListener("click", () => {
-            const isHidden = archiveSection.classList.contains("hidden");
-            archiveSection.classList.toggle("hidden", !isHidden);
-            toggleArchive.textContent = isHidden
-              ? "Hide Evaluated (<?= htmlspecialchars((string)count($archivedApplicants)) ?>)"
-              : "Show Evaluated (<?= htmlspecialchars((string)count($archivedApplicants)) ?>)";
-          });
-        }
       });
     </script>
   </body>

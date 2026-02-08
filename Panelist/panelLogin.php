@@ -82,7 +82,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       z-index: 0;
       overflow: hidden;
       pointer-events: none;
-      filter: brightness(0.35) saturate(1.1) blur(7px);
+      filter: brightness(0.35) saturate(1.1) blur(2px);
       transform: scale(1.05);
     }
     #background-cover img {
@@ -217,6 +217,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         >
           Log In
         </button>
+
+        <a
+          href="../index.php"
+          class="block w-full text-center border border-white/45 text-white hover:bg-white/15 font-semibold py-3 rounded-lg transition"
+        >
+          <i class="fas fa-arrow-left mr-2"></i>Back to Home 
+        </a>
 
       </form>
     </div>

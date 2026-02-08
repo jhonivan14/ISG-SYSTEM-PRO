@@ -1,9 +1,12 @@
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>Admin Dashboard</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
+
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
@@ -12,6 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap"
       rel="stylesheet"
     />
+
     <style>
       /* Custom scrollbar for sidebar */
       ::-webkit-scrollbar {
@@ -426,6 +430,7 @@
       }
     </style>
   </head>
+
   <body class="bg-gray-200 font-sans">
     <div class="min-h-screen">
       <!-- Sidebar -->
@@ -433,30 +438,26 @@
         id="sidebar"
         class="flex flex-col bg-[#052c6a] text-white w-56 h-screen fixed left-0 top-0 z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out overflow-y-auto"
       >
-        <div
-          class="flex items-center gap-3 px-4 py-4 border-b border-[#0d8ddb]"
-        >
+        <div class="flex items-center gap-3 px-4 py-4 border-b border-[#0d8ddb]">
           <img
             src="../img/SMCCNEWLOGO.png"
             class="rounded-full w-16 h-16 object-cover"
             alt="SMCC Logo"
           />
-          <span class="text-sm font-normal">
-            Admission and Scholarship Office
-          </span>
+          <span class="text-sm font-normal">Admission and Scholarship Office</span>
         </div>
 
         <nav class="flex-1">
           <ul class="text-xs font-semibold">
-            <li
-              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
-            >
+            <li class="flex items-center gap-2 px-4 py-3">
               <i class="fas fa-trophy w-5"></i>
               <span>Dashboard</span>
             </li>
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="adminDashboard.php"
+              onclick="window.location.href='adminDashboard.php'"
             >
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
@@ -464,6 +465,8 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="applicant.php"
+              onclick="window.location.href='applicant.php'"
             >
               <i class="fas fa-user-graduate w-5"></i>
               <span>Applicants</span>
@@ -471,6 +474,8 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="approved.php"
+              onclick="window.location.href='approved.php'"
             >
               <i class="fas fa-thumbs-up w-5"></i>
               <span>Approved Applications</span>
@@ -478,6 +483,8 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="interviewEvaluation.php"
+              onclick="window.location.href='interviewEvaluation.php'"
             >
               <i class="fas fa-check-circle w-5"></i>
               <span>Interview Evaluation</span>
@@ -485,6 +492,8 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="ranks.php"
+              onclick="window.location.href='ranks.php'"
             >
               <i class="fas fa-star w-5"></i>
               <span>Applicant Ranks</span>
@@ -492,13 +501,17 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="list-of-qualified.php"
+              onclick="window.location.href='list-of-qualified.php'"
             >
               <i class="fas fa-list w-5"></i>
               <span>List of Qualified</span>
             </li>
 
             <li
-              class="bg-[#fcdc2f] bg-opacity-90 text-[#052c6a] flex items-center gap-2 px-4 py-3 cursor-pointer"
+              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="department-evaluation-list.php"
+              onclick="window.location.href='department-evaluation-list.php'"
             >
               <i class="fas fa-building w-5"></i>
               <span>Departmental Evaluation</span>
@@ -506,6 +519,8 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="summary-report.php"
+              onclick="window.location.href='summary-report.php'"
             >
               <i class="fas fa-flag w-5"></i>
               <span>Summary Evaluation Report</span>
@@ -513,6 +528,8 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="institutional-scholars.php"
+              onclick="window.location.href='institutional-scholars.php'"
             >
               <i class="fas fa-chart-line w-5"></i>
               <span>Reports</span>
@@ -520,6 +537,8 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="settings.php"
+              onclick="window.location.href='settings.php'"
             >
               <i class="fas fa-cogs w-5"></i>
               <span>Settings</span>
@@ -527,42 +546,43 @@
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
+              data-nav="accounts.php"
+              onclick="window.location.href='accounts.php'"
             >
               <i class="fas fa-user-circle w-5"></i>
               <span>Accounts</span>
             </li>
           </ul>
         </nav>
-       
+
         <div class="absolute bottom-0 left-0 w-full">
-        <div class="h-px w-full bg-gradient-to-r from-transparent via-[#0d8ddb] to-transparent opacity-60"></div>
+          <div class="h-px w-full bg-gradient-to-r from-transparent via-[#0d8ddb] to-transparent opacity-60"></div>
 
-   
-        <div class="px-4 pt-2 pb-1 flex items-center gap-2 text-[11px] text-blue-100/90">
-        <div class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
-        <i class="fas fa-user-shield text-[12px]"></i>
-        </div>
-        <div class="leading-tight">
-        <p class="font-semibold">Admin Account</p>
-        <p class="text-[10px] text-blue-200/80">Institutional Scholarship</p>
-        </div>
-        </div>
+          <div class="px-4 pt-2 pb-1 flex items-center gap-2 text-[11px] text-blue-100/90">
+            <div class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+              <i class="fas fa-user-shield text-[12px]"></i>
+            </div>
+            <div class="leading-tight">
+              <p class="font-semibold">Admin Account</p>
+              <p class="text-[10px] text-blue-200/80">Institutional Scholarship</p>
+            </div>
+          </div>
 
-    <!-- Logout button -->
-    <div class="px-3 pb-3 pt-1">
-      <button
-        onclick="window.location.href='../logout.php'"
-        class="w-full flex items-center justify-center gap-2 text-[11px] font-semibold
-               bg-gradient-to-r from-red-500 to-red-600
-               hover:from-red-600 hover:to-red-700
-               px-3 py-2 rounded-full shadow-md hover:shadow-lg
-               transition-all duration-150"
-      >
-        <i class="fas fa-sign-out-alt text-xs"></i>
-        <span>Logout</span>
-      </button>
-    </div>
-  </div>
+          <!-- Logout button -->
+          <div class="px-3 pb-3 pt-1">
+            <button
+              onclick="window.location.href='../logout.php'"
+              class="w-full flex items-center justify-center gap-2 text-[11px] font-semibold
+                     bg-gradient-to-r from-red-500 to-red-600
+                     hover:from-red-600 hover:to-red-700
+                     px-3 py-2 rounded-full shadow-md hover:shadow-lg
+                     transition-all duration-150"
+            >
+              <i class="fas fa-sign-out-alt text-xs"></i>
+              <span>Logout</span>
+            </button>
+          </div>
+        </div>
       </aside>
 
       <!-- Main content -->
@@ -599,10 +619,13 @@
               Account ▾
             </button>
           </div>
-      </header>
+        </header>
 
         <!-- Department Evaluation Form -->
-        <section id="evaluation-details" class="mt-12 px-4 sm:px-6 py-6 bg-gray-200 flex-1">
+        <section
+          id="evaluation-details"
+          class="mt-12 px-4 sm:px-6 py-6 bg-gray-200 flex-1"
+        >
           <div class="max-w-6xl mx-auto flex justify-end gap-2 mb-3">
             <button
               type="button"
@@ -613,12 +636,16 @@
               <span>Print Evaluation Form</span>
             </button>
           </div>
+
           <div id="print-eval-form" class="max-w-6xl mx-auto bg-white rounded-lg shadow-sm">
             <div class="eval-page">
               <header>
                 <div class="header-top">
                   <div class="header-logo">
-                    <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
+                    <img
+                      src="../img/SMCCNEWLOGO.png"
+                      alt="Seal of Saint Michael College of Caraga"
+                    />
                   </div>
                   <div class="header-center">
                     <h1>Saint Michael College of Caraga</h1>
@@ -628,11 +655,18 @@
                     </p>
                     <p>Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
                     <p>
-                      <a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a>
+                      <a
+                        href="http://www.smccnasipit.edu.ph"
+                        style="color: blue; text-decoration: underline;"
+                        >www.smccnasipit.edu.ph</a
+                      >
                     </p>
                   </div>
                   <div class="header-cert">
-                    <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" />
+                    <img
+                      src="../img/SOCO-PAB-1024x672.jpg"
+                      alt="SOCOTEC ISO 9001 logo"
+                    />
                   </div>
                 </div>
               </header>
@@ -720,157 +754,94 @@
                     <tbody>
                       <tr>
                         <td class="section-label">A. Quality and Quantity of Work</td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td></td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>A.1 Accurate at work assigned</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>A.2 Always completes tasks</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>A.3 Works in a timely manner</td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
+                        <td>&#10003;</td><td></td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>A.4 Asks for more work when assigned tasks are done</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>A.5 Easily accepts new responsibilities</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td class="subtotal">Total</td>
-                        <td>4</td>
-                        <td>12</td>
-                        <td></td>
-                        <td></td>
+                        <td>4</td><td>12</td><td></td><td></td>
                       </tr>
+
                       <tr>
                         <td class="section-label">B. Interpersonal Skills</td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td></td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>B.1 Answers patron's questions accurately</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>B.2 Deals with patrons well</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>B.3 Deals with personnel well</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>B.4 Knows how to effectively communicate with others</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>B.5 Has a good relationship with other student assistants</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td class="subtotal">Total</td>
-                        <td></td>
-                        <td>15</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>15</td><td></td><td></td>
                       </tr>
+
                       <tr>
                         <td class="section-label">C. Attendance and Reliability</td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td></td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>C.1 Perfect attendance</td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
+                        <td>&#10003;</td><td></td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>C.2 Reports duty on time, rarely comes late</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>C.3 Following assigned schedule</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>C.4 Able to work without direct supervision</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>C.5 Carries out instructions successfully</td>
-                        <td></td>
-                        <td>&#10003;</td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td>&#10003;</td><td></td><td></td>
                       </tr>
                       <tr>
                         <td class="subtotal">Total</td>
-                        <td>4</td>
-                        <td>12</td>
-                        <td></td>
-                        <td></td>
+                        <td>4</td><td>12</td><td></td><td></td>
                       </tr>
+
                       <tr>
                         <td class="subtotal">Over-all Total</td>
-                        <td>8</td>
-                        <td>39</td>
-                        <td></td>
-                        <td></td>
+                        <td>8</td><td>39</td><td></td><td></td>
                       </tr>
                     </tbody>
                   </table>
@@ -934,11 +905,16 @@
               <span>Print Evaluation Result</span>
             </button>
           </div>
+
           <div id="print-eval-result" class="max-w-6xl mx-auto mt-0 bg-white rounded-lg shadow-sm">
             <div class="eval-result p-6 sm:p-8">
               <header class="text-center mb-4">
                 <div class="flex flex-wrap items-center justify-center gap-4 mb-2">
-                  <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" class="w-20 h-20 object-contain" />
+                  <img
+                    src="../img/SMCCNEWLOGO.png"
+                    alt="Seal of Saint Michael College of Caraga"
+                    class="w-20 h-20 object-contain"
+                  />
                   <div class="leading-tight text-center">
                     <h1 class="font-bold text-[16pt] m-0">Saint Michael College of Caraga</h1>
                     <p class="m-0 text-[10pt]">
@@ -947,10 +923,18 @@
                     </p>
                     <p class="m-0 text-[10pt]">Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
                     <p class="m-0 text-[10pt]">
-                      <a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a>
+                      <a
+                        href="http://www.smccnasipit.edu.ph"
+                        style="color: blue; text-decoration: underline;"
+                        >www.smccnasipit.edu.ph</a
+                      >
                     </p>
                   </div>
-                  <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" class="w-24 h-20 object-contain" />
+                  <img
+                    src="../img/SOCO-PAB-1024x672.jpg"
+                    alt="SOCOTEC ISO 9001 logo"
+                    class="w-24 h-20 object-contain"
+                  />
                 </div>
               </header>
 
@@ -1068,25 +1052,47 @@
     </div>
 
     <script>
-      // Sidebar toggle for mobile
+      // Sidebar + Active highlight (same behavior as your evaluation list page)
       document.addEventListener("DOMContentLoaded", () => {
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
+        if (!sidebar) return;
 
-        if (toggleBtn && sidebar) {
+        // Mobile toggle
+        if (toggleBtn) {
           toggleBtn.addEventListener("click", () => {
             sidebar.classList.toggle("-translate-x-full");
           });
-
-          // Close sidebar when clicking any nav item on small screens
-          sidebar.querySelectorAll("li").forEach((item) => {
-            item.addEventListener("click", () => {
-              if (window.innerWidth < 768) {
-                sidebar.classList.add("-translate-x-full");
-              }
-            });
-          });
         }
+
+        // Close sidebar when clicking any nav item on small screens
+        sidebar.querySelectorAll("li[data-nav]").forEach((item) => {
+          item.addEventListener("click", () => {
+            if (window.innerWidth < 768) {
+              sidebar.classList.add("-translate-x-full");
+            }
+          });
+        });
+
+        // Active highlight
+        const currentPage = window.location.pathname.split("/").pop().toLowerCase();
+        const sidebarAliases = {
+          "view-application.php": "applicant.php",
+          "department-evaluation-indi.php": "department-evaluation-list.php",
+          "summary-reports.php": "summary-report.php",
+          "list-0f-qualified.php": "list-of-qualified.php",
+        };
+        const activePage = (sidebarAliases[currentPage] || currentPage).toLowerCase();
+
+        sidebar.querySelectorAll("li[data-nav]").forEach((item) => {
+          const target = (item.dataset.nav || "").toLowerCase();
+          const isActive = target === activePage;
+
+          item.classList.toggle("bg-[#fcdc2f]", isActive);
+          item.classList.toggle("bg-opacity-90", isActive);
+          item.classList.toggle("text-[#052c6a]", isActive);
+          item.classList.toggle("hover:bg-[#0d8ddb]", !isActive);
+        });
       });
 
       function printSection(sectionId) {
@@ -1095,10 +1101,12 @@
 
         const styleTag = document.querySelector("style");
         const styles = styleTag ? styleTag.innerHTML : "";
+
         const landscapePage =
           sectionId === "print-eval-result"
             ? "@page { size: 11in 8.5in; margin: 0.2in; }"
             : "";
+
         const tailwindScript = document.querySelector('script[src*="tailwindcss"]');
         const fontAwesome = document.querySelector('link[href*="font-awesome"]');
         const fontFamily = document.querySelector('link[href*="Times+New+Roman"]');
@@ -1133,7 +1141,6 @@
           }, 50);
         };
       }
-
     </script>
   </body>
 </html>

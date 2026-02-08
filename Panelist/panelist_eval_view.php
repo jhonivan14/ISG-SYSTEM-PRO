@@ -124,15 +124,92 @@ if ($panelistUsername === "") {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Interview Evaluation Sheet</title>
+    <link
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
+        rel="stylesheet"
+    />
     <style>
+        .app-shell {
+            min-height: 100vh;
+        }
+        .sidebar {
+            width: 224px;
+            height: 100vh;
+            background: #052c6a;
+            color: #fff;
+            position: fixed;
+            left: 0;
+            top: 0;
+            z-index: 30;
+            overflow-y: auto;
+        }
+        .topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 20;
+            background: #052c6a;
+            color: #fff;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            font-size: 12px;
+            gap: 8px;
+        }
+        .topbar-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .topbar-pill {
+            background: #fcdc2f;
+            color: #052c6a;
+            border: 0;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: 500;
+            font-family: "Segoe UI", sans-serif;
+        }
+        .main-content {
+            margin-left: 224px;
+            padding-top: 44px;
+        }
+        .panel-nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 150ms ease, color 150ms ease;
+        }
+        .panel-nav-item:hover {
+            background: #0d8ddb;
+        }
+        .panel-nav-item.active {
+            background: #fcdc2f;
+            color: #052c6a;
+        }
+        @media (min-width: 768px) {
+            .topbar {
+                left: 224px;
+            }
+        }
         @page {
-            size: 8.5in 13in;
+            size: 8.5in 13in portrait;
             margin: 0.25in 0.49in 0in 0.49in;
         }
         body {
             margin: 0;
             background: #e9eef5;
-            font-family: "Times New Roman", serif;
+            font-family: "Segoe UI", sans-serif;
             color: #0f172a;
         }
         *, *::before, *::after {
@@ -178,25 +255,33 @@ if ($panelistUsername === "") {
         }
         .header {
             display: grid;
-            grid-template-columns: auto 1fr auto;
-            gap: 8px;
+            grid-template-columns: 118px 1fr 118px;
             align-items: center;
+            column-gap: 4px;
             border-bottom: 2px solid #0f172a;
-            padding-bottom: 6px;
+            min-height: 72px;
+            padding: 4px 0 6px;
         }
         .logo-group {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 4px;
+        }
+        .logo-left {
+            justify-content: flex-end;
+        }
+        .logo-right {
+            justify-content: flex-start;
         }
         .logo-group img {
-            width: 64px;
-            height: 64px;
+            width: 56px;
+            height: 56px;
             object-fit: contain;
         }
         .header-text {
             text-align: center;
             line-height: 1.2;
+            width: 100%;
         }
         .school-name {
             font-weight: 700;
@@ -351,6 +436,22 @@ if ($panelistUsername === "") {
         .note-line {
             page-break-inside: avoid;
         }
+        .sheet-footer {
+            margin-top: 10px;
+            width: 100%;
+            text-align: left;
+            line-height: 0;
+            overflow: hidden;
+            --footer-left-offset: 34px;
+            page-break-inside: avoid;
+        }
+        .sheet-footer img {
+            width: calc(100% + var(--footer-left-offset));
+            height: auto;
+            display: block;
+            object-fit: contain;
+            margin: 0 0 0 calc(-1 * var(--footer-left-offset));
+        }
         .error {
             max-width: 720px;
             margin: 60px auto;
@@ -363,6 +464,19 @@ if ($panelistUsername === "") {
             text-align: center;
         }
         @media print {
+            html,
+            body {
+                width: 8.5in;
+                height: 13in;
+            }
+            .sidebar,
+            .topbar {
+                display: none !important;
+            }
+            .main-content {
+                margin-left: 0 !important;
+                padding-top: 0 !important;
+            }
             body {
                 background: #fff;
             }
@@ -373,11 +487,10 @@ if ($panelistUsername === "") {
                 border: none;
                 box-shadow: none;
                 padding: 0;
-                margin: 0;
-                width: calc(100% / 1.05);
+                margin: 0 auto;
+                width: 100%;
                 max-width: none;
-                transform: scale(1.05);
-                transform-origin: top left;
+                transform: none;
             }
             .no-print {
                 display: none !important;
@@ -386,20 +499,78 @@ if ($panelistUsername === "") {
     </style>
 </head>
 <body>
+    <div class="app-shell">
+        <aside id="sidebar" class="sidebar">
+            <div style="display:flex;align-items:center;gap:12px;padding:16px;border-bottom:1px solid #0d8ddb;">
+                <img src="../img/SMCCNEWLOGO.png" alt="SMCC Logo" style="width:64px;height:64px;border-radius:999px;object-fit:cover;" />
+                <span style="font-size:14px;">Admission and Scholarship Office</span>
+            </div>
+            <nav style="padding-bottom:112px;">
+                <div class="panel-nav-item" onclick="window.location.href='panelistDashboard.php'">
+                    <i class="fas fa-home"></i>
+                    <span>Home</span>
+                </div>
+                <div class="panel-nav-item" onclick="window.location.href='panelistDashboard.php?tab=pending'">
+                    <i class="fas fa-user-clock"></i>
+                    <span>Pending Applicants</span>
+                </div>
+                <div class="panel-nav-item active" onclick="window.location.href='panelistDashboard.php?tab=evaluated'">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Show Evaluated</span>
+                </div>
+                <div class="panel-nav-item" onclick="window.location.href='change-password.php'">
+                    <i class="fas fa-key"></i>
+                    <span>Change Password</span>
+                </div>
+            </nav>
+            <div style="position:absolute;left:0;bottom:0;width:100%;">
+                <div style="height:1px;width:100%;background:linear-gradient(to right, transparent, #0d8ddb, transparent);opacity:0.6;"></div>
+                <div style="padding:8px 16px 4px;display:flex;align-items:center;gap:8px;font-size:11px;color:#dbeafe;">
+                    <div style="width:28px;height:28px;border-radius:999px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">
+                        <i class="fas fa-user-tie" style="font-size:12px;"></i>
+                    </div>
+                    <div style="line-height:1.2;min-width:0;">
+                        <p style="margin:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?= htmlspecialchars($panelistName) ?></p>
+                        <p style="margin:0;font-size:10px;color:#bfdbfe;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?= htmlspecialchars($panelistUsername !== "" ? $panelistUsername : "panelist") ?></p>
+                    </div>
+                </div>
+                <div style="padding:4px 12px 12px;">
+                    <button
+                        type="button"
+                        onclick="window.location.href='../logout.php'"
+                        style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;font-weight:600;background:linear-gradient(to right,#ef4444,#dc2626);color:#fff;padding:8px 12px;border-radius:999px;border:0;cursor:pointer;"
+                    >
+                        <i class="fas fa-sign-out-alt"></i>
+                        <span>Logout</span>
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <header class="topbar">
+            <div class="topbar-actions">
+                <button type="button" class="topbar-pill">
+                    <i class="fas fa-user"></i>
+                    Panelist View
+                </button>
+                <button type="button" class="topbar-pill">
+                    <?= htmlspecialchars($panelistName) ?>
+                </button>
+            </div>
+        </header>
+
+        <main class="main-content">
 <?php if ($loadError !== ""): ?>
     <div class="error"><?php echo htmlspecialchars($loadError); ?></div>
 <?php else: ?>
     <div class="page">
         <div class="paper">
             <div class="no-print">
-                <button class="btn btn-back" type="button" onclick="window.location.href='panelistDashboard.php'">
-                    &larr; Back to Dashboard
-                </button>
                 <button class="btn" type="button" onclick="window.print()">Print</button>
             </div>
 
             <div class="header">
-                <div class="logo-group">
+                <div class="logo-group logo-left">
                     <img src="../img/SMCCNEWLOGO.png" alt="SMCC Logo" />
                     <img src="../img/admission-logo.jpg" alt="Admission Logo" />
                 </div>
@@ -409,7 +580,7 @@ if ($panelistUsername === "") {
                     <div class="school-sub">Website: www.smccnasipit.edu.ph | Tel. Nos. 085 300-2932</div>
                     <div class="office">Office of the Admission &amp; Scholarship</div>
                 </div>
-                <div class="logo-group">
+                <div class="logo-group logo-right">
                     <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC Logo" />
                 </div>
             </div>
@@ -555,8 +726,14 @@ if ($panelistUsername === "") {
                     <div class="signature-line">Interviewer&apos;s Signature</div>
                 </div>
             </div>
+
+            <div class="sheet-footer">
+                <img src="../img/admissionFooter.png" alt="Admission Footer" />
+            </div>
         </div>
     </div>
 <?php endif; ?>
+        </main>
+    </div>
 </body>
 </html>
