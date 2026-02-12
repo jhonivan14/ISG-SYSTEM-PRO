@@ -384,6 +384,15 @@ unset($applicant);
           </div>
         </header>
 
+        <section
+          class="page-header mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+        >
+          <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+            <i class="fas fa-flag"></i>
+            APPROVED APPLICATIONS
+          </h2>
+        </section>
+
         <div class="mt-12"></div>
 
         <!-- Academic Year / Semester Filters -->
@@ -435,7 +444,7 @@ unset($applicant);
             <?php endif; ?>
           <?php endif; ?>
           <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#0d8ddb] bg-white p-3 shadow-sm">
-            <span class="text-sm font-semibold text-[#052c6a]">Approved Applicants</span>
+            <span class="text-sm font-semibold text-[#052c6a]"></span>
             <form class="flex flex-wrap items-center gap-2" method="get" action="approved.php">
               <div class="flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-2 shadow-sm">
                 <i class="fas fa-search text-[#7c8191] text-xs"></i>

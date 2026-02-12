@@ -77,9 +77,14 @@
         font-weight: 700;
         letter-spacing: 0.02em;
       }
+      .plain-table {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
       .plain-table table {
         border-collapse: collapse;
         width: 100%;
+        min-width: 760px;
       }
       .plain-table th,
       .plain-table td {
@@ -97,6 +102,35 @@
         font-weight: 700;
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
+      }
+      @media (max-width: 767px) {
+        .paper .header-left {
+          flex-direction: column;
+          align-items: center;
+          text-align: center;
+        }
+        .paper .header-left-text {
+          text-align: center;
+        }
+        .paper .header-left img {
+          width: 62px;
+          height: 62px;
+        }
+        .paper .header-right img {
+          width: 82px;
+          height: 62px;
+        }
+        .paper .header-left-text h1 {
+          font-size: 13.5pt;
+        }
+        .paper .header-left-text p {
+          font-size: 9pt;
+        }
+        .plain-table th,
+        .plain-table td {
+          font-size: 9pt;
+          padding: 5px;
+        }
       }
       .sig-role {
         font-size: 10pt;
@@ -129,6 +163,12 @@
           max-width: 100% !important;
           width: 100% !important;
           padding: 0 4px 12px 4px !important;
+        }
+        .plain-table {
+          overflow: visible !important;
+        }
+        .plain-table table {
+          min-width: 0 !important;
         }
       }
     </style>
@@ -306,16 +346,25 @@
               class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal"
               type="button"
             >
-              Account ▾
+              Account
             </button>
           </div>
         </header>
 
+        <section
+          class="page-header mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+        >
+          <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+            <i class="fas fa-flag"></i>
+            INTERVIEW EVALUATION
+          </h2>
+        </section>
+
         <!-- Print-friendly Interview Result -->
-        <section class="mt-12 px-4 sm:px-6 py-6">
+        <section class="px-3 sm:px-6 py-4 sm:py-6">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6 paper">
             <div class="w-full mx-auto paper-wrap">
-              <div class="flex justify-end mb-3 print-btn-bar">
+              <div class="flex justify-start sm:justify-end mb-3 print-btn-bar">
                 <button
                   type="button"
                   onclick="window.print()"

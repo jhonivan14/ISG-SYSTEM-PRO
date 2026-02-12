@@ -415,11 +415,16 @@ if ($stmt = $conn->prepare($declinedQuery)) {
           </div>
         </header>
 
-        <!-- Dashboard Main Page -->
         <section
-          class="mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+          class="page-header mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
         >
+          <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+            <i class="fas fa-flag"></i>
+            APPLICANTS
+          </h2>
         </section>
+
+        <!-- Dashboard Main Page -->
 
         <!-- Academic Year / Semester Filters -->
         <form class="px-4 sm:px-6 mt-4 flex flex-wrap justify-end gap-2" method="get" action="applicant.php">

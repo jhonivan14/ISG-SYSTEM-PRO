@@ -224,6 +224,15 @@
           </div>
         </header>
 
+        <section
+          class="page-header mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+        >
+          <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+            <i class="fas fa-flag"></i>
+            List of Qualified Applicants
+          </h2>
+        </section>
+
         <!-- Dashboard Main page -->
         <section class="mt-12 px-4 sm:px-6 py-4">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6 paper">

@@ -7,7 +7,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet" />
     <style>
       @page {
-        size: A4;
+        size: 8.5in 13in;
         margin: 30mm 25mm 30mm 25mm;
       }
 
@@ -258,9 +258,8 @@
         >
           <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
             <i class="fas fa-flag"></i>
-            Summary Evaluation Report
+            SUMMARY EVALUATION REPORT
           </h2>
-          <p class="text-xs text-[#052c6a]">Student Assistants Monitoring</p>
         </section>
 
         <section class="px-4 sm:px-6 py-4">
@@ -329,7 +328,7 @@
               <div>
                 <p class="font-semibold">Prepared by:</p>
                 <div class="mt-2">
-                  <p class="font-bold">ARLYN B. TUYOGON</p>
+                  <p class="font-bold">ARLYN B. TUYOGON, MMBM</p>
                   <p class="text-xs">Head, Admission &amp; Scholarship</p>
                 </div>
               </div>

@@ -282,32 +282,12 @@ if ($headOfficeResult) {
 
         <!-- Dashboard header -->
         <section
-          class="mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+          class="page-header mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
         >
-          <h2
-            class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0"
-          >
-            <i class="fas fa-trophy"></i>
-            Admin Dashboard
+          <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+            <i class="fas fa-flag"></i>
+            ACCOUNTS
           </h2>
-          <div class="flex text-xs text-[#052c6a] space-x-4 sm:space-x-6">
-            <div class="text-right">
-              <div class="text-[#0d8ddb]">Total Scholars</div>
-              <div class="text-[#fcdc2f] font-semibold">120</div>
-            </div>
-            <div class="text-right">
-              <div class="text-[#0d8ddb]">Applicants</div>
-              <div class="text-[#052c6a] font-semibold">450</div>
-            </div>
-            <div class="text-right">
-              <div class="text-[#0d8ddb]">Panelists</div>
-              <div class="text-[#fcdc2f] font-semibold">18</div>
-            </div>
-            <div class="text-right">
-              <div class="text-[#0d8ddb]">Head of offices</div>
-              <div class="text-[#0d8ddb] font-semibold">20</div>
-            </div>
-          </div>
         </section>
 
         <section class="px-4 sm:px-6 pt-6">

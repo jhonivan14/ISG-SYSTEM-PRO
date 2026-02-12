@@ -161,12 +161,21 @@
               <i class="fas fa-user"></i>
               Admin panel
             </button>
-            <button class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal" type="button">Account �-_</button>
+            <button class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal" type="button">Account</button>
           </div>
         </header>
 
-        <section class="mt-12 px-4 sm:px-6 py-6 bg-gray-50 flex-1">
-          <div class="max-w-6xl mx-auto space-y-4">
+        <section
+          class="page-header mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+        >
+          <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+            <i class="fas fa-flag"></i>
+            DEPARTMENTAL EVALUATION
+          </h2>
+        </section>
+
+        <section class="mt-12 px-3 sm:px-4 lg:px-6 py-4 bg-gray-100 flex-1 min-h-[calc(100vh-3rem)]">
+          <div class="w-full space-y-4 h-full flex flex-col">
             <div class="bg-white rounded-lg shadow-sm border border-[#e5e7eb] px-4 sm:px-6 py-4 space-y-3">
               <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
@@ -215,12 +224,12 @@
                 </div>
               </div>
             </div>
-            <div class="bg-white rounded-lg shadow-sm border border-[#e5e7eb]">
+            <div class="bg-white rounded-lg shadow-sm border border-[#e5e7eb] flex-1 flex flex-col min-h-[420px]">
               <div class="flex items-center gap-2 text-xs text-gray-500 px-4 sm:px-6 pt-4">
                 <span class="h-2 w-2 rounded-full bg-green-500 inline-block"></span> Evaluated
                 <span class="h-2 w-2 rounded-full bg-yellow-400 inline-block ml-3"></span> Not yet evaluated
               </div>
-              <div class="px-4 sm:px-6 pb-6 pt-3 overflow-x-auto">
+              <div class="px-4 sm:px-6 pb-6 pt-3 overflow-x-auto flex-1">
                 <table class="min-w-full text-xs border border-[#e5e7eb]">
                   <thead class="bg-gray-50 text-[#052c6a]">
                     <tr>

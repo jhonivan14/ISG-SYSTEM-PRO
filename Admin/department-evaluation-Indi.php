@@ -532,17 +532,10 @@
               onclick="window.location.href='institutional-scholars.php'"
             >
               <i class="fas fa-chart-line w-5"></i>
-              <span>Reports</span>
+              <span>Institutional Scholars</span>
             </li>
 
-            <li
-              class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
-              data-nav="settings.php"
-              onclick="window.location.href='settings.php'"
-            >
-              <i class="fas fa-cogs w-5"></i>
-              <span>Settings</span>
-            </li>
+
 
             <li
               class="flex items-center gap-2 px-4 py-3 hover:bg-[#0d8ddb] cursor-pointer"
@@ -616,10 +609,19 @@
               class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal"
               type="button"
             >
-              Account ▾
+              Account
             </button>
           </div>
         </header>
+
+        <section
+          class="page-header mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+        >
+          <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+            <i class="fas fa-flag"></i>
+            DEPARTMENTAL EVALUATION
+          </h2>
+        </section>
 
         <!-- Department Evaluation Form -->
         <section

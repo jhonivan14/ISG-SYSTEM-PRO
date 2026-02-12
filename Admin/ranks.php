@@ -19,7 +19,7 @@
       }
       .paper {
         width: 100%;
-        max-width: 1150px;
+        max-width: none;
         padding: 18px;
         background-color: #fff;
         font-family: "Times New Roman", serif;
@@ -75,6 +75,26 @@
         height: 80px;
         object-fit: contain;
       }
+      @media (max-width: 767px) {
+        .paper {
+          padding: 12px;
+        }
+        .header-left {
+          flex-direction: column;
+          text-align: center;
+        }
+        .header-left-text {
+          text-align: center;
+        }
+        .header-left img {
+          width: 64px;
+          height: 64px;
+        }
+        .header-right img {
+          width: 84px;
+          height: 64px;
+        }
+      }
       @page {
         size: A4;
         margin: 10mm;
@@ -106,12 +126,31 @@
           page-break-inside: avoid;
           page-break-after: auto;
         }
+        .paper table {
+          width: 100% !important;
+          table-layout: fixed;
+          font-size: 9.5px !important;
+        }
+
+        .paper th,
+        .paper td {
+          padding: 2px 3px !important;
+          line-height: 1.15 !important;
+          min-width: 0 !important;
+          white-space: normal !important;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .paper .overflow-x-auto {
+          overflow: visible !important;
+        }
       }
     </style>
   </head>
   <body class="font-sans">
     <div class="min-h-screen">
-      <aside id="sidebar" class="admin-sidebar flex flex-col bg-[#052c6a] text-white w-56 h-screen fixed left-0 top-0">
+      <aside id="sidebar" class="admin-sidebar flex flex-col bg-[#052c6a] text-white w-56 h-screen fixed left-0 top-0 z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out overflow-y-auto">
         <div class="flex items-center gap-3 px-4 py-4 border-b border-[#0d8ddb]">
           <img
             src="../img/SMCCNEWLOGO.png"
@@ -243,9 +282,18 @@
     </div>
   </div>
       </aside>
-      <main class="admin-content ml-56 flex flex-col min-h-screen bg-[#f8fafc]">
-        <header class="admin-topbar fixed top-0 left-56 right-0 z-20 flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2">
-          <div></div>
+      <main class="admin-content ml-0 md:ml-56 flex flex-col min-h-screen bg-[#f8fafc]">
+        <header class="admin-topbar fixed top-0 left-0 md:left-56 right-0 z-20 flex items-center justify-between bg-[#052c6a] text-white text-xs px-4 py-2">
+          <div class="flex items-center gap-2">
+            <button
+              id="sidebarToggle"
+              class="md:hidden inline-flex items-center justify-center p-2 rounded bg-[#0d8ddb] focus:outline-none"
+              type="button"
+            >
+              <i class="fas fa-bars"></i>
+            </button>
+            <span class="text-[11px] font-semibold md:hidden">Admission &amp; Scholarship</span>
+          </div>
           <div class="flex gap-2 text-xs">
             <button
               type="button"
@@ -259,9 +307,19 @@
             </button>
           </div>
         </header>
-        <section class="flex flex-col items-center px-4 pt-16 pb-8">
-          <div class="no-print w-full max-w-6xl flex flex-wrap gap-3 text-xs items-center justify-center mb-4">
-            <div class="flex flex-wrap items-center gap-3 justify-center">
+
+        <section
+          class="page-header no-print mt-12 border-b border-[#0d8ddb] px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between"
+        >
+          <h2 class="text-[#0d8ddb] text-lg font-semibold flex items-center gap-2 mb-2 sm:mb-0">
+            <i class="fas fa-flag"></i>
+           RANKING
+          </h2>
+        </section>
+
+        <section class="flex flex-col px-3 sm:px-4 lg:px-6 pt-6 md:pt-16 pb-6 bg-[#eef2f7] flex-1 min-h-[calc(100vh-3rem)]">
+          <div class="no-print w-full flex flex-col sm:flex-row gap-3 text-xs items-stretch sm:items-center justify-between mb-4">
+            <div class="flex flex-wrap items-center gap-3 justify-start sm:justify-center">
               <label for="academicYear" class="font-semibold text-slate-600">Academic Year</label>
               <select
                 id="academicYear"
@@ -280,12 +338,12 @@
                 <option value="2nd">2nd Semester</option>
               </select>
             </div>
-            <div class="flex items-center gap-2 justify-center">
+            <div class="flex items-center gap-2 justify-start sm:justify-center">
               <button class="px-6 py-1 text-xs rounded bg-[#003b7d] text-white shadow" onclick="window.print()">Print</button>
             </div>
           </div>
 
-          <div class="paper mx-auto bg-white border border-slate-300 shadow-xl print:shadow-none print:border-0">
+          <div class="paper w-full bg-white border border-slate-300 shadow-xl print:shadow-none print:border-0">
             <div class="document-header">
               <div class="header-top">
                 <div class="header-left">
@@ -313,28 +371,41 @@
               <p class="text-[12px]">Batch 2</p>
             </div>
             <div class="overflow-x-auto mt-3">
-              <table class="w-full border-collapse border border-black text-[11px]">
+              <table class="w-full border-collapse border border-black text-[12px]">
+                <colgroup>
+                  <col style="width: 4%" />
+                  <col style="width: 26%" />
+                  <col style="width: 6%" />
+                  <col style="width: 6%" />
+                  <col style="width: 6%" />
+                  <col style="width: 6%" />
+                  <col style="width: 6%" />
+                  <col style="width: 6%" />
+                  <col style="width: 8%" />
+                  <col style="width: 5%" />
+                  <col style="width: 21%" />
+                </colgroup>
                 <thead>
                   <tr class="text-center font-semibold bg-white">
-                    <th rowspan="3" class="border border-black px-1 py-1 w-[40px]">SEQ.</th>
-                    <th rowspan="3" class="border border-black px-1 py-1 text-left min-w-[220px]">NAME OF APPLICANT</th>
-                    <th colspan="6" class="border border-black px-1 py-1">RATING</th>
-                    <th rowspan="3" class="border border-black px-1 py-1 w-[60px]">100%<br />AVERAGE</th>
-                    <th rowspan="3" class="border border-black px-1 py-1 w-[50px]">RANK</th>
-                    <th rowspan="3" class="border border-black px-1 py-1 min-w-[120px]">REMARKS</th>
+                    <th rowspan="3" class="border border-black px-2 py-2 w-[56px]">SEQ.</th>
+                    <th rowspan="3" class="border border-black px-2 py-2 text-left min-w-[260px]">NAME OF APPLICANT</th>
+                    <th colspan="6" class="border border-black px-2 py-2">RATING</th>
+                    <th rowspan="3" class="border border-black px-2 py-2 w-[78px]">100%<br />AVERAGE</th>
+                    <th rowspan="3" class="border border-black px-2 py-2 w-[64px]">RANK</th>
+                    <th rowspan="3" class="border border-black px-2 py-2 min-w-[170px]">REMARKS</th>
                   </tr>
                   <tr class="text-center font-semibold bg-white">
-                    <th colspan="2" class="border border-black px-1 py-1 bg-green-200">Examination</th>
-                    <th colspan="2" class="border border-black px-1 py-1 bg-orange-200">Interview</th>
-                    <th colspan="2" class="border border-black px-1 py-1 bg-yellow-200">Grades</th>
+                    <th colspan="2" class="border border-black px-2 py-2 bg-green-200">Examination</th>
+                    <th colspan="2" class="border border-black px-2 py-2 bg-orange-200">Interview</th>
+                    <th colspan="2" class="border border-black px-2 py-2 bg-yellow-200">Grades</th>
                   </tr>
                   <tr class="text-center font-semibold bg-white">
-                    <th class="border border-black px-1 py-1">Rating</th>
-                    <th class="border border-black px-1 py-1">30%</th>
-                    <th class="border border-black px-1 py-1">Rating</th>
-                    <th class="border border-black px-1 py-1">40%</th>
-                    <th class="border border-black px-1 py-1">Rating</th>
-                    <th class="border border-black px-1 py-1">30%</th>
+                    <th class="border border-black px-2 py-2">Rating</th>
+                    <th class="border border-black px-2 py-2">30%</th>
+                    <th class="border border-black px-2 py-2">Rating</th>
+                    <th class="border border-black px-2 py-2">40%</th>
+                    <th class="border border-black px-2 py-2">Rating</th>
+                    <th class="border border-black px-2 py-2">30%</th>
                   </tr>
                 </thead>
                 <tbody id="rankTableBody"></tbody>
@@ -343,7 +414,7 @@
             <div class="mt-8 text-[12px] space-y-8">
               <div>
                 <p class="mb-10">Prepared by:</p>
-                <p class="font-semibold border-t border-black inline-block pt-1">ARLYN B. TUYOGON, MMGM</p>
+                <p class="font-semibold border-t border-black inline-block pt-1">ARLYN B. TUYOGON, MMBM</p>
                 <p class="text-[11px]">Head, Admission & Scholarship</p>
               </div>
               <div>
@@ -363,106 +434,107 @@
     </div>
     <script>
       const rows = [
-        { name: 'Ramon B. Cruz', ex30: 25.20, exRate: 84.00, in40: 36.80, inRate: 92.00, gr30: 28.20, grRate: 94.00, avg: 90.20, rank: 1, remarks: '' },
-        { name: 'Jessa Mae G. Vargas', ex30: 24.00, exRate: 80.00, in40: 34.40, inRate: 86.00, gr30: 27.00, grRate: 90.00, avg: 85.40, rank: 2, remarks: '' },
-        { name: 'Lawrence T. Banaybanay', ex30: 23.10, exRate: 77.00, in40: 32.80, inRate: 82.00, gr30: 27.90, grRate: 93.00, avg: 83.80, rank: 3, remarks: '' },
-        { name: 'Shiela Marie P. Aquino', ex30: 24.00, exRate: 80.00, in40: 31.40, inRate: 78.50, gr30: 28.50, grRate: 95.00, avg: 83.90, rank: 4, remarks: '' },
-        { name: 'Emmanuel D. Ybanez', ex30: 22.50, exRate: 75.00, in40: 30.00, inRate: 75.00, gr30: 26.70, grRate: 89.00, avg: 79.20, rank: 5, remarks: '' },
-        { name: 'Kristine Joy R. Sabellano', ex30: 21.60, exRate: 72.00, in40: 29.20, inRate: 73.00, gr30: 26.40, grRate: 88.00, avg: 76.80, rank: 6, remarks: '' },
-        { name: 'Ralph Adrian B. Daguplo', ex30: 21.30, exRate: 71.00, in40: 28.80, inRate: 72.00, gr30: 25.50, grRate: 85.00, avg: 75.60, rank: 7, remarks: '' },
-        { name: 'Princess Mae G. Rebato', ex30: 20.70, exRate: 69.00, in40: 27.60, inRate: 69.00, gr30: 24.90, grRate: 83.00, avg: 73.20, rank: 8, remarks: '' },
-        { name: 'Michael Lloyd E. Ceballos', ex30: 19.80, exRate: 66.00, in40: 26.80, inRate: 67.00, gr30: 23.70, grRate: 79.00, avg: 70.30, rank: 9, remarks: '' },
-        { name: 'Mary Rose F. Tual', ex30: 19.20, exRate: 64.00, in40: 25.60, inRate: 64.00, gr30: 22.50, grRate: 75.00, avg: 67.30, rank: 10, remarks: '' },
+        { name: "Ramon B. Cruz", ex30: 25.20, exRate: 84.00, in40: 36.80, inRate: 92.00, gr30: 28.20, grRate: 94.00, avg: 90.20, rank: 1, remarks: "" },
+        { name: "Jessa Mae G. Vargas", ex30: 24.00, exRate: 80.00, in40: 34.40, inRate: 86.00, gr30: 27.00, grRate: 90.00, avg: 85.40, rank: 2, remarks: "" },
+        { name: "Lawrence T. Banaybanay", ex30: 23.10, exRate: 77.00, in40: 32.80, inRate: 82.00, gr30: 27.90, grRate: 93.00, avg: 83.80, rank: 3, remarks: "" },
+        { name: "Shiela Marie P. Aquino", ex30: 24.00, exRate: 80.00, in40: 31.40, inRate: 78.50, gr30: 28.50, grRate: 95.00, avg: 83.90, rank: 4, remarks: "" },
+        { name: "Emmanuel D. Ybanez", ex30: 22.50, exRate: 75.00, in40: 30.00, inRate: 75.00, gr30: 26.70, grRate: 89.00, avg: 79.20, rank: 5, remarks: "" },
+        { name: "Kristine Joy R. Sabellano", ex30: 21.60, exRate: 72.00, in40: 29.20, inRate: 73.00, gr30: 26.40, grRate: 88.00, avg: 76.80, rank: 6, remarks: "" },
+        { name: "Ralph Adrian B. Daguplo", ex30: 21.30, exRate: 71.00, in40: 28.80, inRate: 72.00, gr30: 25.50, grRate: 85.00, avg: 75.60, rank: 7, remarks: "" },
+        { name: "Princess Mae G. Rebato", ex30: 20.70, exRate: 69.00, in40: 27.60, inRate: 69.00, gr30: 24.90, grRate: 83.00, avg: 73.20, rank: 8, remarks: "" },
+        { name: "Michael Lloyd E. Ceballos", ex30: 19.80, exRate: 66.00, in40: 26.80, inRate: 67.00, gr30: 23.70, grRate: 79.00, avg: 70.30, rank: 9, remarks: "" },
+        { name: "Mary Rose F. Tual", ex30: 19.20, exRate: 64.00, in40: 25.60, inRate: 64.00, gr30: 22.50, grRate: 75.00, avg: 67.30, rank: 10, remarks: "" }
       ];
 
-      const tbody = document.getElementById('rankTableBody');
-      rows.forEach((row, index) => {
-        const tr = document.createElement('tr');
-        tr.className = 'border border-black text-[11px]';
-        tr.innerHTML = `
-          <td class="border border-black px-1 text-center">${index + 1}</td>
-          <td class="border border-black px-1">${row.name}</td>
-          <td class="border border-black px-1 text-center">${row.exRate.toFixed(2)}</td>
-          <td class="border border-black px-1 text-center">${row.ex30.toFixed(2)}</td>
-          <td class="border border-black px-1 text-center">${row.inRate.toFixed(2)}</td>
-          <td class="border border-black px-1 text-center">${row.in40.toFixed(2)}</td>
-          <td class="border border-black px-1 text-center">${row.grRate.toFixed(2)}</td>
-          <td class="border border-black px-1 text-center">${row.gr30.toFixed(2)}</td>
-          <td class="border border-black px-1 text-center font-semibold">${row.avg.toFixed(2)}</td>
-          <td class="border border-black px-1 text-center font-semibold">${row.rank}</td>
-          <td class="border border-black px-1">${row.remarks}</td>
-        `;
-        tbody.appendChild(tr);
+      function renderRankRows() {
+        const tbody = document.getElementById("rankTableBody");
+        if (!tbody) return;
+
+        tbody.innerHTML = "";
+        rows.forEach((row, index) => {
+          const tr = document.createElement("tr");
+          tr.className = "border border-black text-[12px]";
+          tr.innerHTML = `
+            <td class="border border-black px-2 py-2 text-center">${index + 1}</td>
+            <td class="border border-black px-2 py-2">${row.name}</td>
+            <td class="border border-black px-2 py-2 text-center">${row.exRate.toFixed(2)}</td>
+            <td class="border border-black px-2 py-2 text-center">${row.ex30.toFixed(2)}</td>
+            <td class="border border-black px-2 py-2 text-center">${row.inRate.toFixed(2)}</td>
+            <td class="border border-black px-2 py-2 text-center">${row.in40.toFixed(2)}</td>
+            <td class="border border-black px-2 py-2 text-center">${row.grRate.toFixed(2)}</td>
+            <td class="border border-black px-2 py-2 text-center">${row.gr30.toFixed(2)}</td>
+            <td class="border border-black px-2 py-2 text-center font-semibold">${row.avg.toFixed(2)}</td>
+            <td class="border border-black px-2 py-2 text-center font-semibold">${row.rank}</td>
+            <td class="border border-black px-2 py-2">${row.remarks}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+
+      function setupTermText() {
+        const academicYearSelect = document.getElementById("academicYear");
+        const semesterSelect = document.getElementById("semesterSelect");
+        const termText = document.getElementById("termText");
+        if (!academicYearSelect || !semesterSelect || !termText) return;
+
+        const updateTermText = () => {
+          const semester = semesterSelect.value;
+          termText.textContent = `${semester} Semester, S.Y. ${academicYearSelect.value}`;
+        };
+
+        academicYearSelect.addEventListener("change", updateTermText);
+        semesterSelect.addEventListener("change", updateTermText);
+        updateTermText();
+      }
+
+      function setupSidebar() {
+        const sidebar = document.getElementById("sidebar");
+        const toggleBtn = document.getElementById("sidebarToggle");
+
+        if (toggleBtn && sidebar) {
+          toggleBtn.addEventListener("click", () => {
+            sidebar.classList.toggle("-translate-x-full");
+          });
+
+          sidebar.querySelectorAll("li").forEach((item) => {
+            item.addEventListener("click", () => {
+              if (window.innerWidth < 768) {
+                sidebar.classList.add("-translate-x-full");
+              }
+            });
+          });
+        }
+      }
+
+      function markActiveSidebarItem() {
+        const sidebar = document.getElementById("sidebar");
+        if (!sidebar) return;
+
+        const currentPage = window.location.pathname.split("/").pop().toLowerCase();
+        const sidebarAliases = {
+          "view-application.php": "applicant.php",
+          "department-evaluation-indi.php": "department-evaluation-list.php",
+          "summary-reports.php": "summary-report.php",
+          "list-0f-qualified.php": "list-of-qualified.php"
+        };
+        const activePage = sidebarAliases[currentPage] || currentPage;
+
+        sidebar.querySelectorAll("li[data-nav]").forEach((item) => {
+          const target = (item.dataset.nav || "").toLowerCase();
+          const isActive = target === activePage;
+          item.classList.toggle("bg-[#fcdc2f]", isActive);
+          item.classList.toggle("bg-opacity-90", isActive);
+          item.classList.toggle("text-[#052c6a]", isActive);
+          item.classList.toggle("hover:bg-[#0d8ddb]", !isActive);
+        });
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        renderRankRows();
+        setupTermText();
+        setupSidebar();
+        markActiveSidebarItem();
       });
-
-      const academicYearSelect = document.getElementById('academicYear');
-      const semesterSelect = document.getElementById('semesterSelect');
-      const termText = document.getElementById('termText');
-
-      const updateTermText = () => {
-        const semester = semesterSelect.value;
-        termText.textContent = `${semester} Semester, S.Y. ${academicYearSelect.value}`;
-      };
-
-      academicYearSelect.addEventListener('change', updateTermText);
-      semesterSelect.addEventListener('change', updateTermText);
-      updateTermText();
     </script>
-  <script>
-document.addEventListener("DOMContentLoaded", () => {
-  const sidebar = document.getElementById("sidebar");
-  if (!sidebar) {
-    return;
-  }
-
-  const currentPage = window.location.pathname.split("/").pop().toLowerCase();
-  const sidebarAliases = {
-    "view-application.php": "applicant.php",
-    "department-evaluation-indi.php": "department-evaluation-list.php",
-    "summary-reports.php": "summary-report.php",
-    "list-0f-qualified.php": "list-of-qualified.php"
-  };
-  const activePage = sidebarAliases[currentPage] || currentPage;
-
-  sidebar.querySelectorAll("li[data-nav]").forEach((item) => {
-    const target = (item.dataset.nav || "").toLowerCase();
-    const isActive = target === activePage;
-    item.classList.toggle("bg-[#fcdc2f]", isActive);
-    item.classList.toggle("bg-opacity-90", isActive);
-    item.classList.toggle("text-[#052c6a]", isActive);
-    item.classList.toggle("hover:bg-[#0d8ddb]", !isActive);
-  });
-});
-</script>
-</body>
+  </body>
 </html>
-  <script>
-document.addEventListener("DOMContentLoaded", () => {
-  const sidebar = document.getElementById("sidebar");
-  if (!sidebar) {
-    return;
-  }
-
-  const currentPage = window.location.pathname.split("/").pop().toLowerCase();
-  const sidebarAliases = {
-    "view-application.php": "applicant.php",
-    "department-evaluation-indi.php": "department-evaluation-list.php",
-    "summary-reports.php": "summary-report.php",
-    "list-0f-qualified.php": "list-of-qualified.php"
-  };
-  const activePage = sidebarAliases[currentPage] || currentPage;
-
-  sidebar.querySelectorAll("li[data-nav]").forEach((item) => {
-    const target = (item.dataset.nav || "").toLowerCase();
-    const isActive = target === activePage;
-    item.classList.toggle("bg-[#fcdc2f]", isActive);
-    item.classList.toggle("bg-opacity-90", isActive);
-    item.classList.toggle("text-[#052c6a]", isActive);
-    item.classList.toggle("hover:bg-[#0d8ddb]", !isActive);
-  });
-});
-</script>
-</body>
-  </html>
-
-
