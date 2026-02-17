@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . "/includes/school-term-filter.php"; ?>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -87,6 +88,7 @@
         #sidebar,
         .topbar,
         .page-header,
+        .term-filter-bar,
         #sidebarToggle {
           display: none !important;
         }
@@ -262,6 +264,43 @@
           </h2>
         </section>
 
+        <form class="term-filter-bar px-4 sm:px-6 mt-4 flex flex-wrap justify-end gap-2" method="get" action="summary-report.php">
+          <select
+            class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+            name="school_year"
+            aria-label="Select academic year"
+            onchange="this.form.submit()"
+          >
+            <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+            <?php foreach ($schoolYearOptions as $option): ?>
+              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                <?php echo htmlspecialchars($option); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <select
+            class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+            name="semester"
+            aria-label="Select semester"
+            onchange="this.form.submit()"
+          >
+            <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+            <?php foreach ($semesterOptions as $option): ?>
+              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                <?php echo htmlspecialchars($option); ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+          <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+            <a
+              href="summary-report.php"
+              class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
+            >
+              Clear
+            </a>
+          <?php endif; ?>
+        </form>
+
         <section class="px-4 sm:px-6 py-4">
           <div class="report-wrapper max-w-5xl mx-auto bg-white border border-slate-200 rounded-md shadow-sm p-6">
             <header class="report-header">
@@ -296,7 +335,7 @@
             <div class="thin-rule my-1"></div>
             <section class="text-center mb-4">
               <h2 class="font-bold text-base">STUDENT ASSISTANTS' EVALUATION SUMMARY REPORT</h2>
-              <p class="font-semibold text-sm">2nd Semester, A.Y. 2024-2025</p>
+              <p class="font-semibold text-sm"><?php echo htmlspecialchars($displaySemester); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
             </section>
 
             <div class="overflow-x-auto mb-6">

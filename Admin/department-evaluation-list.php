@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . "/includes/school-term-filter.php"; ?>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -200,28 +201,50 @@
                     class="mt-1 w-full border border-[#e5e7eb] rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
                   />
                 </div>
-                <div>
-                  <label for="yearFilter" class="text-xs text-gray-600">Academic Year</label>
-                  <select
-                    id="yearFilter"
-                    class="mt-1 w-full border border-[#e5e7eb] rounded px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
-                  >
-                    <option value="all">All Academic Years</option>
-                    <option value="all">2025-2026</option>
-                    <option value="all">2026-2027</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="semFilter" class="text-xs text-gray-600">Semester</label>
-                  <select
-                    id="semFilter"
-                    class="mt-1 w-full border border-[#e5e7eb] rounded px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
-                  >
-                    <option value="all">All Semesters</option>
-                    <option value="1st Semester">1st Semester</option>
-                    <option value="2nd Semester">2nd Semester</option>
-                  </select>
-                </div>
+                <form method="get" action="department-evaluation-list.php" class="contents">
+                  <div>
+                    <label for="yearFilter" class="text-xs text-gray-600">Academic Year</label>
+                    <select
+                      id="yearFilter"
+                      name="school_year"
+                      class="mt-1 w-full border border-[#e5e7eb] rounded px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                      aria-label="Select academic year"
+                      onchange="this.form.submit()"
+                    >
+                      <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All Academic Years</option>
+                      <?php foreach ($schoolYearOptions as $option): ?>
+                        <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                          <?php echo htmlspecialchars($option); ?>
+                        </option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="semFilter" class="text-xs text-gray-600">Semester</label>
+                    <select
+                      id="semFilter"
+                      name="semester"
+                      class="mt-1 w-full border border-[#e5e7eb] rounded px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                      aria-label="Select semester"
+                      onchange="this.form.submit()"
+                    >
+                      <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                      <?php foreach ($semesterOptions as $option): ?>
+                        <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                          <?php echo htmlspecialchars($option); ?>
+                        </option>
+                      <?php endforeach; ?>
+                    </select>
+                    <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+                      <a
+                        href="department-evaluation-list.php"
+                        class="inline-flex items-center mt-2 rounded border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs font-semibold text-[#052c6a]"
+                      >
+                        Clear
+                      </a>
+                    <?php endif; ?>
+                  </div>
+                </form>
               </div>
             </div>
             <div class="bg-white rounded-lg shadow-sm border border-[#e5e7eb] flex-1 flex flex-col min-h-[420px]">
@@ -326,19 +349,8 @@
 
         let evalOpen = false;
         let searchTerm = "";
-        let yearSelection = "all";
-        let semSelection = "all";
-
-        // Populate academic year options
-        if (yearFilter) {
-          const years = Array.from(new Set(assistantData.map((i) => i.academicYear))).sort().reverse();
-          years.forEach((yr) => {
-            const opt = document.createElement("option");
-            opt.value = yr;
-            opt.textContent = yr;
-            yearFilter.appendChild(opt);
-          });
-        }
+        let yearSelection = yearFilter && yearFilter.value !== "" ? yearFilter.value : "all";
+        let semSelection = semFilter && semFilter.value !== "" ? semFilter.value : "all";
 
         const renderRows = () => {
           tbody.innerHTML = "";
@@ -426,14 +438,14 @@
 
         if (yearFilter) {
           yearFilter.addEventListener("change", (e) => {
-            yearSelection = e.target.value;
+            yearSelection = e.target.value || "all";
             renderRows();
           });
         }
 
         if (semFilter) {
           semFilter.addEventListener("change", (e) => {
-            semSelection = e.target.value;
+            semSelection = e.target.value || "all";
             renderRows();
           });
         }

@@ -1,3 +1,7 @@
+<?php
+$defaultBatchLabel = "Batch 1";
+require_once __DIR__ . "/includes/school-term-filter.php";
+?>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -47,7 +51,7 @@
       @media print {
         html, body { margin: 0 !important; padding: 0 !important; width: 100% !important; }
         body, .paper { background: white !important; font-family: "Times New Roman", serif !important; }
-        #sidebar, .admin-topbar, .print-btn-bar { display: none !important; }
+        #sidebar, .admin-topbar, .print-btn-bar, .page-header { display: none !important; }
         main, section { margin: 0 !important; padding: 0 !important; width: 100% !important; }
         .paper { border: none !important; box-shadow: none !important; margin: 0 auto !important; padding: 0 !important; }
         .paper-wrap { max-width: 100% !important; width: 100% !important; padding: 0 4px 12px 4px !important; }
@@ -238,25 +242,61 @@
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6 paper">
             <div class="w-full mx-auto paper-wrap">
               <div class="flex flex-wrap items-center justify-between gap-3 mb-3 print-btn-bar">
-                <div class="flex flex-wrap items-center gap-3 text-xs">
+                <form class="flex flex-wrap items-center gap-3 text-xs" method="get" action="list-of-qualified.php">
                   <label for="academicYear" class="font-semibold text-slate-700">Academic Year</label>
                   <select
                     id="academicYear"
+                    name="school_year"
                     class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                    aria-label="Select academic year"
+                    onchange="this.form.submit()"
                   >
-                    <option value="2025-2026" selected>2025-2026</option>
-                    <option value="2024-2025">2024-2025</option>
-                    <option value="2023-2024">2023-2024</option>
+                    <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                    <?php foreach ($schoolYearOptions as $option): ?>
+                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                        <?php echo htmlspecialchars($option); ?>
+                      </option>
+                    <?php endforeach; ?>
                   </select>
                   <label for="semesterSelect" class="font-semibold text-slate-700">Semester</label>
                   <select
                     id="semesterSelect"
+                    name="semester"
                     class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                    aria-label="Select semester"
+                    onchange="this.form.submit()"
                   >
-                    <option value="1st" selected>1st Semester</option>
-                    <option value="2nd">2nd Semester</option>
+                    <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                    <?php foreach ($semesterOptions as $option): ?>
+                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                        <?php echo htmlspecialchars($option); ?>
+                      </option>
+                    <?php endforeach; ?>
                   </select>
-                </div>
+                  <label for="batchSelect" class="font-semibold text-slate-700">Batch</label>
+                  <select
+                    id="batchSelect"
+                    name="batch"
+                    class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                    aria-label="Select batch"
+                    onchange="this.form.submit()"
+                  >
+                    <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
+                    <?php foreach ($batchOptions as $option): ?>
+                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
+                        <?php echo htmlspecialchars($option); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                  <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
+                    <a
+                      href="list-of-qualified.php"
+                      class="inline-flex items-center rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-[#052c6a]"
+                    >
+                      Clear
+                    </a>
+                  <?php endif; ?>
+                </form>
                 <button
                   type="button"
                   onclick="window.print()"
@@ -290,8 +330,8 @@
 
               <section class="text-center mb-4">
                 <h2 class="font-bold text-base">List of Qualified Applicants for Student Assistance Scholarship Program</h2>
-                <p class="font-semibold text-sm" id="termText">1st Semester, S.Y. 2025-2026</p>
-                <p class="font-semibold text-sm">Batch 1</p>
+                <p class="font-semibold text-sm" id="termText"><?php echo htmlspecialchars($displaySemester); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
+                <p class="font-semibold text-sm" id="batchText"><?php echo htmlspecialchars($displayBatch); ?></p>
               </section>
 
               <section>
@@ -371,7 +411,9 @@
 
         if (academicYearSelect && semesterSelect && termText) {
           const updateTermText = () => {
-            termText.textContent = `${semesterSelect.value} Semester, S.Y. ${academicYearSelect.value}`;
+            const semester = semesterSelect.value || "1st Semester";
+            const schoolYear = academicYearSelect.value || "<?php echo htmlspecialchars($currentSchoolYear, ENT_QUOTES); ?>";
+            termText.textContent = `${semester}, S.Y. ${schoolYear}`;
           };
           academicYearSelect.addEventListener("change", updateTermText);
           semesterSelect.addEventListener("change", updateTermText);

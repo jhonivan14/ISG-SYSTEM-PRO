@@ -1,3 +1,12 @@
+<?php
+$defaultBatchLabel = "Batch 3";
+require_once __DIR__ . "/includes/school-term-filter.php";
+require_once __DIR__ . "/includes/panelist-sent-applicants.php";
+$fromApproved = isset($_GET["source"]) && strtolower((string)$_GET["source"]) === "approved";
+$nextRoute = isset($_GET["next"]) ? strtolower(trim((string)$_GET["next"])) : "";
+$routeApplicantId = (int)($_GET["applicant_id"] ?? 0);
+$showProceedToRanks = $fromApproved && $nextRoute === "ranks";
+?>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -144,7 +153,8 @@
         }
         #sidebar,
         .print-btn-bar,
-        .admin-topbar {
+        .admin-topbar,
+        main > .page-header {
           display: none !important;
         }
         main, section {
@@ -169,6 +179,20 @@
         }
         .plain-table table {
           min-width: 0 !important;
+        }
+        .paper .header-top {
+          flex-wrap: nowrap !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 0.75rem !important;
+        }
+        .paper .header-left {
+          flex-direction: row !important;
+          align-items: center !important;
+          gap: 0.5rem !important;
+        }
+        .paper .header-left-text {
+          text-align: left !important;
         }
       }
     </style>
@@ -362,9 +386,72 @@
 
         <!-- Print-friendly Interview Result -->
         <section class="px-3 sm:px-6 py-4 sm:py-6">
+          <?php if ($showProceedToRanks): ?>
+            <div class="mb-3 rounded-lg border border-[#0d8ddb] bg-[#e8f3ff] px-4 py-3 text-xs font-semibold text-[#052c6a] no-print">
+              Applicant routed from Approved Applications.
+              <a
+                href="ranks.php<?php echo $routeApplicantId > 0 ? '?applicant_id=' . urlencode((string)$routeApplicantId) . '&source=interview' : ''; ?>"
+                class="ml-2 inline-flex items-center rounded border border-[#0d8ddb] bg-white px-2 py-1 text-[11px] font-semibold text-[#0d8ddb] hover:bg-[#0d8ddb] hover:text-white"
+              >
+                Proceed to Ranks
+              </a>
+            </div>
+          <?php endif; ?>
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6 paper">
             <div class="w-full mx-auto paper-wrap">
-              <div class="flex justify-start sm:justify-end mb-3 print-btn-bar">
+              <div class="flex flex-wrap items-center justify-between gap-3 mb-3 print-btn-bar">
+                <form class="flex flex-wrap items-center gap-2 text-xs" method="get" action="interviewEvaluation.php">
+                  <select
+                    id="academicYear"
+                    name="school_year"
+                    class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                    aria-label="Select academic year"
+                    onchange="this.form.submit()"
+                  >
+                    <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                    <?php foreach ($schoolYearOptions as $option): ?>
+                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                        <?php echo htmlspecialchars($option); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                  <select
+                    id="semesterSelect"
+                    name="semester"
+                    class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                    aria-label="Select semester"
+                    onchange="this.form.submit()"
+                  >
+                    <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                    <?php foreach ($semesterOptions as $option): ?>
+                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                        <?php echo htmlspecialchars($option); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                  <select
+                    id="batchSelect"
+                    name="batch"
+                    class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                    aria-label="Select batch"
+                    onchange="this.form.submit()"
+                  >
+                    <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
+                    <?php foreach ($batchOptions as $option): ?>
+                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
+                        <?php echo htmlspecialchars($option); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                  <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
+                    <a
+                      href="interviewEvaluation.php"
+                      class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
+                    >
+                      Clear
+                    </a>
+                  <?php endif; ?>
+                </form>
                 <button
                   type="button"
                   onclick="window.print()"
@@ -402,8 +489,8 @@
 
               <section class="text-center mb-4">
                 <h2 class="font-bold text-base">Student Assistance Applicants' Interview Result</h2>
-                <p class="font-semibold text-sm">1st Semester, S.Y. 2025-2026</p>
-                <p class="font-semibold text-sm">Batch 3</p>
+                <p class="font-semibold text-sm"><?php echo htmlspecialchars($displaySemester); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
+                <p class="font-semibold text-sm"><?php echo htmlspecialchars($displayBatch); ?></p>
               </section>
 
               <section class="plain-table mb-8">
@@ -419,14 +506,27 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr><td>1</td><td></td><td></td><td></td><td></td><td></td></tr>
-                    <tr><td>2</td><td></td><td></td><td></td><td></td><td></td></tr>
-                    <tr><td>3</td><td></td><td></td><td></td><td></td><td></td></tr>
-                    <tr><td>4</td><td></td><td></td><td></td><td></td><td></td></tr>
-                    <tr><td>5</td><td></td><td></td><td></td><td></td><td></td></tr>
-                    <tr><td>6</td><td></td><td></td><td></td><td></td><td></td></tr>
-                    <tr><td>7</td><td></td><td></td><td></td><td></td><td></td></tr>
-                    <tr><td>8</td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <?php if (!empty($panelistSentApplicants)): ?>
+                      <?php foreach ($panelistSentApplicants as $index => $sentApplicant): ?>
+                        <tr>
+                          <td><?= htmlspecialchars((string)($index + 1)) ?></td>
+                          <td><?= htmlspecialchars((string)($sentApplicant["name"] ?? "")) ?></td>
+                          <td></td>
+                          <td></td>
+                          <td></td>
+                          <td></td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php else: ?>
+                      <tr><td>1</td><td></td><td></td><td></td><td></td><td></td></tr>
+                      <tr><td>2</td><td></td><td></td><td></td><td></td><td></td></tr>
+                      <tr><td>3</td><td></td><td></td><td></td><td></td><td></td></tr>
+                      <tr><td>4</td><td></td><td></td><td></td><td></td><td></td></tr>
+                      <tr><td>5</td><td></td><td></td><td></td><td></td><td></td></tr>
+                      <tr><td>6</td><td></td><td></td><td></td><td></td><td></td></tr>
+                      <tr><td>7</td><td></td><td></td><td></td><td></td><td></td></tr>
+                      <tr><td>8</td><td></td><td></td><td></td><td></td><td></td></tr>
+                    <?php endif; ?>
                   </tbody>
                 </table>
               </section>

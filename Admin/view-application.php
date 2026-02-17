@@ -7,6 +7,9 @@ $application = [];
 $uploadedRequirements = [];
 $loadError = "";
 $actionMessage = "";
+$batchOptions = ["Batch 1", "Batch 2", "Batch 3", "Batch 4", "Batch 5"];
+$batchColumnExists = false;
+$isStudentAssistantApplicant = false;
 $grantRequirements = [
   1 => [
     "2x2 ID Picture",
@@ -79,6 +82,12 @@ function app_value(array $application, string $key): string {
   return isset($application[$key]) ? (string)$application[$key] : "";
 }
 
+$batchColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'batch'");
+if ($batchColumnResult instanceof mysqli_result) {
+  $batchColumnExists = $batchColumnResult->num_rows > 0;
+  $batchColumnResult->free();
+}
+
 if ($applicationId <= 0) {
   $loadError = "Missing application id.";
 } else {
@@ -90,6 +99,7 @@ if ($applicationId <= 0) {
     $row = $result ? $result->fetch_assoc() : null;
     if ($row) {
       $application = $row;
+      $isStudentAssistantApplicant = (int)($application["grant_id"] ?? 0) === 1;
     } else {
       $loadError = "Application not found.";
     }
@@ -101,14 +111,27 @@ if ($applicationId <= 0) {
 
 $postAction = isset($_POST["application_action"]) ? (string)$_POST["application_action"] : "";
 $postId = (int)($_POST["application_id"] ?? 0);
+$postBatch = trim((string)($_POST["application_batch"] ?? ""));
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   if ($postId <= 0 || ($postAction !== "approve" && $postAction !== "decline")) {
     $actionMessage = "Invalid action request.";
+  } elseif ($postAction === "approve" && $isStudentAssistantApplicant && !$batchColumnExists) {
+    $actionMessage = "Batch assignment is not yet configured. Please add a 'batch' column to the applications table first.";
+  } elseif ($postAction === "approve" && $isStudentAssistantApplicant && ($postBatch === "" || !in_array($postBatch, $batchOptions, true))) {
+    $actionMessage = "Please select a valid batch before approving.";
   } else {
     $newStatus = $postAction === "approve" ? "Approved" : "Rejected";
-    $updateStmt = $conn->prepare("UPDATE applications SET status = ? WHERE id = ?");
+    $shouldUpdateBatch = $postAction === "approve" && $isStudentAssistantApplicant;
+    $updateSql = $shouldUpdateBatch
+      ? "UPDATE applications SET status = ?, batch = ? WHERE id = ?"
+      : "UPDATE applications SET status = ? WHERE id = ?";
+    $updateStmt = $conn->prepare($updateSql);
     if ($updateStmt) {
-      $updateStmt->bind_param("si", $newStatus, $postId);
+      if ($shouldUpdateBatch) {
+        $updateStmt->bind_param("ssi", $newStatus, $postBatch, $postId);
+      } else {
+        $updateStmt->bind_param("si", $newStatus, $postId);
+      }
       $updateStmt->execute();
       $updateStmt->close();
       header("Location: applicant.php");
@@ -765,6 +788,31 @@ foreach ($uploadedRequirements as $upload) {
             >
               <input type="hidden" name="application_id" value="<?= htmlspecialchars((string)$applicationId) ?>" />
               <input type="hidden" name="application_action" id="applicationActionInput" value="" />
+              <?php if ($isStudentAssistantApplicant && $batchColumnExists): ?>
+                <label for="applicationBatchInput" class="text-xs font-semibold text-[#052c6a]">
+                  Assign Batch
+                </label>
+                <select
+                  id="applicationBatchInput"
+                  name="application_batch"
+                  class="rounded border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] focus:outline-none"
+                  aria-label="Assign applicant batch"
+                >
+                  <option value="">Select batch...</option>
+                  <?php foreach ($batchOptions as $batchOption): ?>
+                    <option
+                      value="<?= htmlspecialchars($batchOption) ?>"
+                      <?= app_value($application, "batch") === $batchOption ? "selected" : "" ?>
+                    >
+                      <?= htmlspecialchars($batchOption) ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+              <?php elseif ($isStudentAssistantApplicant): ?>
+                <p class="text-[11px] font-semibold text-red-600">
+                  Batch column not found in applications table.
+                </p>
+              <?php endif; ?>
               <button
                 class="rounded bg-[#16a34a] px-4 py-2 text-xs font-semibold text-white hover:bg-[#15803d] transition"
                 type="button"
@@ -809,6 +857,7 @@ foreach ($uploadedRequirements as $upload) {
       document.addEventListener("DOMContentLoaded", () => {
         const form = document.getElementById("applicationActionForm");
         const actionInput = document.getElementById("applicationActionInput");
+        const batchInput = document.getElementById("applicationBatchInput");
         const actionButtons = document.querySelectorAll("[data-action]");
 
         const labels = {
@@ -832,9 +881,23 @@ foreach ($uploadedRequirements as $upload) {
             const label = labels[action];
             if (!label) return;
 
+            if (action === "approve" && batchInput && batchInput.value.trim() === "") {
+              Swal.fire({
+                title: "Batch is required",
+                text: "Please select a batch before approving this application.",
+                icon: "info",
+                confirmButtonColor: "#0d8ddb",
+              });
+              return;
+            }
+
+            const confirmText = action === "approve" && batchInput
+              ? `This applicant will move to approved list under ${batchInput.value}.`
+              : label.text;
+
             Swal.fire({
               title: label.title,
-              text: label.text,
+              text: confirmText,
               icon: "warning",
               showCancelButton: true,
               confirmButtonText: label.confirm,

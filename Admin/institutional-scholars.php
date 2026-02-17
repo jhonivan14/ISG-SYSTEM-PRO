@@ -1,9 +1,114 @@
+<?php
+require_once __DIR__ . "/includes/school-term-filter.php";
+
+$autoImportType = "";
+$autoImportMessage = "";
+$pendingImportRecord = null;
+$pendingImportCategory = "others";
+
+$grantToCategoryMap = [
+  1 => "student_assistant",
+  2 => "academic",
+  4 => "kabayani",
+  5 => "kabayani",
+];
+
+$grantLabels = [
+  1 => "Student Assistant",
+  2 => "Academic Scholarship Program",
+  3 => "Executive Student Government (ESG) President Scholarship Program",
+  4 => "Kabayani Scholarship Program",
+  5 => "Kabayani Loyalty Grant",
+  6 => "Discount for Persons with Disability (PWD)",
+  7 => "Discount for Children of Employees",
+  8 => "Discount for Sibling of Employees",
+  9 => "Sibling Discount",
+  10 => "DXSM-FM Grant",
+  11 => "Michaelinian Mirror Grant (Editor-in-Chief)",
+  12 => "Grant for the Dependents of a Lot Donor",
+  13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
+  14 => "SMCC Alumni Discount",
+];
+
+if (
+  isset($_GET["source"], $_GET["applicant_id"]) &&
+  strtolower(trim((string)$_GET["source"])) === "approved"
+) {
+  $confirmedApplicantId = (int)$_GET["applicant_id"];
+
+  if ($confirmedApplicantId <= 0) {
+    $autoImportType = "error";
+    $autoImportMessage = "Invalid applicant selected for import.";
+  } else {
+    $stmt = $conn->prepare(
+      "SELECT id, applicant_name, program_course, year_level, school_year, semester, grant_id, status
+       FROM applications
+       WHERE id = ?
+       LIMIT 1"
+    );
+
+    if ($stmt) {
+      $stmt->bind_param("i", $confirmedApplicantId);
+      $stmt->execute();
+      $result = $stmt->get_result();
+      $row = $result ? $result->fetch_assoc() : null;
+      $stmt->close();
+
+      if (!$row) {
+        $autoImportType = "error";
+        $autoImportMessage = "Applicant not found.";
+      } else {
+        $status = strtolower(trim((string)($row["status"] ?? "")));
+        if ($status !== "approved") {
+          $autoImportType = "error";
+          $autoImportMessage = "Only approved applicants can be added to Institutional Scholars.";
+        } else {
+          $grantId = (int)($row["grant_id"] ?? 0);
+          $pendingImportCategory = $grantToCategoryMap[$grantId] ?? "others";
+          $grantLabel = $grantLabels[$grantId] ?? "Others";
+
+          $program = trim((string)($row["program_course"] ?? ""));
+          $yearLevel = trim((string)($row["year_level"] ?? ""));
+          $programYear = $program;
+          if ($yearLevel !== "") {
+            $programYear .= ($programYear !== "" ? " / " : "") . $yearLevel;
+          }
+
+          $applicantName = trim((string)($row["applicant_name"] ?? ""));
+          $schoolYear = trim((string)($row["school_year"] ?? ""));
+          $semester = trim((string)($row["semester"] ?? ""));
+          $pendingImportRecord = [
+            "source_application_id" => (int)($row["id"] ?? 0),
+            "scholar_id" => "APP-" . str_pad((string)((int)($row["id"] ?? 0)), 5, "0", STR_PAD_LEFT),
+            "grant_applied" => $grantLabel,
+            "full_name" => $applicantName,
+            "program_year" => $programYear,
+            "assigned_office" => "",
+            "semester" => $semester !== "" ? $semester : $displaySemester,
+            "academic_year" => $schoolYear !== "" ? $schoolYear : $displaySchoolYear,
+            "remarks" => "Confirmed from Approved Applications",
+          ];
+
+          $autoImportType = "success";
+          $autoImportMessage = $applicantName !== ""
+            ? ($applicantName . " was added to Institutional Scholars.")
+            : "Applicant was added to Institutional Scholars.";
+        }
+      }
+    } else {
+      $autoImportType = "error";
+      $autoImportMessage = "Unable to load applicant details right now.";
+    }
+  }
+}
+?>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>Institutional Scholars</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
@@ -188,6 +293,54 @@
                 </div>
               </div>
 
+              <?php if ($autoImportMessage !== ""): ?>
+                <div class="mt-3 rounded-lg border px-3 py-2 text-xs font-semibold <?php echo $autoImportType === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"; ?>">
+                  <?php echo htmlspecialchars($autoImportMessage); ?>
+                </div>
+              <?php endif; ?>
+
+              <form class="mt-4 flex flex-wrap gap-2" method="get" action="institutional-scholars.php">
+                <select
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  name="school_year"
+                  aria-label="Select academic year"
+                  onchange="this.form.submit()"
+                >
+                  <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                  <?php foreach ($schoolYearOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <select
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  name="semester"
+                  aria-label="Select semester"
+                  onchange="this.form.submit()"
+                >
+                  <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                  <?php foreach ($semesterOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+                  <a
+                    href="institutional-scholars.php"
+                    class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
+                  >
+                    Clear
+                  </a>
+                <?php endif; ?>
+              </form>
+
+              <div
+                id="renewalTermNotice"
+                class="mt-3 hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800"
+              ></div>
+
               <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mt-4 text-xs">
                 <div class="rounded-lg border border-[#dbeafe] bg-[#eff6ff] px-3 py-2">
                   <p class="text-[#1e3a8a] font-semibold">Official Scholars</p>
@@ -238,18 +391,19 @@
                   <thead class="bg-gradient-to-r from-[#052c6a] to-[#0d8ddb] text-white">
                     <tr>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">No.</th>
-                      <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Scholar ID</th>
+                      <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Scholarship Grant</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Full Name</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Program / Year</th>
-                      <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Assigned Office</th>
+                      <th id="assignedOfficeHeader" class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Assigned Office</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Semester</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Academic Year</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Remarks</th>
+                      <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Action</th>
                     </tr>
                   </thead>
                   <tbody id="scholarRows" class="divide-y divide-[#e5e7eb] bg-white">
                     <tr>
-                      <td colspan="8" class="px-3 py-8 text-center text-gray-500 italic">No records yet for Official Scholars.</td>
+                      <td colspan="9" class="px-3 py-8 text-center text-gray-500 italic">No records yet for Official Scholars.</td>
                     </tr>
                   </tbody>
                 </table>
@@ -261,6 +415,20 @@
     </div>
 
     <script>
+      const selectedSchoolYear = <?php echo json_encode($selectedSchoolYear); ?>;
+      const selectedSemester = <?php echo json_encode($selectedSemester); ?>;
+      const displaySchoolYear = <?php echo json_encode($displaySchoolYear); ?>;
+      const displaySemester = <?php echo json_encode($displaySemester); ?>;
+      const currentSchoolYear = <?php echo json_encode($currentSchoolYear); ?>;
+      const nextSchoolYear = <?php
+        $currentStartYear = (int)substr((string)$currentSchoolYear, 0, 4);
+        echo json_encode(($currentStartYear + 1) . "-" . ($currentStartYear + 2));
+      ?>;
+      const activeFilterSchoolYear = String(selectedSchoolYear || displaySchoolYear || "").trim();
+      const activeFilterSemester = String(selectedSemester || displaySemester || "").trim();
+      const pendingImportRecord = <?php echo json_encode($pendingImportRecord, JSON_UNESCAPED_UNICODE); ?>;
+      const pendingImportCategory = <?php echo json_encode($pendingImportCategory); ?>;
+
       const categoryConfig = {
         official: {
           label: "Official Scholars",
@@ -317,6 +485,113 @@
         return safeParseArray(raw);
       }
 
+      function saveCategoryRecords(category, records) {
+        const config = categoryConfig[category];
+        if (!config) return;
+        localStorage.setItem(config.storageKey, JSON.stringify(Array.isArray(records) ? records : []));
+      }
+
+      function inferGrantFromOtherCategories(record) {
+        const sourceId = String(record && typeof record === "object" ? (record.source_application_id ?? "") : "").trim();
+        const scholarId = String(record && typeof record === "object" ? (record.scholar_id ?? "") : "").trim();
+        const lookupCategories = ["student_assistant", "kabayani", "academic", "others"];
+
+        for (let i = 0; i < lookupCategories.length; i += 1) {
+          const category = lookupCategories[i];
+          const records = getCategoryRecords(category);
+          for (let j = 0; j < records.length; j += 1) {
+            const item = records[j];
+            const itemSourceId = String(item && typeof item === "object" ? (item.source_application_id ?? "") : "").trim();
+            const itemScholarId = String(item && typeof item === "object" ? (item.scholar_id ?? "") : "").trim();
+            const sameSource = sourceId !== "" && itemSourceId === sourceId;
+            const sameScholar = scholarId !== "" && itemScholarId === scholarId;
+            if (!sameSource && !sameScholar) continue;
+
+            const explicitGrant = String(item && typeof item === "object" ? (item.grant_applied || item.grant || "") : "").trim();
+            if (explicitGrant !== "") return explicitGrant;
+
+            if (categoryConfig[category] && categoryConfig[category].label) {
+              return String(categoryConfig[category].label).trim();
+            }
+          }
+        }
+
+        return "";
+      }
+
+      function resolveGrantApplied(category, record) {
+        const explicitGrant = String(record && typeof record === "object" ? (record.grant_applied || record.grant || "") : "").trim();
+        if (explicitGrant !== "") return explicitGrant;
+
+        if (category !== "official") {
+          return categoryConfig[category] && categoryConfig[category].label
+            ? String(categoryConfig[category].label).trim()
+            : "Others";
+        }
+
+        const inferredGrant = inferGrantFromOtherCategories(record);
+        return inferredGrant !== "" ? inferredGrant : "Others";
+      }
+
+      function normalizeGrantLabels() {
+        const nonOfficialCategories = ["student_assistant", "kabayani", "academic", "others"];
+        let hasChanges = false;
+
+        nonOfficialCategories.forEach((category) => {
+          const label = categoryConfig[category] && categoryConfig[category].label
+            ? String(categoryConfig[category].label).trim()
+            : "Others";
+          const records = getCategoryRecords(category);
+          const nextRecords = records.map((record) => {
+            const currentGrant = String(record && typeof record === "object" ? (record.grant_applied || record.grant || "") : "").trim();
+            if (currentGrant !== "") return record;
+            hasChanges = true;
+            return { ...record, grant_applied: label };
+          });
+          saveCategoryRecords(category, nextRecords);
+        });
+
+        const officialRecords = getCategoryRecords("official");
+        const nextOfficialRecords = officialRecords.map((record) => {
+          const currentGrant = String(record && typeof record === "object" ? (record.grant_applied || record.grant || "") : "").trim();
+          if (currentGrant !== "") return record;
+          hasChanges = true;
+          return { ...record, grant_applied: resolveGrantApplied("official", record) };
+        });
+        saveCategoryRecords("official", nextOfficialRecords);
+
+        return hasChanges;
+      }
+
+      function getRecordKey(record, index) {
+        const sourceId = String(record && typeof record === "object" ? (record.source_application_id ?? "") : "").trim();
+        if (sourceId !== "") return "app-" + sourceId;
+
+        const scholarId = String(record && typeof record === "object" ? (record.scholar_id ?? "") : "").trim();
+        if (scholarId !== "") return "sid-" + scholarId;
+
+        return "idx-" + index;
+      }
+
+      function upsertCategoryRecord(category, record) {
+        const config = categoryConfig[category];
+        if (!config || !record || typeof record !== "object") return;
+
+        const sourceId = String(record.source_application_id || "").trim();
+        if (sourceId === "") return;
+
+        const records = getCategoryRecords(category);
+        const existingIndex = records.findIndex((item) => String(item.source_application_id || "").trim() === sourceId);
+
+        if (existingIndex >= 0) {
+          records[existingIndex] = { ...records[existingIndex], ...record };
+        } else {
+          records.push(record);
+        }
+
+        localStorage.setItem(config.storageKey, JSON.stringify(records));
+      }
+
       function updateCounts() {
         const counts = {
           official: getCategoryRecords("official").length,
@@ -333,34 +608,328 @@
         document.getElementById("count-others").textContent = counts.others;
       }
 
+      function updateRecordRenewalStatus(category, recordKey, renewalStatus, renewalScope = "") {
+        const config = categoryConfig[category];
+        if (!config) return;
+
+        const records = getCategoryRecords(category);
+        const nextRecords = records.map((record, index) => {
+          if (getRecordKey(record, index) !== recordKey) return record;
+          const normalizedScope = renewalStatus === "renew" ? String(renewalScope || "").trim() : "";
+          const alreadySecondSemRenewed = record && record.second_semester_renewed === true;
+          const secondSemRenewed = alreadySecondSemRenewed || (renewalStatus === "renew" && normalizedScope === "2nd_semester");
+          return {
+            ...record,
+            renewal_status: renewalStatus,
+            renewal_scope: normalizedScope,
+            second_semester_renewed: secondSemRenewed
+          };
+        });
+
+        localStorage.setItem(config.storageKey, JSON.stringify(nextRecords));
+      }
+
+      function getRenewalStatusLabel(status, scope) {
+        if (status === "renew") {
+          if (scope === "2nd_semester") {
+            return '<span class="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 text-[10px] font-semibold">Renewed (2nd Semester)</span>';
+          }
+          if (scope === "school_year") {
+            return '<span class="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 text-[10px] font-semibold">Renewed (School Year)</span>';
+          }
+          return '<span class="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 text-[10px] font-semibold">Renewed</span>';
+        }
+
+        if (status === "do_not_renew") {
+          return '<span class="inline-flex items-center rounded-full bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 text-[10px] font-semibold">Do Not Renew</span>';
+        }
+
+        return '<span class="inline-flex items-center rounded-full bg-slate-50 text-slate-600 border border-slate-200 px-2 py-0.5 text-[10px] font-semibold">No action yet</span>';
+      }
+
+      function shouldShowAssignedOfficeColumn(category) {
+        return category === "student_assistant";
+      }
+
+      function getRenewalActionAvailability() {
+        const semesterValue = String(activeFilterSemester || "").trim().toLowerCase();
+        const schoolYearValue = String(activeFilterSchoolYear || "").trim();
+        const isSecondSemester = semesterValue === "2nd semester";
+        const isNextSchoolYear = schoolYearValue === nextSchoolYear;
+        const enabled = isSecondSemester || isNextSchoolYear;
+        const reason = enabled
+          ? ""
+          : ("Renew/Do Not Renew is disabled until Semester is 2nd Semester or School Year is " + nextSchoolYear + ".");
+
+        return {
+          enabled,
+          reason
+        };
+      }
+
+      function renderRenewalTermNotice() {
+        const notice = document.getElementById("renewalTermNotice");
+        if (!notice) return;
+
+        const availability = getRenewalActionAvailability();
+        if (availability.enabled) {
+          notice.classList.add("hidden");
+          notice.textContent = "";
+          return;
+        }
+
+        notice.classList.remove("hidden");
+        notice.textContent = availability.reason;
+      }
+
+      function getRecordByKey(category, recordKey) {
+        const records = getCategoryRecords(category);
+        for (let i = 0; i < records.length; i += 1) {
+          if (getRecordKey(records[i], i) === recordKey) {
+            return records[i];
+          }
+        }
+        return null;
+      }
+
+      function hasSecondSemesterRenewal(record) {
+        if (!record || typeof record !== "object") return false;
+        if (record.second_semester_renewed === true) return true;
+
+        const status = String(record.renewal_status || "").trim();
+        const scope = String(record.renewal_scope || "").trim();
+        return status === "renew" && scope === "2nd_semester";
+      }
+
+      function showRenewOptions(category, recordKey) {
+        const availability = getRenewalActionAvailability();
+        if (!availability.enabled) {
+          if (typeof Swal !== "undefined") {
+            Swal.fire({
+              title: "Action Disabled",
+              text: availability.reason,
+              icon: "info",
+              confirmButtonColor: "#0d8ddb"
+            });
+          } else {
+            window.alert(availability.reason);
+          }
+          return;
+        }
+
+        if (typeof Swal === "undefined") {
+          const useSecondSem = window.confirm("Renew for 2nd Semester?\nClick Cancel for School Year.");
+          if (!useSecondSem) {
+            const record = getRecordByKey(category, recordKey);
+            if (!hasSecondSemesterRenewal(record)) {
+              window.alert("Cannot renew for School Year yet. Renew this scholar for 2nd Semester first.");
+              return;
+            }
+          }
+          updateRecordRenewalStatus(category, recordKey, "renew", useSecondSem ? "2nd_semester" : "school_year");
+          renderTable(category);
+          return;
+        }
+
+        Swal.fire({
+          title: "Renew Scholar",
+          text: "Choose the renewal coverage. (School Year is allowed only after 2nd Semester renewal.)",
+          icon: "question",
+          showCancelButton: true,
+          showDenyButton: true,
+          confirmButtonText: "2nd Semester",
+          denyButtonText: "School Year",
+          cancelButtonText: "Cancel",
+          confirmButtonColor: "#16a34a",
+          denyButtonColor: "#0d8ddb",
+          reverseButtons: true
+        }).then((result) => {
+          if (result.isConfirmed) {
+            updateRecordRenewalStatus(category, recordKey, "renew", "2nd_semester");
+            renderTable(category);
+            Swal.fire({
+              title: "Renewed",
+              text: "Scholar is marked as renewed for 2nd Semester.",
+              icon: "success",
+              timer: 1500,
+              showConfirmButton: false
+            });
+          } else if (result.isDenied) {
+            const record = getRecordByKey(category, recordKey);
+            if (!hasSecondSemesterRenewal(record)) {
+              Swal.fire({
+                title: "Not Allowed Yet",
+                text: "Renew for 2nd Semester first before renewing for School Year.",
+                icon: "warning",
+                confirmButtonColor: "#0d8ddb"
+              });
+              return;
+            }
+            updateRecordRenewalStatus(category, recordKey, "renew", "school_year");
+            renderTable(category);
+            Swal.fire({
+              title: "Renewed",
+              text: "Scholar is marked as renewed for School Year.",
+              icon: "success",
+              timer: 1500,
+              showConfirmButton: false
+            });
+          }
+        });
+      }
+
+      function showDoNotRenewConfirm(category, recordKey) {
+        const availability = getRenewalActionAvailability();
+        if (!availability.enabled) {
+          if (typeof Swal !== "undefined") {
+            Swal.fire({
+              title: "Action Disabled",
+              text: availability.reason,
+              icon: "info",
+              confirmButtonColor: "#0d8ddb"
+            });
+          } else {
+            window.alert(availability.reason);
+          }
+          return;
+        }
+
+        if (typeof Swal === "undefined") {
+          const shouldContinue = window.confirm("Mark this scholar as Do Not Renew?");
+          if (shouldContinue) {
+            updateRecordRenewalStatus(category, recordKey, "do_not_renew", "");
+            renderTable(category);
+          }
+          return;
+        }
+
+        Swal.fire({
+          title: "Do Not Renew?",
+          text: "This scholar will be tagged as Do Not Renew.",
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonText: "Yes, continue",
+          cancelButtonText: "Cancel",
+          confirmButtonColor: "#dc2626"
+        }).then((result) => {
+          if (!result.isConfirmed) return;
+          updateRecordRenewalStatus(category, recordKey, "do_not_renew", "");
+          renderTable(category);
+          Swal.fire({
+            title: "Updated",
+            text: "Scholar is marked as Do Not Renew.",
+            icon: "success",
+            timer: 1500,
+            showConfirmButton: false
+          });
+        });
+      }
+
       function renderTable(category) {
         const config = categoryConfig[category];
         const tableBody = document.getElementById("scholarRows");
+        const assignedOfficeHeader = document.getElementById("assignedOfficeHeader");
+        const showAssignedOffice = shouldShowAssignedOfficeColumn(category);
+        const renewalAvailability = getRenewalActionAvailability();
+        const actionButtonsEnabled = renewalAvailability.enabled;
+        const actionDisabledReason = renewalAvailability.reason;
+        const columnCount = showAssignedOffice ? 9 : 8;
+        if (assignedOfficeHeader) {
+          assignedOfficeHeader.classList.toggle("hidden", !showAssignedOffice);
+        }
         const records = getCategoryRecords(category);
+        const filteredRecords = records
+          .map((record, index) => ({ ...record, __recordKey: getRecordKey(record, index) }))
+          .filter((record) => {
+          const recordYear = String(record.academic_year || "").trim();
+          const recordSemester = String(record.semester || "").trim();
+          const matchesYear = selectedSchoolYear === "" || recordYear === selectedSchoolYear;
+          const matchesSemester = selectedSemester === "" || recordSemester === selectedSemester;
+          return matchesYear && matchesSemester;
+        });
 
         document.getElementById("activeCategoryLabel").textContent = config.label;
         tableBody.innerHTML = "";
 
-        if (records.length === 0) {
+        if (filteredRecords.length === 0) {
+          const filterSuffix =
+            selectedSchoolYear !== "" || selectedSemester !== ""
+              ? " for the selected School Year/Semester."
+              : ".";
           tableBody.innerHTML =
-            '<tr><td colspan="8" class="px-3 py-8 text-center text-gray-500 italic">No records yet for ' +
+            '<tr><td colspan="' + columnCount + '" class="px-3 py-8 text-center text-gray-500 italic">No records yet for ' +
             escapeHtml(config.label) +
-            '.</td></tr>';
+            escapeHtml(filterSuffix) +
+            "</td></tr>";
           return;
         }
 
-        records.forEach((record, index) => {
+        filteredRecords.forEach((record, index) => {
+          const grantApplied = resolveGrantApplied(category, record);
+          const assignedOfficeRaw = String(record.assigned_office || "").trim();
+          const assignedOfficeCell = showAssignedOffice
+            ? ('<td class="px-3 py-2">' + escapeHtml(assignedOfficeRaw !== "" ? assignedOfficeRaw : "-") + "</td>")
+            : "";
+          const renewalStatus = String(record.renewal_status || "").trim();
+          const renewalScope = String(record.renewal_scope || "").trim();
+          const renewBtnClasses =
+            renewalStatus === "renew"
+              ? "bg-green-600 text-white border-green-600"
+              : "bg-white text-green-700 border-green-300 hover:bg-green-50";
+          const doNotRenewBtnClasses =
+            renewalStatus === "do_not_renew"
+              ? "bg-red-600 text-white border-red-600"
+              : "bg-white text-red-700 border-red-300 hover:bg-red-50";
+          const disabledClasses = actionButtonsEnabled ? "" : "opacity-50 cursor-not-allowed hover:bg-transparent";
+          const disabledAttrs = actionButtonsEnabled
+            ? ""
+            : (' disabled title="' + escapeHtml(actionDisabledReason) + '" aria-disabled="true" ');
+
           const row = document.createElement("tr");
           row.innerHTML =
             '<td class="px-3 py-2">' + (index + 1) + "</td>" +
-            '<td class="px-3 py-2">' + escapeHtml(record.scholar_id) + "</td>" +
+            '<td class="px-3 py-2">' + escapeHtml(grantApplied) + "</td>" +
             '<td class="px-3 py-2">' + escapeHtml(record.full_name) + "</td>" +
             '<td class="px-3 py-2">' + escapeHtml(record.program_year) + "</td>" +
-            '<td class="px-3 py-2">' + escapeHtml(record.assigned_office) + "</td>" +
+            assignedOfficeCell +
             '<td class="px-3 py-2">' + escapeHtml(record.semester) + "</td>" +
             '<td class="px-3 py-2">' + escapeHtml(record.academic_year) + "</td>" +
-            '<td class="px-3 py-2">' + escapeHtml(record.remarks) + "</td>";
+            '<td class="px-3 py-2">' + escapeHtml(record.remarks) + "</td>" +
+            '<td class="px-3 py-2">' +
+              '<div class="flex flex-col gap-1 min-w-[140px]">' +
+                '<div class="flex gap-1">' +
+                  '<button type="button" data-renew-action="renew" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors ' + renewBtnClasses + ' ' + disabledClasses + '"' + disabledAttrs + '>Renew</button>' +
+                  '<button type="button" data-renew-action="do_not_renew" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors ' + doNotRenewBtnClasses + ' ' + disabledClasses + '"' + disabledAttrs + '>Do Not Renew</button>' +
+                '</div>' +
+                getRenewalStatusLabel(renewalStatus, renewalScope) +
+              "</div>" +
+            "</td>";
           tableBody.appendChild(row);
+        });
+      }
+
+      function setupRenewalActions() {
+        const tableBody = document.getElementById("scholarRows");
+        if (!tableBody) return;
+
+        tableBody.addEventListener("click", (event) => {
+          const target = event.target instanceof Element ? event.target : null;
+          if (!target) return;
+
+          const button = target.closest("[data-renew-action]");
+          if (!button) return;
+          if (button.disabled) return;
+
+          const recordKey = String(button.getAttribute("data-record-key") || "").trim();
+          const action = String(button.getAttribute("data-renew-action") || "").trim();
+          if (recordKey === "" || (action !== "renew" && action !== "do_not_renew")) return;
+
+          if (action === "renew") {
+            showRenewOptions(activeCategory, recordKey);
+            return;
+          }
+
+          showDoNotRenewConfirm(activeCategory, recordKey);
         });
       }
 
@@ -432,9 +1001,25 @@
       }
 
       document.addEventListener("DOMContentLoaded", () => {
+        if (pendingImportRecord && typeof pendingImportRecord === "object") {
+          upsertCategoryRecord("official", pendingImportRecord);
+          if (pendingImportCategory && pendingImportCategory !== "official") {
+            upsertCategoryRecord(pendingImportCategory, pendingImportRecord);
+          }
+
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.delete("source");
+          currentUrl.searchParams.delete("applicant_id");
+          window.history.replaceState({}, document.title, currentUrl.toString());
+        }
+
+        normalizeGrantLabels();
+
         setupSidebar();
         markActiveSidebarItem();
         setupCategorySwitching();
+        setupRenewalActions();
+        renderRenewalTermNotice();
         updateCounts();
         setActiveCategoryButton(activeCategory);
         renderTable(activeCategory);

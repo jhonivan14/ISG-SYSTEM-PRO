@@ -1,3 +1,8 @@
+<?php
+$defaultBatchLabel = "Batch 2";
+require_once __DIR__ . "/includes/school-term-filter.php";
+require_once __DIR__ . "/includes/panelist-sent-applicants.php";
+?>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -75,6 +80,15 @@
         height: 80px;
         object-fit: contain;
       }
+      .rating-exam {
+        background-color: #bbf7d0;
+      }
+      .rating-interview {
+        background-color: #fed7aa;
+      }
+      .rating-grades {
+        background-color: #fef08a;
+      }
       @media (max-width: 767px) {
         .paper {
           padding: 12px;
@@ -102,6 +116,11 @@
       @media print {
         body {
           background: white !important;
+        }
+        .paper,
+        .paper * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
         .admin-sidebar,
         .admin-topbar,
@@ -144,6 +163,34 @@
 
         .paper .overflow-x-auto {
           overflow: visible !important;
+        }
+        .rating-exam {
+          background-color: #bbf7d0 !important;
+        }
+        .rating-interview {
+          background-color: #fed7aa !important;
+        }
+        .rating-grades {
+          background-color: #fef08a !important;
+        }
+        .header-top {
+          flex-wrap: nowrap !important;
+          align-items: flex-start !important;
+          justify-content: center !important;
+          gap: 0.75rem !important;
+        }
+        .header-left {
+          flex-direction: row !important;
+          align-items: flex-start !important;
+          gap: 0.5rem !important;
+        }
+        .header-left-text {
+          text-align: center !important;
+        }
+        .header-right {
+          flex-direction: row !important;
+          align-items: flex-start !important;
+          align-self: flex-start !important;
         }
       }
     </style>
@@ -319,25 +366,61 @@
 
         <section class="flex flex-col px-3 sm:px-4 lg:px-6 pt-6 md:pt-16 pb-6 bg-[#eef2f7] flex-1 min-h-[calc(100vh-3rem)]">
           <div class="no-print w-full flex flex-col sm:flex-row gap-3 text-xs items-stretch sm:items-center justify-between mb-4">
-            <div class="flex flex-wrap items-center gap-3 justify-start sm:justify-center">
+            <form class="flex flex-wrap items-center gap-3 justify-start sm:justify-center" method="get" action="ranks.php">
               <label for="academicYear" class="font-semibold text-slate-600">Academic Year</label>
               <select
                 id="academicYear"
+                name="school_year"
                 class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                aria-label="Select academic year"
+                onchange="this.form.submit()"
               >
-                <option value="2025-2026" selected>2025-2026</option>
-                <option value="2024-2025">2024-2025</option>
-                <option value="2023-2024">2023-2024</option>
+                <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                <?php foreach ($schoolYearOptions as $option): ?>
+                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                    <?php echo htmlspecialchars($option); ?>
+                  </option>
+                <?php endforeach; ?>
               </select>
               <label for="semesterSelect" class="font-semibold text-slate-600">Semester</label>
               <select
                 id="semesterSelect"
+                name="semester"
                 class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                aria-label="Select semester"
+                onchange="this.form.submit()"
               >
-                <option value="1st" selected>1st Semester</option>
-                <option value="2nd">2nd Semester</option>
+                <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                <?php foreach ($semesterOptions as $option): ?>
+                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                    <?php echo htmlspecialchars($option); ?>
+                  </option>
+                <?php endforeach; ?>
               </select>
-            </div>
+              <label for="batchSelect" class="font-semibold text-slate-600">Batch</label>
+              <select
+                id="batchSelect"
+                name="batch"
+                class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
+                aria-label="Select batch"
+                onchange="this.form.submit()"
+              >
+                <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
+                <?php foreach ($batchOptions as $option): ?>
+                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
+                    <?php echo htmlspecialchars($option); ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+              <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
+                <a
+                  href="ranks.php"
+                  class="inline-flex items-center rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-[#052c6a]"
+                >
+                  Clear
+                </a>
+              <?php endif; ?>
+            </form>
             <div class="flex items-center gap-2 justify-start sm:justify-center">
               <button class="px-6 py-1 text-xs rounded bg-[#003b7d] text-white shadow" onclick="window.print()">Print</button>
             </div>
@@ -367,8 +450,8 @@
             </div>
             <div class="text-center mt-3">
               <p class="text-[12px]">Student Assistance Scholarship Program (SASP) Applicants' Rank</p>
-              <p class="text-[12px]" id="termText">1st Semester, S.Y. 2025-2026</p>
-              <p class="text-[12px]">Batch 2</p>
+              <p class="text-[12px]" id="termText"><?php echo htmlspecialchars($displaySemester); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
+              <p class="text-[12px]" id="batchText"><?php echo htmlspecialchars($displayBatch); ?></p>
             </div>
             <div class="overflow-x-auto mt-3">
               <table class="w-full border-collapse border border-black text-[12px]">
@@ -393,11 +476,11 @@
                     <th rowspan="3" class="border border-black px-2 py-2 w-[78px]">100%<br />AVERAGE</th>
                     <th rowspan="3" class="border border-black px-2 py-2 w-[64px]">RANK</th>
                     <th rowspan="3" class="border border-black px-2 py-2 min-w-[170px]">REMARKS</th>
-                  </tr>
+                </tr>
                   <tr class="text-center font-semibold bg-white">
-                    <th colspan="2" class="border border-black px-2 py-2 bg-green-200">Examination</th>
-                    <th colspan="2" class="border border-black px-2 py-2 bg-orange-200">Interview</th>
-                    <th colspan="2" class="border border-black px-2 py-2 bg-yellow-200">Grades</th>
+                    <th colspan="2" class="border border-black px-2 py-2 bg-green-200 rating-exam">Examination</th>
+                    <th colspan="2" class="border border-black px-2 py-2 bg-orange-200 rating-interview">Interview</th>
+                    <th colspan="2" class="border border-black px-2 py-2 bg-yellow-200 rating-grades">Grades</th>
                   </tr>
                   <tr class="text-center font-semibold bg-white">
                     <th class="border border-black px-2 py-2">Rating</th>
@@ -433,7 +516,7 @@
       </main>
     </div>
     <script>
-      const rows = [
+      const sampleRows = [
         { name: "Ramon B. Cruz", ex30: 25.20, exRate: 84.00, in40: 36.80, inRate: 92.00, gr30: 28.20, grRate: 94.00, avg: 90.20, rank: 1, remarks: "" },
         { name: "Jessa Mae G. Vargas", ex30: 24.00, exRate: 80.00, in40: 34.40, inRate: 86.00, gr30: 27.00, grRate: 90.00, avg: 85.40, rank: 2, remarks: "" },
         { name: "Lawrence T. Banaybanay", ex30: 23.10, exRate: 77.00, in40: 32.80, inRate: 82.00, gr30: 27.90, grRate: 93.00, avg: 83.80, rank: 3, remarks: "" },
@@ -445,6 +528,23 @@
         { name: "Michael Lloyd E. Ceballos", ex30: 19.80, exRate: 66.00, in40: 26.80, inRate: 67.00, gr30: 23.70, grRate: 79.00, avg: 70.30, rank: 9, remarks: "" },
         { name: "Mary Rose F. Tual", ex30: 19.20, exRate: 64.00, in40: 25.60, inRate: 64.00, gr30: 22.50, grRate: 75.00, avg: 67.30, rank: 10, remarks: "" }
       ];
+      const sentApplicants = <?php echo json_encode(array_map(function ($item) {
+        return ["name" => (string)($item["name"] ?? "")];
+      }, $panelistSentApplicants), JSON_UNESCAPED_SLASHES); ?>;
+      const rows = sentApplicants.length > 0
+        ? sentApplicants.map((item, index) => ({
+            name: item.name,
+            ex30: 0,
+            exRate: 0,
+            in40: 0,
+            inRate: 0,
+            gr30: 0,
+            grRate: 0,
+            avg: 0,
+            rank: index + 1,
+            remarks: ""
+          }))
+        : sampleRows;
 
       function renderRankRows() {
         const tbody = document.getElementById("rankTableBody");
@@ -478,8 +578,9 @@
         if (!academicYearSelect || !semesterSelect || !termText) return;
 
         const updateTermText = () => {
-          const semester = semesterSelect.value;
-          termText.textContent = `${semester} Semester, S.Y. ${academicYearSelect.value}`;
+          const semester = semesterSelect.value || "1st Semester";
+          const schoolYear = academicYearSelect.value || "<?php echo htmlspecialchars($currentSchoolYear, ENT_QUOTES); ?>";
+          termText.textContent = `${semester}, S.Y. ${schoolYear}`;
         };
 
         academicYearSelect.addEventListener("change", updateTermText);

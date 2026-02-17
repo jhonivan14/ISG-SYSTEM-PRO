@@ -42,6 +42,45 @@ $grantLabels = [
   14 => "SMCC Alumni Discount",
 ];
 
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["confirm_applicant_id"])) {
+  $confirmApplicantId = (int)($_POST["confirm_applicant_id"] ?? 0);
+  $confirmError = "";
+
+  if ($confirmApplicantId <= 0) {
+    $confirmError = "Invalid applicant selected for confirmation.";
+  } else {
+    $confirmStmt = $conn->prepare("SELECT id, grant_id, status FROM applications WHERE id = ? LIMIT 1");
+    if ($confirmStmt) {
+      $confirmStmt->bind_param("i", $confirmApplicantId);
+      $confirmStmt->execute();
+      $confirmResult = $confirmStmt->get_result();
+      $confirmRow = $confirmResult ? $confirmResult->fetch_assoc() : null;
+      $confirmStmt->close();
+
+      if (!$confirmRow) {
+        $confirmError = "Applicant not found.";
+      } else {
+        $status = strtolower(trim((string)($confirmRow["status"] ?? "")));
+        $grantId = (int)($confirmRow["grant_id"] ?? 0);
+        if ($status !== "approved") {
+          $confirmError = "Only approved applicants can be confirmed.";
+        } elseif ($grantId === 1) {
+          $confirmError = "For Student Assistant applicants, use 'Send to Panelist'.";
+        } else {
+          header("Location: institutional-scholars.php?applicant_id=" . urlencode((string)$confirmApplicantId) . "&source=approved");
+          exit;
+        }
+      }
+    } else {
+      $confirmError = "Unable to process confirmation right now.";
+    }
+  }
+
+  $_SESSION["confirm_error"] = $confirmError;
+  header("Location: approved.php?confirm_status=error");
+  exit;
+}
+
 $currentYear = (int)date("Y");
 $currentMonth = (int)date("n");
 $currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
@@ -397,6 +436,18 @@ unset($applicant);
 
         <!-- Academic Year / Semester Filters -->
         <section class="px-4 sm:px-6 mt-4">
+          <?php if (isset($_GET["confirm_status"])): ?>
+            <?php
+              $confirmStatus = (string)$_GET["confirm_status"];
+              $confirmError = $_SESSION["confirm_error"] ?? "";
+              unset($_SESSION["confirm_error"]);
+            ?>
+            <?php if ($confirmStatus === "error"): ?>
+              <div class="mb-3 rounded-lg border border-red-400 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
+                <?= htmlspecialchars($confirmError !== "" ? $confirmError : "Unable to confirm applicant.") ?>
+              </div>
+            <?php endif; ?>
+          <?php endif; ?>
           <?php if (isset($_GET["message_status"])): ?>
             <?php
               $status = $_GET["message_status"];
@@ -555,7 +606,7 @@ unset($applicant);
                           </span>
                         </td>
                         <td class="py-2">
-                          <div class="flex items-center justify-center gap-2">
+                          <div class="flex flex-wrap items-center justify-center gap-2">
                             <button
                               class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
                               type="button"
@@ -573,6 +624,20 @@ unset($applicant);
                             >
                               Send Message
                             </button>
+                            <?php if ((int)$applicant["grant_id"] !== 1): ?>
+                              <form method="post" class="m-0 inline-flex items-center">
+                                <input type="hidden" name="confirm_applicant_id" value="<?= htmlspecialchars((string)$applicant["id"]) ?>" />
+                                <button
+                                  class="inline-flex items-center bg-green-600 text-white rounded px-3 py-1 text-xs hover:bg-green-700"
+                                  type="submit"
+                                  data-confirm-applicant
+                                  data-applicant-name="<?= htmlspecialchars($applicant["name"]) ?>"
+                                  data-grant-id="<?= htmlspecialchars((string)$applicant["grant_id"]) ?>"
+                                >
+                                  Confirm
+                                </button>
+                              </form>
+                            <?php endif; ?>
                             <?php if ((int)$applicant["grant_id"] === 1): ?>
                               <button
                                 class="border border-[#0d8ddb] text-[#0d8ddb] rounded px-3 py-1 text-xs hover:bg-[#0d8ddb] hover:text-white"
@@ -881,6 +946,32 @@ unset($applicant);
             }
           });
         }
+      });
+
+      // Confirm routing
+      document.addEventListener("DOMContentLoaded", () => {
+        document.querySelectorAll("[data-confirm-applicant]").forEach((button) => {
+          button.addEventListener("click", (event) => {
+            event.preventDefault();
+            const form = button.closest("form");
+            if (!form) return;
+
+            const applicantName = button.getAttribute("data-applicant-name") || "this applicant";
+            const grantId = parseInt(button.getAttribute("data-grant-id") || "0", 10);
+            const destination =
+              grantId === 1
+                ? "Interview Evaluation and Applicant Ranks"
+                : "Institutional Scholars";
+
+            const shouldContinue = window.confirm(
+              `Confirm ${applicantName}? This will route the applicant to ${destination}.`
+            );
+
+            if (shouldContinue) {
+              form.submit();
+            }
+          });
+        });
       });
 
       // Send to panelist modal
