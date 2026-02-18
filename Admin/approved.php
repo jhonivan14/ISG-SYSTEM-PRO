@@ -243,6 +243,56 @@ unset($applicant);
         border-color: #0d8ddb;
         box-shadow: 0 10px 20px rgba(13, 141, 219, 0.18);
       }
+      .controls-float {
+        border-radius: 18px;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        border: 1px solid rgba(13, 141, 219, 0.14);
+        box-shadow: 0 14px 30px rgba(5, 44, 106, 0.1), 0 2px 6px rgba(5, 44, 106, 0.06);
+      }
+      .table-float {
+        border-radius: 18px;
+        overflow: hidden;
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+      }
+      .app-table {
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      .app-table thead tr {
+        background: linear-gradient(90deg, #052c6a 0%, #0d8ddb 100%);
+      }
+      .app-table thead th {
+        color: #ffffff !important;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        font-size: 10px;
+        padding: 11px 8px;
+        border-right: 1px solid rgba(255, 255, 255, 0.24) !important;
+      }
+      .app-table thead th:last-child {
+        border-right: none !important;
+      }
+      .app-table tbody td {
+        padding: 11px 8px;
+        border-right: 1px solid rgba(5, 44, 106, 0.12) !important;
+        border-bottom: 1px solid rgba(5, 44, 106, 0.1) !important;
+        color: #052c6a;
+      }
+      .app-table tbody td:last-child {
+        border-right: none !important;
+      }
+      .app-table tbody tr:last-child td {
+        border-bottom: none !important;
+      }
+      .app-table tbody tr:nth-child(even) {
+        background-color: #f5faff;
+      }
+      .app-table tbody tr {
+        transition: background-color 0.2s ease;
+      }
+      .app-table tbody tr:hover {
+        background-color: #eaf5ff !important;
+      }
     </style>
   </head>
   <body class="bg-white font-sans">
@@ -494,9 +544,23 @@ unset($applicant);
               </div>
             <?php endif; ?>
           <?php endif; ?>
-          <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#0d8ddb] bg-white p-3 shadow-sm">
-            <span class="text-sm font-semibold text-[#052c6a]"></span>
-            <form class="flex flex-wrap items-center gap-2" method="get" action="approved.php">
+          <div class="controls-float flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex flex-wrap gap-2">
+              <?php foreach ($categories as $category): ?>
+                <button
+                  type="button"
+                  class="filter-button rounded-full border border-[#0d8ddb] px-3 py-2 text-xs font-semibold text-[#0d8ddb] transition"
+                  data-filter-category="<?= htmlspecialchars($category["slug"]) ?>"
+                  data-filter-label="<?= htmlspecialchars($category["label"]) ?>"
+                >
+                  <?= htmlspecialchars($category["label"]) ?>
+                  <span class="ml-1 rounded-full bg-[#e5f1ff] px-2 py-0.5 text-[10px] font-bold text-[#052c6a]">
+                    <?= htmlspecialchars($category["count"]) ?>
+                  </span>
+                </button>
+              <?php endforeach; ?>
+            </div>
+            <form class="flex flex-wrap items-center gap-2 lg:justify-end" method="get" action="approved.php">
               <div class="flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-2 shadow-sm">
                 <i class="fas fa-search text-[#7c8191] text-xs"></i>
                 <input
@@ -543,33 +607,13 @@ unset($applicant);
               <?php endif; ?>
             </form>
           </div>
-          <div class="mt-3 flex flex-wrap gap-2">
-            <?php foreach ($categories as $category): ?>
-              <button
-                type="button"
-                class="filter-button rounded-full border border-[#0d8ddb] px-3 py-2 text-xs font-semibold text-[#0d8ddb] transition"
-                data-filter-category="<?= htmlspecialchars($category["slug"]) ?>"
-                data-filter-label="<?= htmlspecialchars($category["label"]) ?>"
-              >
-                <?= htmlspecialchars($category["label"]) ?>
-                <span class="ml-1 rounded-full bg-[#e5f1ff] px-2 py-0.5 text-[10px] font-bold text-[#052c6a]">
-                  <?= htmlspecialchars($category["count"]) ?>
-                </span>
-              </button>
-            <?php endforeach; ?>
-          </div>
         </section>
 
         <!-- Approved table -->
         <section class="px-4 sm:px-6 pb-10 mt-4">
-          <div class="border border-[#0d8ddb] rounded-lg shadow-sm overflow-hidden">
-            <div class="bg-[#0d8ddb] bg-opacity-5 px-4 py-3">
-              <p id="approvedTableTitle" class="text-xs sm:text-sm font-semibold text-[#052c6a]">
-                All Approved Applicants
-              </p>
-            </div>
-            <div class="overflow-x-auto">
-              <table class="min-w-full border-t border-[#0d8ddb] text-xs text-center">
+          <div class="controls-float overflow-hidden">
+            <div class="overflow-x-auto table-float">
+              <table class="app-table min-w-full text-xs text-center">
                 <thead>
                   <tr class="bg-white border-b border-[#0d8ddb]">
                     <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">Applicant Name</th>

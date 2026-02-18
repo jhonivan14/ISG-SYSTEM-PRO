@@ -235,6 +235,70 @@ if ($stmt = $conn->prepare($declinedQuery)) {
         border-color: #0d8ddb;
         box-shadow: 0 10px 20px rgba(13, 141, 219, 0.18);
       }
+      .table-float {
+        border-radius: 18px;
+        overflow: hidden;
+        background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+        border: 1px solid rgba(13, 141, 219, 0.2);
+        box-shadow: 0 14px 30px rgba(5, 44, 106, 0.12), 0 2px 6px rgba(5, 44, 106, 0.06);
+      }
+      .table-float-danger {
+        background: linear-gradient(180deg, #ffffff 0%, #fff9f9 100%);
+        border-color: rgba(244, 67, 54, 0.22);
+        box-shadow: 0 14px 30px rgba(210, 54, 42, 0.14), 0 2px 6px rgba(210, 54, 42, 0.08);
+      }
+      .app-table {
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      .app-table thead tr {
+        background: linear-gradient(90deg, #052c6a 0%, #0d8ddb 100%);
+      }
+      .app-table-danger thead tr {
+        background: linear-gradient(90deg, #ba2a2a 0%, #e94a4a 100%);
+      }
+      .app-table thead th {
+        color: #ffffff !important;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        font-size: 10px;
+        padding: 11px 8px;
+        border-right: 1px solid rgba(255, 255, 255, 0.24) !important;
+      }
+      .app-table thead th:last-child {
+        border-right: none !important;
+      }
+      .app-table tbody td {
+        padding: 11px 8px;
+        border-right: 1px solid rgba(5, 44, 106, 0.12) !important;
+        border-bottom: 1px solid rgba(5, 44, 106, 0.1) !important;
+        color: #052c6a;
+      }
+      .app-table-danger tbody td {
+        border-right: 1px solid rgba(186, 42, 42, 0.16) !important;
+        border-bottom: 1px solid rgba(186, 42, 42, 0.14) !important;
+      }
+      .app-table tbody td:last-child {
+        border-right: none !important;
+      }
+      .app-table tbody tr:last-child td {
+        border-bottom: none !important;
+      }
+      .app-table tbody tr:nth-child(even) {
+        background-color: #f5faff;
+      }
+      .app-table-danger tbody tr:nth-child(even) {
+        background-color: #fff5f5;
+      }
+      .app-table tbody tr {
+        transition: background-color 0.2s ease;
+      }
+      .app-table tbody tr:hover {
+        background-color: #eaf5ff !important;
+      }
+      .app-table-danger tbody tr:hover {
+        background-color: #ffeaea !important;
+      }
     </style>
   </head>
   <body class="bg-white font-sans">
@@ -490,9 +554,9 @@ if ($stmt = $conn->prepare($declinedQuery)) {
               </div>
             </div>
 
-            <div class="mt-4 overflow-x-auto">
+            <div class="mt-4 overflow-x-auto table-float">
               <table
-                class="min-w-full border border-[#0d8ddb] text-xs text-center"
+                class="app-table min-w-full text-xs text-center"
               >
                 <thead>
                   <tr class="bg-white border-b border-[#0d8ddb]">
@@ -601,8 +665,8 @@ if ($stmt = $conn->prepare($declinedQuery)) {
               </p>
             </div>
 
-            <div class="mt-4 overflow-x-auto">
-              <table class="min-w-full border border-[#f44336] text-xs text-center">
+            <div class="mt-4 overflow-x-auto table-float table-float-danger">
+              <table class="app-table app-table-danger min-w-full text-xs text-center">
                 <thead>
                   <tr class="bg-white border-b border-[#f44336]">
                     <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
