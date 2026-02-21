@@ -124,6 +124,11 @@ if ($panelistUsername === "") {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Interview Evaluation Sheet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
+        rel="stylesheet"
+    />
     <link
         href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
         rel="stylesheet"
@@ -132,75 +137,45 @@ if ($panelistUsername === "") {
         .app-shell {
             min-height: 100vh;
         }
-        .sidebar {
-            width: 224px;
-            height: 100vh;
-            background: #052c6a;
-            color: #fff;
-            position: fixed;
-            left: 0;
-            top: 0;
-            z-index: 30;
-            overflow-y: auto;
+        ::-webkit-scrollbar {
+            width: 6px;
         }
-        .topbar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 20;
-            background: #052c6a;
-            color: #fff;
-            padding: 8px 12px;
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            font-size: 12px;
-            gap: 8px;
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.12);
         }
-        .topbar-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #93d7ff 0%, #2e9bd7 100%);
+            border-radius: 999px;
         }
-        .topbar-pill {
-            background: #fcdc2f;
-            color: #052c6a;
-            border: 0;
-            border-radius: 4px;
-            padding: 4px 10px;
-            font-size: 12px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-weight: 500;
-            font-family: "Segoe UI", sans-serif;
-        }
-        .main-content {
-            margin-left: 224px;
-            padding-top: 44px;
+        #sidebar nav ul {
+            padding: 0.35rem 0.5rem 5.5rem;
         }
         .panel-nav-item {
             display: flex;
             align-items: center;
             gap: 8px;
-            padding: 12px 16px;
-            font-size: 12px;
-            font-weight: 600;
+            padding-left: 0.75rem;
+            padding-right: 0.75rem;
+            min-height: 2.5rem;
             cursor: pointer;
-            transition: background-color 150ms ease, color 150ms ease;
+            border-radius: 0.85rem;
+            margin-bottom: 0.25rem;
+            white-space: nowrap;
+            transition: background-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
         }
         .panel-nav-item:hover {
-            background: #0d8ddb;
+            transform: translateX(2px);
+            background: rgba(255, 255, 255, 0.15);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
         }
         .panel-nav-item.active {
-            background: #fcdc2f;
+            background: rgba(252, 220, 47, 0.95);
             color: #052c6a;
+            box-shadow: 0 8px 20px rgba(252, 220, 47, 0.25);
         }
-        @media (min-width: 768px) {
-            .topbar {
-                left: 224px;
-            }
+        .sidebar,
+        .topbar {
+            font: sans-serif;
         }
         @page {
             size: 8.5in 13in portrait;
@@ -209,7 +184,7 @@ if ($panelistUsername === "") {
         body {
             margin: 0;
             background: #e9eef5;
-            font-family: "Segoe UI", sans-serif;
+            font: sans-serif;
             color: #0f172a;
         }
         *, *::before, *::after {
@@ -460,7 +435,7 @@ if ($panelistUsername === "") {
             color: #9f1239;
             padding: 16px 18px;
             border-radius: 12px;
-            font-family: "Segoe UI", sans-serif;
+            font-family: "Space Grotesk", sans-serif;
             text-align: center;
         }
         @media print {
@@ -500,66 +475,95 @@ if ($panelistUsername === "") {
 </head>
 <body>
     <div class="app-shell">
-        <aside id="sidebar" class="sidebar">
-            <div style="display:flex;align-items:center;gap:12px;padding:16px;border-bottom:1px solid #0d8ddb;">
-                <img src="../img/SMCCNEWLOGO.png" alt="SMCC Logo" style="width:64px;height:64px;border-radius:999px;object-fit:cover;" />
-                <span style="font-size:14px;">Admission and Scholarship Office</span>
+        <aside
+            id="sidebar"
+            class="sidebar flex flex-col bg-gradient-to-b from-[#031f4f] via-[#0a4b86] to-[#0f9ad8] text-white w-64 h-screen fixed left-0 top-0 z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out overflow-y-auto shadow-[12px_0_28px_-12px_rgba(4,31,79,0.65)]"
+        >
+            <div
+                class="mx-3 mt-3 rounded-xl border border-white/25 bg-white/10 p-3 backdrop-blur-sm"
+            >
+                <div class="flex items-center gap-3">
+                    <div class="relative shrink-0">
+                        <span class="absolute -inset-1 rounded-full bg-white/15 blur-sm"></span>
+                        <img
+                            src="../img/SMCCNEWLOGO.png"
+                            class="relative rounded-full w-14 h-14 object-cover ring-2 ring-white/45"
+                            alt="SMCC Logo"
+                        />
+                    </div>
+                    <span class="text-sm font-semibold leading-tight text-white">
+                        Admission and Scholarship Office
+                    </span>
+                </div>
             </div>
-            <nav style="padding-bottom:112px;">
-                <div class="panel-nav-item" onclick="window.location.href='panelistDashboard.php'">
-                    <i class="fas fa-home"></i>
-                    <span>Home</span>
-                </div>
-                <div class="panel-nav-item" onclick="window.location.href='panelistDashboard.php?tab=pending'">
-                    <i class="fas fa-user-clock"></i>
-                    <span>Pending Applicants</span>
-                </div>
-                <div class="panel-nav-item active" onclick="window.location.href='panelistDashboard.php?tab=evaluated'">
-                    <i class="fas fa-check-circle"></i>
-                    <span>Show Evaluated</span>
-                </div>
-                <div class="panel-nav-item" onclick="window.location.href='change-password.php'">
-                    <i class="fas fa-key"></i>
-                    <span>Change Password</span>
-                </div>
+
+            <nav class="flex-1 mt-2">
+                <ul class="text-xs font-semibold">
+                    <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='panelistDashboard.php'">
+                        <i class="fas fa-home w-5"></i>
+                        <span>Home</span>
+                    </li>
+                    <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='panelistDashboard.php?tab=pending'">
+                        <i class="fas fa-user-clock w-5"></i>
+                        <span>Pending Applicants</span>
+                    </li>
+                    <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='panelistDashboard.php?tab=evaluated'">
+                        <i class="fas fa-check-circle w-5"></i>
+                        <span>Show Evaluated</span>
+                    </li>
+                    <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='change-password.php'">
+                        <i class="fas fa-key w-5"></i>
+                        <span>Change Password</span>
+                    </li>
+                </ul>
             </nav>
-            <div style="position:absolute;left:0;bottom:0;width:100%;">
-                <div style="height:1px;width:100%;background:linear-gradient(to right, transparent, #0d8ddb, transparent);opacity:0.6;"></div>
-                <div style="padding:8px 16px 4px;display:flex;align-items:center;gap:8px;font-size:11px;color:#dbeafe;">
-                    <div style="width:28px;height:28px;border-radius:999px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;">
-                        <i class="fas fa-user-tie" style="font-size:12px;"></i>
+
+            <div class="absolute bottom-0 left-0 w-full p-2">
+                <div class="rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm overflow-hidden">
+                    <div class="h-px w-full bg-gradient-to-r from-transparent via-[#8bcfff] to-transparent opacity-80"></div>
+                    <div class="px-4 pt-2 pb-1 flex items-center gap-2 text-[11px] text-blue-100/90">
+                        <div class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
+                            <i class="fas fa-user-tie text-[12px]"></i>
+                        </div>
+                        <div class="leading-tight min-w-0">
+                            <p class="font-semibold truncate"><?= htmlspecialchars($panelistName) ?></p>
+                            <p class="text-[10px] text-blue-200/80 truncate"><?= htmlspecialchars($panelistUsername !== "" ? $panelistUsername : "panelist") ?></p>
+                        </div>
                     </div>
-                    <div style="line-height:1.2;min-width:0;">
-                        <p style="margin:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?= htmlspecialchars($panelistName) ?></p>
-                        <p style="margin:0;font-size:10px;color:#bfdbfe;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><?= htmlspecialchars($panelistUsername !== "" ? $panelistUsername : "panelist") ?></p>
+                    <div class="px-3 pb-3 pt-1">
+                        <button
+                            type="button"
+                            onclick="window.location.href='../logout.php'"
+                            class="w-full flex items-center justify-center gap-2 text-[11px] font-semibold bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 px-3 py-2 rounded-full shadow-md hover:shadow-lg transition-all duration-150"
+                        >
+                            <i class="fas fa-sign-out-alt text-xs"></i>
+                            <span>Logout</span>
+                        </button>
                     </div>
-                </div>
-                <div style="padding:4px 12px 12px;">
-                    <button
-                        type="button"
-                        onclick="window.location.href='../logout.php'"
-                        style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;font-size:11px;font-weight:600;background:linear-gradient(to right,#ef4444,#dc2626);color:#fff;padding:8px 12px;border-radius:999px;border:0;cursor:pointer;"
-                    >
-                        <i class="fas fa-sign-out-alt"></i>
-                        <span>Logout</span>
-                    </button>
                 </div>
             </div>
         </aside>
 
-        <header class="topbar">
-            <div class="topbar-actions">
-                <button type="button" class="topbar-pill">
-                    <i class="fas fa-user"></i>
-                    Panelist View
+        <header
+            class="topbar fixed top-0 left-0 md:left-64 right-0 z-20 h-14 flex items-center bg-white border-b border-slate-200 px-4 sm:px-6 shadow-sm"
+        >
+            <div class="flex items-center gap-2">
+                <button
+                    type="button"
+                    id="sidebarToggle"
+                    class="md:hidden inline-flex items-center justify-center p-2 rounded bg-slate-700 text-white hover:bg-slate-800 focus:outline-none transition-colors"
+                    aria-label="Toggle sidebar"
+                >
+                    <i class="fas fa-bars"></i>
                 </button>
-                <button type="button" class="topbar-pill">
-                    <?= htmlspecialchars($panelistName) ?>
-                </button>
+                <h2 class="text-[#0d4b84] text-lg font-semibold flex items-center gap-2">
+                    <i class="fas fa-file-alt"></i>
+                    Evaluation View
+                </h2>
             </div>
         </header>
 
-        <main class="main-content">
+        <main class="main-content ml-0 md:ml-64 flex flex-col min-h-screen bg-[#eef2f7] pt-14">
 <?php if ($loadError !== ""): ?>
     <div class="error"><?php echo htmlspecialchars($loadError); ?></div>
 <?php else: ?>
@@ -735,5 +739,18 @@ if ($panelistUsername === "") {
 <?php endif; ?>
         </main>
     </div>
+    <script>
+        (function () {
+            const sidebar = document.getElementById("sidebar");
+            const toggleBtn = document.getElementById("sidebarToggle");
+            if (!sidebar || !toggleBtn) {
+                return;
+            }
+
+            toggleBtn.addEventListener("click", () => {
+                sidebar.classList.toggle("-translate-x-full");
+            });
+        })();
+    </script>
 </body>
 </html>
