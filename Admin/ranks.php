@@ -117,6 +117,9 @@ require_once __DIR__ . "/includes/panelist-sent-applicants.php";
         body {
           background: white !important;
         }
+        #sidebar {
+          display: none !important;
+        }
         .paper,
         .paper * {
           -webkit-print-color-adjust: exact !important;
@@ -406,64 +409,68 @@ require_once __DIR__ . "/includes/panelist-sent-applicants.php";
         </section>
 
         <section class="flex flex-col px-3 sm:px-4 lg:px-6 pt-6 md:pt-16 pb-6 bg-[#eef2f7] flex-1 min-h-[calc(100vh-3rem)]">
-          <div class="no-print w-full flex flex-col sm:flex-row gap-3 text-xs items-stretch sm:items-center justify-between mb-4">
-            <form class="flex flex-wrap items-center gap-3 justify-start sm:justify-center" method="get" action="ranks.php">
-              <label for="academicYear" class="font-semibold text-slate-600">Academic Year</label>
-              <select
-                id="academicYear"
-                name="school_year"
-                class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
-                aria-label="Select academic year"
-                onchange="this.form.submit()"
-              >
-                <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
-                <?php foreach ($schoolYearOptions as $option): ?>
-                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
-                    <?php echo htmlspecialchars($option); ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-              <label for="semesterSelect" class="font-semibold text-slate-600">Semester</label>
-              <select
-                id="semesterSelect"
-                name="semester"
-                class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
-                aria-label="Select semester"
-                onchange="this.form.submit()"
-              >
-                <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
-                <?php foreach ($semesterOptions as $option): ?>
-                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
-                    <?php echo htmlspecialchars($option); ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-              <label for="batchSelect" class="font-semibold text-slate-600">Batch</label>
-              <select
-                id="batchSelect"
-                name="batch"
-                class="border border-slate-300 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]"
-                aria-label="Select batch"
-                onchange="this.form.submit()"
-              >
-                <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
-                <?php foreach ($batchOptions as $option): ?>
-                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
-                    <?php echo htmlspecialchars($option); ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-              <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
-                <a
-                  href="ranks.php"
-                  class="inline-flex items-center rounded border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-[#052c6a]"
+          <div class="no-print w-full mb-4 rounded-lg border border-[#0d8ddb] bg-white p-3 shadow-sm">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <form class="flex flex-wrap items-center gap-2 lg:justify-end" method="get" action="ranks.php">
+                <select
+                  id="academicYear"
+                  name="school_year"
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  aria-label="Select academic year"
+                  onchange="this.form.submit()"
                 >
-                  Clear
-                </a>
-              <?php endif; ?>
-            </form>
-            <div class="flex items-center gap-2 justify-start sm:justify-center">
-              <button class="px-6 py-1 text-xs rounded bg-[#003b7d] text-white shadow" onclick="window.print()">Print</button>
+                  <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                  <?php foreach ($schoolYearOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <select
+                  id="semesterSelect"
+                  name="semester"
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  aria-label="Select semester"
+                  onchange="this.form.submit()"
+                >
+                  <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                  <?php foreach ($semesterOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <select
+                  id="batchSelect"
+                  name="batch"
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  aria-label="Select batch"
+                  onchange="this.form.submit()"
+                >
+                  <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
+                  <?php foreach ($batchOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
+                  <a
+                    href="ranks.php"
+                    class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
+                  >
+                    Clear
+                  </a>
+                <?php endif; ?>
+              </form>
+              <button
+                type="button"
+                onclick="window.print()"
+                class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a6fac]"
+              >
+                <i class="fas fa-print"></i>
+                <span>Print</span>
+              </button>
             </div>
           </div>
 

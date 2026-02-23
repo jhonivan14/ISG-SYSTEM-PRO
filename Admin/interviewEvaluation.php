@@ -432,71 +432,74 @@ $showProceedToRanks = $fromApproved && $nextRoute === "ranks";
               </a>
             </div>
           <?php endif; ?>
+
+          <div class="no-print print-btn-bar mb-3 rounded-lg border border-[#0d8ddb] bg-white p-3 shadow-sm">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <form class="flex flex-wrap items-center gap-2 lg:justify-end" method="get" action="interviewEvaluation.php">
+                <select
+                  id="academicYear"
+                  name="school_year"
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  aria-label="Select academic year"
+                  onchange="this.form.submit()"
+                >
+                  <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                  <?php foreach ($schoolYearOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <select
+                  id="semesterSelect"
+                  name="semester"
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  aria-label="Select semester"
+                  onchange="this.form.submit()"
+                >
+                  <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                  <?php foreach ($semesterOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <select
+                  id="batchSelect"
+                  name="batch"
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  aria-label="Select batch"
+                  onchange="this.form.submit()"
+                >
+                  <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
+                  <?php foreach ($batchOptions as $option): ?>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($option); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
+                  <a
+                    href="interviewEvaluation.php"
+                    class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
+                  >
+                    Clear
+                  </a>
+                <?php endif; ?>
+              </form>
+              <button
+                type="button"
+                onclick="window.print()"
+                class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a6fac]"
+              >
+                <i class="fas fa-print"></i>
+                <span>Print</span>
+              </button>
+            </div>
+          </div>
+
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6 paper">
             <div class="w-full mx-auto paper-wrap">
-              <div class="flex flex-wrap items-center justify-between gap-3 mb-3 print-btn-bar">
-                <form class="flex flex-wrap items-center gap-2 text-xs" method="get" action="interviewEvaluation.php">
-                  <select
-                    id="academicYear"
-                    name="school_year"
-                    class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
-                    aria-label="Select academic year"
-                    onchange="this.form.submit()"
-                  >
-                    <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
-                    <?php foreach ($schoolYearOptions as $option): ?>
-                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
-                        <?php echo htmlspecialchars($option); ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
-                  <select
-                    id="semesterSelect"
-                    name="semester"
-                    class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
-                    aria-label="Select semester"
-                    onchange="this.form.submit()"
-                  >
-                    <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
-                    <?php foreach ($semesterOptions as $option): ?>
-                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
-                        <?php echo htmlspecialchars($option); ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
-                  <select
-                    id="batchSelect"
-                    name="batch"
-                    class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
-                    aria-label="Select batch"
-                    onchange="this.form.submit()"
-                  >
-                    <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
-                    <?php foreach ($batchOptions as $option): ?>
-                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
-                        <?php echo htmlspecialchars($option); ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
-                  <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
-                    <a
-                      href="interviewEvaluation.php"
-                      class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
-                    >
-                      Clear
-                    </a>
-                  <?php endif; ?>
-                </form>
-                <button
-                  type="button"
-                  onclick="window.print()"
-                  class="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-[#052c6a] hover:bg-[#0d8ddb] rounded shadow-sm"
-                >
-                  <i class="fas fa-print"></i>
-                  <span>Print</span>
-                </button>
-              </div>
-
               <header>
                 <div class="header-top">
                   <div class="header-left">

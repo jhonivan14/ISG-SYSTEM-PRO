@@ -9,7 +9,7 @@
     <style>
       @page {
         size: 8.5in 13in;
-        margin: 30mm 25mm 30mm 25mm;
+        margin: 12mm 10mm;
       }
 
       ::-webkit-scrollbar {
@@ -84,6 +84,51 @@
         border-top: 1px solid #222;
       }
 
+      .report-stage {
+        width: 100%;
+        max-width: 1250px;
+        margin: 0 auto;
+      }
+
+      .report-wrapper {
+        width: 100%;
+      }
+
+      .summary-table {
+        width: 100%;
+        table-layout: fixed;
+      }
+
+      .summary-table col.col-seq {
+        width: 4%;
+      }
+
+      .summary-table col.col-name {
+        width: 26%;
+      }
+
+      .summary-table col.col-weighted {
+        width: 11%;
+      }
+
+      .summary-table col.col-verbal {
+        width: 14%;
+      }
+
+      .summary-table col.col-strength {
+        width: 20%;
+      }
+
+      .summary-table col.col-comment {
+        width: 25%;
+      }
+
+      .summary-table th,
+      .summary-table td {
+        vertical-align: middle;
+        overflow-wrap: break-word;
+      }
+
       @media print {
         #sidebar,
         .topbar,
@@ -93,17 +138,75 @@
           display: none !important;
         }
 
+        html,
+        body {
+          margin: 0 !important;
+          padding: 0 !important;
+          background: #fff !important;
+        }
+
         main {
           margin-left: 0 !important;
           padding: 0 !important;
         }
 
+        .report-stage {
+          max-width: none !important;
+        }
+
         .report-wrapper {
+          width: 100% !important;
           max-width: none !important;
           border: none !important;
           box-shadow: none !important;
           border-radius: 0 !important;
           padding: 0 !important;
+        }
+
+        .report-wrapper,
+        .report-wrapper * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+
+        .report-wrapper .overflow-x-auto {
+          overflow: visible !important;
+        }
+
+        .summary-table {
+          width: 100% !important;
+          table-layout: fixed !important;
+          font-size: 10px !important;
+        }
+
+        .summary-table col.col-seq {
+          width: 4% !important;
+        }
+
+        .summary-table col.col-name {
+          width: 30% !important;
+        }
+
+        .summary-table col.col-weighted {
+          width: 11% !important;
+        }
+
+        .summary-table col.col-verbal {
+          width: 14% !important;
+        }
+
+        .summary-table col.col-strength {
+          width: 18% !important;
+        }
+
+        .summary-table col.col-comment {
+          width: 23% !important;
+        }
+
+        .summary-table th,
+        .summary-table td {
+          padding: 3px 4px !important;
+          line-height: 1.2 !important;
         }
       }
           #sidebar nav ul {
@@ -126,7 +229,7 @@
       }
     </style>
   </head>
-  <body class="bg-white font-sans">
+  <body class="bg-[#eef2f7] font-sans">
     <div class="min-h-screen">
       <!-- Sidebar -->
       <aside
@@ -344,6 +447,15 @@
               </option>
             <?php endforeach; ?>
           </select>
+          <button
+            type="button"
+            onclick="window.print()"
+            class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#0a6fac]"
+            aria-label="Print summary report"
+          >
+            <i class="fas fa-print text-[11px]"></i>
+            <span>Print</span>
+          </button>
           <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
             <a
               href="summary-report.php"
@@ -354,8 +466,9 @@
           <?php endif; ?>
         </form>
 
-        <section class="px-4 sm:px-6 py-4">
-          <div class="report-wrapper max-w-5xl mx-auto bg-white border border-slate-200 rounded-md shadow-sm p-6">
+        <section class="px-4 sm:px-6 py-4 lg:py-6">
+          <div class="report-stage">
+            <div class="report-wrapper bg-white border border-slate-200 rounded-md shadow-sm p-5 sm:p-6 lg:p-8">
             <header class="report-header">
               <div class="header-top">
                 <div class="header-left">
@@ -392,15 +505,23 @@
             </section>
 
             <div class="overflow-x-auto mb-6">
-              <table class="w-full text-xs border border-black border-collapse">
+              <table class="summary-table text-xs border border-black border-collapse">
+                <colgroup>
+                  <col class="col-seq" />
+                  <col class="col-name" />
+                  <col class="col-weighted" />
+                  <col class="col-verbal" />
+                  <col class="col-strength" />
+                  <col class="col-comment" />
+                </colgroup>
                 <thead>
                   <tr class="bg-yellow-200">
-                    <th class="border border-black p-1 w-10">Seq.</th>
+                    <th class="border border-black p-1">Seq.</th>
                     <th class="border border-black p-1">NAME OF STUDENT ASSISTANT</th>
-                    <th class="border border-black p-1 w-28">Weighted<br />Mean</th>
-                    <th class="border border-black p-1 w-32">Verbal<br />Description</th>
-                    <th class="border border-black p-1 w-48">Strength(s)/Areas for Improvement</th>
-                    <th class="border border-black p-1 w-56">Evaluator's Comment(s)/Recommendation</th>
+                    <th class="border border-black p-1">Weighted<br />Mean</th>
+                    <th class="border border-black p-1">Verbal<br />Description</th>
+                    <th class="border border-black p-1">Strength(s)/Areas for Improvement</th>
+                    <th class="border border-black p-1">Evaluator's Comment(s)/Recommendation</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -446,6 +567,7 @@
                 </div>
               </div>
             </div>
+          </div>
           </div>
         </section>
       </main>

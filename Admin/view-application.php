@@ -208,6 +208,8 @@ foreach ($uploadedRequirements as $upload) {
       .data-value { font-family: Arial, sans-serif; }
       @media print {
         body { background: #ffffff; margin: 0 !important; }
+        #sidebar { display: none !important; }
+        main { margin-left: 0 !important; }
         .no-print { display: none !important; }
         .print-area { margin: 0; padding: 0; }
         .print-area .header-top {
@@ -230,8 +232,8 @@ foreach ($uploadedRequirements as $upload) {
           max-width: 100% !important;
         }
         .print-area { margin-top: 0 !important; }
-        .print-area .mb-6 { margin-bottom: 0.35rem !important; }
-        .print-area .mt-6 { margin-top: 0.35rem !important; }
+        .print-area .mb-6 { margin-bottom: 0rem !important; }
+        .print-area .mt-6 { margin-top: 0.20rem !important; }
         .print-area .mt-8 { margin-top: 0.5rem !important; }
         .print-area .gap-y-8 { row-gap: 0.5rem !important; }
         .print-area {
@@ -413,17 +415,17 @@ foreach ($uploadedRequirements as $upload) {
             <span class="text-[11px] font-semibold md:hidden">Admission &amp; Scholarship</span>
           </div>
           <div class="flex gap-2 text-xs">
-            <button class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 flex items-center gap-1 font-normal" type="button">
+            <button class=" md:hidden bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 flex items-center gap-1 font-normal" type="button">
               <i class="fas fa-user"></i>
               Admin panel
             </button>
-            <button class="bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal" type="button">
+            <button class=" md:hidden bg-[#fcdc2f] text-[#052c6a] rounded px-3 py-1 font-normal" type="button">
               Account
             </button>
           </div>
         </header>
 
-        <section class="mt-12 px-4 sm:px-6 py-4 print-area">
+        <section class="mt-12 px-4 sm:px-6 py-4 bg-[#eef2f7] print-area">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6">
             <div class="max-w-5xl mx-auto">
               <div class="mb-4 flex items-center justify-end no-print">
@@ -724,7 +726,7 @@ foreach ($uploadedRequirements as $upload) {
         </section>
 
         <!-- Uploaded requirements display -->
-        <section class="px-4 sm:px-6 pb-8 no-print">
+        <section class="px-4 sm:px-6 pb-8 no-print bg-[#eef2f7]">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6">
             <div class="flex items-center justify-between mb-4">
               <h2 class="text-sm font-semibold text-[#052c6a]">Uploaded Requirements</h2>
@@ -823,7 +825,7 @@ foreach ($uploadedRequirements as $upload) {
           </div>
         </section>
 
-        <section class="px-4 sm:px-6 pb-10 no-print">
+        <section class="px-4 sm:px-6 pb-10 no-print bg-[#eef2f7]">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6">
             <form
               id="applicationActionForm"
