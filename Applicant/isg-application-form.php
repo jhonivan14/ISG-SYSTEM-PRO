@@ -8,16 +8,82 @@ function read_post_field($key) {
   return isset($_POST[$key]) ? trim($_POST[$key]) : "";
 }
 
+function infer_scholarship_type($grantId) {
+  if ($grantId === 1) {
+    return "Student Assistance";
+  }
+  if ($grantId === 2) {
+    return "Academic";
+  }
+  if ($grantId === 4) {
+    return "Kabayani";
+  }
+  if ($grantId > 0) {
+    return "Others";
+  }
+
+  return "";
+}
+
+function uses_student_assistant_program_options($grantId, $scholarshipType) {
+  return $grantId === 1 || $scholarshipType === "Student Assistance";
+}
+
+$grantNames = [
+  1 => "Student Assistant",
+  2 => "Academic Scholarship Program",
+  3 => "Executive Student Government (ESG) President Scholarship Program",
+  4 => "Kabayani Scholarship Program",
+  5 => "Kabayani Loyalty Grant",
+  6 => "Discount for Persons with Disability (PWD)",
+  7 => "Discount for Children of Employees",
+  8 => "Discount for Sibling of Employees",
+  9 => "Sibling Discount",
+  10 => "DXSM-FM Grant",
+  11 => "Michaelinian Mirror Grant (Editor-in-Chief)",
+  12 => "Grant for the Dependents of a Lot Donor",
+  13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
+  14 => "SMCC Alumni Discount",
+  15 => "Michaelinian Stakeholders Grant",
+];
+
+$studentAssistantPrograms = [
+  "Bachelor of Arts in English Language (AB English)",
+  "Bachelor of Technical Vocational Teacher Education (BTVTED)",
+  "Bachelor of Secondary Education - major in Mathematics",
+  "Bachelor of Secondary Education - major in Social Studies",
+  "Bachelor of Science in Computer Science (BSCS)",
+  "Bachelor of Library and Information Science (BLIS)",
+  "Bachelor of Science in Information Systems (BSIS)",
+  "Bachelor of Public Administration (BPA)",
+  "Bachelor of Science in Entrepreneurship (BSE)",
+  "Bachelor of Science in Accounting Information System (BSAIS)",
+  "Bachelor of Science in Business Administration (BSBA) - major in Operations Management",
+  "Bachelor of Science in Business Administration (BSBA) - major in Business Economics",
+  "Bachelor in Human Services (BHumserv)",
+];
+
 $currentYear = (int)date("Y");
 $currentMonth = (int)date("n");
 $currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
 $currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
 $schoolYearOptions = [$currentSchoolYear];
+$currentGrantId = (int)($_POST["grant_id"] ?? $_GET["grant"] ?? 0);
+$currentGrantTitle = $grantNames[$currentGrantId] ?? "";
+$selectedScholarshipType = read_post_field("scholarshipType");
+$effectiveScholarshipType = $selectedScholarshipType !== "" ? $selectedScholarshipType : infer_scholarship_type($currentGrantId);
+$kabayaniSpecifyValue = read_post_field("kabayaniSpecify");
+$othersSpecifyValue = read_post_field("othersSpecify");
+$programCourseValue = read_post_field("programCourse");
+$showStudentAssistantProgramSelect = uses_student_assistant_program_options($currentGrantId, $effectiveScholarshipType);
+if ($othersSpecifyValue === "" && $effectiveScholarshipType === "Others" && $currentGrantTitle !== "") {
+  $othersSpecifyValue = $currentGrantTitle;
+}
 $selectedSchoolYear = read_post_field("schoolYear");
 $selectedSemester = read_post_field("semester");
  
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-  $grantId = (int)($_POST["grant_id"] ?? 0);
+  $grantId = $currentGrantId;
 
   if ($grantId <= 0) {
     $errors[] = "Missing grant selection.";
@@ -49,6 +115,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
   }
 
+  if (
+    uses_student_assistant_program_options($grantId, read_post_field("scholarshipType")) &&
+    $programCourseValue !== "" &&
+    !in_array($programCourseValue, $studentAssistantPrograms, true)
+  ) {
+    $errors[] = "Please select a valid Student Assistant program/course.";
+  }
+
   $emailAddress = read_post_field("emailAddress");
   if ($emailAddress !== "") {
     $isValidEmail = filter_var($emailAddress, FILTER_VALIDATE_EMAIL);
@@ -59,11 +133,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   }
 
   if (empty($errors)) {
+    $scholarshipType = read_post_field("scholarshipType");
+    $othersSpecify = read_post_field("othersSpecify");
+    if ($scholarshipType === "Others" && $othersSpecify === "" && $currentGrantTitle !== "") {
+      $othersSpecify = $currentGrantTitle;
+    }
+
     $_SESSION["application_draft"] = [
       "grant_id" => $grantId,
-      "scholarship_type" => read_post_field("scholarshipType"),
+      "scholarship_type" => $scholarshipType,
       "kabayani_specify" => read_post_field("kabayaniSpecify"),
-      "others_specify" => read_post_field("othersSpecify"),
+      "others_specify" => $othersSpecify,
       "applicant_name" => read_post_field("applicantName"),
       "program_course" => read_post_field("programCourse"),
       "year_level" => read_post_field("yearLevel"),
@@ -115,13 +195,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     body {
       font-family: 'Roboto Slab', serif;
     }
+
+    .top-brand,
+    .top-brand * {
+      font-family: sans-serif;
+    }
   </style>
 </head>
 
 <body class="min-h-screen bg-gradient-to-b from-[#e0f2ff] via-white to-[#e0f2ff]">
   <!-- TOP BAR / BRAND -->
-  <header class="sticky top-0 z-20 bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md">
-    <div class="max-w-5xl mx-auto flex items-center gap-3 px-4 sm:px-6 py-3">
+  <header class="top-brand sticky top-0 z-20 bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md">
+    <div class="w-full flex items-center gap-3 px-4 sm:px-6 lg:px-10 py-3">
       <!-- LOGO -->
       <div class="flex items-center justify-center">
         <img
@@ -141,7 +226,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             Institutional Scholarship Grants
           </h1>
           <span class="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-white/10 text-[10px] sm:text-[11px] text-blue-50">
-            <i class="fas fa-clipboard-list text-[10px]"></i>
             Step 2 of 3
           </span>
         </div>
@@ -225,7 +309,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
       <form action="isg-application-form.php" method="POST" class="space-y-8 sm:space-y-10 relative z-10">
         <!-- Hidden field to carry grant id -->
-        <input type="hidden" name="grant_id" id="grantIdField" />
+        <input type="hidden" name="grant_id" id="grantIdField" value="<?php echo $currentGrantId > 0 ? htmlspecialchars((string)$currentGrantId) : ""; ?>" />
 
         <!-- Type of Scholarship/Grant -->
         <fieldset class="border border-[#0d8ddb]/40 rounded-2xl p-4 sm:p-6 bg-[#f9fbff]">
@@ -250,6 +334,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                   name="scholarshipType"
                   type="radio"
                   value="Academic"
+                  <?php echo $effectiveScholarshipType === "Academic" ? "checked" : ""; ?>
                   required
                 />
                 <span class="text-sm sm:text-base text-[#052c6a] font-medium">Academic</span>
@@ -262,6 +347,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                   name="scholarshipType"
                   type="radio"
                   value="Kabayani"
+                  <?php echo $effectiveScholarshipType === "Kabayani" ? "checked" : ""; ?>
                 />
                 <span class="text-sm sm:text-base text-[#052c6a] font-medium">Kabayani</span>
               </label>
@@ -280,6 +366,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                   name="kabayaniSpecify"
                   placeholder="e.g. Diocesan Scholar, School President’s Scholar, etc."
                   type="text"
+                  value="<?php echo htmlspecialchars($kabayaniSpecifyValue); ?>"
                 />
               </div>
             </div>
@@ -292,6 +379,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                   name="scholarshipType"
                   type="radio"
                   value="Student Assistance"
+                  <?php echo $effectiveScholarshipType === "Student Assistance" ? "checked" : ""; ?>
                 />
                 <span class="text-sm sm:text-base text-[#052c6a] font-medium">Student Assistant</span>
               </label>
@@ -303,6 +391,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                   name="scholarshipType"
                   type="radio"
                   value="Others"
+                  <?php echo $effectiveScholarshipType === "Others" ? "checked" : ""; ?>
                 />
                 <span class="text-sm sm:text-base text-[#052c6a] font-medium">Others / Discounts</span>
               </label>
@@ -321,6 +410,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                   name="othersSpecify"
                   placeholder="Specify other grant/discount (e.g. PWD, Alumni, DXSM-FM, etc.)"
                   type="text"
+                  value="<?php echo htmlspecialchars($othersSpecifyValue); ?>"
                 />
               </div>
             </div>
@@ -356,15 +446,34 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="programCourse">
                 Program / Course Enrolled <span class="text-red-600">*</span>
               </label>
-              <input
-                class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+              <select
+                class="<?php echo $showStudentAssistantProgramSelect ? "" : "hidden "; ?>w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
-                id="programCourse"
-                name="programCourse"
+                id="programCourseSelect"
+                <?php echo $showStudentAssistantProgramSelect ? 'name="programCourse" required' : 'disabled'; ?>
+              >
+                <option value="">Select program / course</option>
+                <?php foreach ($studentAssistantPrograms as $programOption): ?>
+                  <option value="<?php echo htmlspecialchars($programOption); ?>" <?php echo $programCourseValue === $programOption ? "selected" : ""; ?>>
+                    <?php echo htmlspecialchars($programOption); ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+              <input
+                class="<?php echo $showStudentAssistantProgramSelect ? "hidden " : ""; ?>w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+                       focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
+                id="programCourseInput"
+                <?php echo $showStudentAssistantProgramSelect ? 'disabled' : 'name="programCourse" required'; ?>
                 placeholder="e.g. BS in Computer Science"
-                required
                 type="text"
+                value="<?php echo htmlspecialchars($programCourseValue); ?>"
               />
+              <p
+                id="programCourseHint"
+                class="<?php echo $showStudentAssistantProgramSelect ? "" : "hidden "; ?>mt-1 text-[11px] sm:text-xs text-[#052c6a]/75"
+              >
+                
+              </p>
             </div>
 
             <div>
@@ -768,48 +877,127 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
 
     // map grant id to label (same order as Step 1)
-    const grantNames = {
-      1: 'Student Assistant',
-      2: 'Academic Scholarship Program',
-      3: 'Executive Student Government (ESG) President Scholarship Program',
-      4: 'Kabayani Scholarship Program',
-      5: 'Kabayani Loyalty Grant',
-      6: 'Discount for Persons with Disability (PWD)',
-      7: 'Discount for Children of Employees',
-      8: 'Discount for Sibling of Employees',
-      9: 'Sibling Discount',
-      10: 'DXSM-FM Grant',
-      11: 'Michaelinian Mirror Grant (Editor-in-Chief)',
-      12: 'Grant for the Dependents of a Lot Donor',
-      13: 'Grant for the Dependents of a Board of Trustees (BOT) Member',
-      14: 'SMCC Alumni Discount'
-    };
+    const grantNames = <?php echo json_encode($grantNames, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 
     const grantIdFromUrl = getQueryParam('grant');
     const grantLabelEl = document.getElementById('selectedGrantLabel');
     const grantIdField = document.getElementById('grantIdField');
+    const activeGrantId = grantIdFromUrl || grantIdField.value;
+    const academicRadio = document.getElementById('academic');
+    const kabayaniRadio = document.getElementById('kabayani');
+    const studentAssistanceRadio = document.getElementById('studentAssistance');
+    const othersRadio = document.getElementById('others');
+    const othersSpecifyInput = document.getElementById('othersSpecify');
+    const programCourseSelect = document.getElementById('programCourseSelect');
+    const programCourseInput = document.getElementById('programCourseInput');
+    const programCourseHint = document.getElementById('programCourseHint');
 
-    if (grantIdFromUrl && grantNames[grantIdFromUrl]) {
-      grantLabelEl.textContent = grantNames[grantIdFromUrl] + ' (Grant #' + grantIdFromUrl + ')';
-      grantIdField.value = grantIdFromUrl;
+    function getAutoScholarshipType(grantId) {
+      const idNum = parseInt(grantId, 10);
+      if (idNum === 1) return 'Student Assistance';
+      if (idNum === 2) return 'Academic';
+      if (idNum === 4) return 'Kabayani';
+      if (idNum > 0) return 'Others';
+      return '';
+    }
+
+    function syncOthersSpecify() {
+      if (!othersSpecifyInput) {
+        return;
+      }
+
+      const grantTitle = grantNames[grantIdField.value] || '';
+      if (othersRadio && othersRadio.checked && grantTitle) {
+        othersSpecifyInput.value = grantTitle;
+      }
+    }
+
+    function usesStudentAssistantPrograms() {
+      const grantId = parseInt(grantIdField.value || '0', 10);
+      return grantId === 1 || Boolean(studentAssistanceRadio && studentAssistanceRadio.checked);
+    }
+
+    function syncProgramCourseField() {
+      if (!programCourseSelect || !programCourseInput) {
+        return;
+      }
+
+      const shouldUseSelect = usesStudentAssistantPrograms();
+
+      if (shouldUseSelect) {
+        if (programCourseInput.value && !programCourseSelect.value) {
+          programCourseSelect.value = programCourseInput.value;
+        }
+
+        programCourseSelect.classList.remove('hidden');
+        programCourseSelect.disabled = false;
+        programCourseSelect.required = true;
+        programCourseSelect.name = 'programCourse';
+
+        programCourseInput.classList.add('hidden');
+        programCourseInput.disabled = true;
+        programCourseInput.required = false;
+        programCourseInput.name = '';
+
+        if (programCourseHint) {
+          programCourseHint.classList.remove('hidden');
+        }
+      } else {
+        if (programCourseSelect.value && !programCourseInput.value) {
+          programCourseInput.value = programCourseSelect.value;
+        }
+
+        programCourseInput.classList.remove('hidden');
+        programCourseInput.disabled = false;
+        programCourseInput.required = true;
+        programCourseInput.name = 'programCourse';
+
+        programCourseSelect.classList.add('hidden');
+        programCourseSelect.disabled = true;
+        programCourseSelect.required = false;
+        programCourseSelect.name = '';
+
+        if (programCourseHint) {
+          programCourseHint.classList.add('hidden');
+        }
+      }
+    }
+
+    if (activeGrantId && grantNames[activeGrantId]) {
+      grantLabelEl.textContent = grantNames[activeGrantId] + ' (Grant #' + activeGrantId + ')';
+      grantIdField.value = activeGrantId;
     } else {
       grantLabelEl.textContent = 'No specific grant selected. You may go back to Step 1 to choose a grant.';
       grantIdField.value = '';
     }
 
     // optional: auto-select scholarship type based on grant id
-    if (grantIdFromUrl) {
-      const idNum = parseInt(grantIdFromUrl, 10);
-      if (idNum === 1 && document.getElementById('studentAssistance')) {
-        document.getElementById('studentAssistance').checked = true;
-      } else if (idNum === 2 && document.getElementById('academic')) {
-        document.getElementById('academic').checked = true;
-      } else if (idNum === 4 && document.getElementById('kabayani')) {
-        document.getElementById('kabayani').checked = true;
-      } else if (document.getElementById('others')) {
-        document.getElementById('others').checked = true;
+    if (activeGrantId) {
+      const type = getAutoScholarshipType(activeGrantId);
+      if (type === 'Student Assistance' && studentAssistanceRadio) {
+        studentAssistanceRadio.checked = true;
+      } else if (type === 'Academic' && academicRadio) {
+        academicRadio.checked = true;
+      } else if (type === 'Kabayani' && kabayaniRadio) {
+        kabayaniRadio.checked = true;
+      } else if (type === 'Others' && othersRadio) {
+        othersRadio.checked = true;
       }
     }
+
+    if (othersRadio) {
+      othersRadio.addEventListener('change', syncOthersSpecify);
+    }
+
+    [academicRadio, kabayaniRadio, studentAssistanceRadio, othersRadio].forEach((radio) => {
+      if (radio) {
+        radio.addEventListener('change', syncProgramCourseField);
+      }
+    });
+
+    syncOthersSpecify();
+    syncProgramCourseField();
+
   </script>
 </body>
 </html>

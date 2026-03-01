@@ -250,7 +250,7 @@ if ($requestedTab === "my-sas") {
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='head-changePassword.php'"
+              onclick="window.location.href='head-changePassword.phpz'"
             >
               <i class="fas fa-key w-5"></i>
               <span>Change Password</span>

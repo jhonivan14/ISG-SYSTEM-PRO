@@ -1,4 +1,7 @@
-<?php require_once __DIR__ . "/includes/school-term-filter.php"; ?>
+<?php
+require_once __DIR__ . "/includes/school-term-filter.php";
+$headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : "1st Semester";
+?>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -501,7 +504,7 @@
             <div class="thin-rule my-1"></div>
             <section class="text-center mb-4">
               <h2 class="font-bold text-base">STUDENT ASSISTANTS' EVALUATION SUMMARY REPORT</h2>
-              <p class="font-semibold text-sm"><?php echo htmlspecialchars($displaySemester); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
+              <p class="font-semibold text-sm"><?php echo htmlspecialchars($headerSemesterLabel); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
             </section>
 
             <div class="overflow-x-auto mb-6">

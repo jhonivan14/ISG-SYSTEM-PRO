@@ -29,6 +29,9 @@ if (empty($errors)) {
   }
 }
 
+$noRequirementGrantIds = [15];
+$grantRequiresUploads = !in_array($grantId ?? 0, $noRequirementGrantIds, true);
+
 if (empty($errors)) {
   $sql = "INSERT INTO applications (
     grant_id,
@@ -137,7 +140,7 @@ if (empty($errors)) {
   }
 }
 
-if (empty($errors)) {
+if (empty($errors) && $grantRequiresUploads) {
   $requirements = $_POST["requirements"] ?? [];
   $files = $_FILES["files"] ?? null;
   $allowedExt = ["pdf", "jpg", "jpeg", "png"];
@@ -154,7 +157,7 @@ if (empty($errors)) {
   }
 }
 
-if (empty($errors)) {
+if (empty($errors) && $grantRequiresUploads) {
   $uploadSql = "INSERT INTO application_uploads (
     application_id,
     requirement_label,

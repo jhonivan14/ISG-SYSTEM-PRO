@@ -1,11 +1,156 @@
 <?php
-$defaultBatchLabel = "Batch 3";
+$defaultBatchLabel = "All Batches";
+$hasSemesterFilter = array_key_exists("semester", $_GET);
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/panelist-sent-applicants.php";
+
+$criteriaCount = 12;
+$ratingScale = [
+  5 => [
+    "description" => "Excellent",
+    "interpretation" => "Outstanding performance; far exceeds expectations.",
+  ],
+  4 => [
+    "description" => "Very Good",
+    "interpretation" => "Above average; exceeds expectations.",
+  ],
+  3 => [
+    "description" => "Good",
+    "interpretation" => "Meets expectations satisfactorily.",
+  ],
+  2 => [
+    "description" => "Fair",
+    "interpretation" => "Below expectations; needs improvement.",
+  ],
+  1 => [
+    "description" => "Poor",
+    "interpretation" => "Far below expectations.",
+  ],
+];
+$resolveScaleDetails = static function (float $weightedMean) use ($ratingScale): array {
+  $baseRating = (int)floor($weightedMean);
+  if ($baseRating < 1) {
+    $baseRating = 1;
+  }
+  if ($baseRating > 5) {
+    $baseRating = 5;
+  }
+
+  return $ratingScale[$baseRating] ?? $ratingScale[1];
+};
+$formatWeightedMean = static function (float $weightedMean): string {
+  $truncatedWeightedMean = floor($weightedMean * 100) / 100;
+  return number_format($truncatedWeightedMean, 2, ".", "");
+};
+$interviewSummariesByApplicantId = [];
+
+if (($conn ?? null) instanceof mysqli && !empty($panelistSentApplicants)) {
+  $applicantIds = [];
+  foreach ($panelistSentApplicants as $sentApplicant) {
+    $applicantId = (int)($sentApplicant["id"] ?? 0);
+    if ($applicantId > 0) {
+      $applicantIds[] = $applicantId;
+    }
+  }
+
+  $applicantIds = array_values(array_unique($applicantIds));
+  if (!empty($applicantIds)) {
+    foreach ($applicantIds as $applicantId) {
+      $interviewSummariesByApplicantId[$applicantId] = [
+        "assigned_panel_count" => 0,
+        "rated_panel_count" => 0,
+        "total_points_sum" => 0.0,
+      ];
+    }
+
+    $placeholders = implode(", ", array_fill(0, count($applicantIds), "?"));
+    $types = str_repeat("i", count($applicantIds));
+    $panelAssignmentSql = "
+      SELECT application_id, COUNT(DISTINCT panelist_username) AS assigned_panel_count
+      FROM panelist_queue
+      WHERE application_id IN ({$placeholders})
+      GROUP BY application_id
+    ";
+    $panelAssignmentStmt = $conn->prepare($panelAssignmentSql);
+    if ($panelAssignmentStmt) {
+      $panelAssignmentStmt->bind_param($types, ...$applicantIds);
+      if ($panelAssignmentStmt->execute()) {
+        $panelAssignmentResult = $panelAssignmentStmt->get_result();
+        while ($panelAssignmentRow = $panelAssignmentResult->fetch_assoc()) {
+          $applicantId = (int)($panelAssignmentRow["application_id"] ?? 0);
+          if ($applicantId <= 0 || !isset($interviewSummariesByApplicantId[$applicantId])) {
+            continue;
+          }
+
+          $interviewSummariesByApplicantId[$applicantId]["assigned_panel_count"] = (int)($panelAssignmentRow["assigned_panel_count"] ?? 0);
+        }
+        $panelAssignmentResult->free();
+      }
+      $panelAssignmentStmt->close();
+    }
+
+    $evaluationSql = "
+      SELECT ie.applicant_id, ie.interviewer_name, ie.total_points
+      FROM interview_evaluations ie
+      INNER JOIN (
+        SELECT applicant_id, interviewer_name, MAX(id) AS latest_id
+        FROM interview_evaluations
+        WHERE applicant_id IN ({$placeholders})
+        GROUP BY applicant_id, interviewer_name
+      ) latest ON latest.latest_id = ie.id
+      ORDER BY ie.applicant_id ASC, ie.interviewer_name ASC
+    ";
+
+    $evaluationStmt = $conn->prepare($evaluationSql);
+    if ($evaluationStmt) {
+      $evaluationStmt->bind_param($types, ...$applicantIds);
+      if ($evaluationStmt->execute()) {
+        $evaluationResult = $evaluationStmt->get_result();
+        while ($evaluationRow = $evaluationResult->fetch_assoc()) {
+          $applicantId = (int)($evaluationRow["applicant_id"] ?? 0);
+          if ($applicantId <= 0 || !isset($interviewSummariesByApplicantId[$applicantId])) {
+            continue;
+          }
+
+          $totalPoints = is_numeric($evaluationRow["total_points"] ?? null)
+            ? (float)$evaluationRow["total_points"]
+            : 0.0;
+          if ($totalPoints < 0) {
+            $totalPoints = 0.0;
+          }
+
+          $interviewSummariesByApplicantId[$applicantId]["rated_panel_count"]++;
+          $interviewSummariesByApplicantId[$applicantId]["total_points_sum"] += $totalPoints;
+        }
+        $evaluationResult->free();
+      }
+      $evaluationStmt->close();
+    }
+
+    foreach ($interviewSummariesByApplicantId as $applicantId => $summary) {
+      $assignedPanelCount = (int)($summary["assigned_panel_count"] ?? 0);
+      $ratedPanelCount = (int)($summary["rated_panel_count"] ?? 0);
+      if ($assignedPanelCount <= 0 || $ratedPanelCount <= 0 || $ratedPanelCount < $assignedPanelCount) {
+        continue;
+      }
+
+      $weightedMean = ((float)($summary["total_points_sum"] ?? 0.0)) / ($criteriaCount * $ratedPanelCount);
+      $scaleDetails = $resolveScaleDetails($weightedMean);
+
+      $interviewSummariesByApplicantId[$applicantId]["weighted_mean"] = $weightedMean;
+      $interviewSummariesByApplicantId[$applicantId]["weighted_mean_display"] = $formatWeightedMean($weightedMean);
+      $interviewSummariesByApplicantId[$applicantId]["verbal_description"] = (string)($scaleDetails["description"] ?? "");
+      $interviewSummariesByApplicantId[$applicantId]["verbal_interpretation"] = (string)($scaleDetails["interpretation"] ?? "");
+    }
+  }
+}
+
+$headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : "All Semesters";
 $fromApproved = isset($_GET["source"]) && strtolower((string)$_GET["source"]) === "approved";
 $nextRoute = isset($_GET["next"]) ? strtolower(trim((string)$_GET["next"])) : "";
 $routeApplicantId = (int)($_GET["applicant_id"] ?? 0);
 $showProceedToRanks = $fromApproved && $nextRoute === "ranks";
+$showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasSemesterFilter;
 ?>
 <html lang="en">
   <head>
@@ -478,7 +623,7 @@ $showProceedToRanks = $fromApproved && $nextRoute === "ranks";
                     </option>
                   <?php endforeach; ?>
                 </select>
-                <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
+                <?php if ($showClearFilters): ?>
                   <a
                     href="interviewEvaluation.php"
                     class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
@@ -527,7 +672,7 @@ $showProceedToRanks = $fromApproved && $nextRoute === "ranks";
 
               <section class="text-center mb-4">
                 <h2 class="font-bold text-base">Student Assistance Applicants' Interview Result</h2>
-                <p class="font-semibold text-sm"><?php echo htmlspecialchars($displaySemester); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
+                <p class="font-semibold text-sm"><?php echo htmlspecialchars($headerSemesterLabel); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
                 <p class="font-semibold text-sm"><?php echo htmlspecialchars($displayBatch); ?></p>
               </section>
 
@@ -546,12 +691,13 @@ $showProceedToRanks = $fromApproved && $nextRoute === "ranks";
                   <tbody>
                     <?php if (!empty($panelistSentApplicants)): ?>
                       <?php foreach ($panelistSentApplicants as $index => $sentApplicant): ?>
+                        <?php $summary = $interviewSummariesByApplicantId[(int)($sentApplicant["id"] ?? 0)] ?? []; ?>
                         <tr>
                           <td><?= htmlspecialchars((string)($index + 1)) ?></td>
                           <td><?= htmlspecialchars((string)($sentApplicant["name"] ?? "")) ?></td>
-                          <td></td>
-                          <td></td>
-                          <td></td>
+                          <td><?= htmlspecialchars((string)($summary["weighted_mean_display"] ?? "")) ?></td>
+                          <td><?= htmlspecialchars((string)($summary["verbal_description"] ?? "")) ?></td>
+                          <td><?= htmlspecialchars((string)($summary["verbal_interpretation"] ?? "")) ?></td>
                           <td></td>
                         </tr>
                       <?php endforeach; ?>

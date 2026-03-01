@@ -1,7 +1,316 @@
 <?php
-$defaultBatchLabel = "Batch 2";
+$defaultBatchLabel = "All Batches";
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/panelist-sent-applicants.php";
+
+$criteriaCount = 12;
+$maxInterviewPoints = $criteriaCount * 5;
+$rankRemarkOptions = [
+  "Hired",
+  "Not be hired as agreed by the panelists",
+];
+$rankSaveStatus = isset($_GET["rank_save"]) ? strtolower(trim((string)$_GET["rank_save"])) : "";
+$rankSaveMessage = "";
+$rankSaveMessageType = "";
+$truncateToTwoDecimals = static function (float $value): float {
+  if ($value >= 0) {
+    return floor($value * 100) / 100;
+  }
+
+  return ceil($value * 100) / 100;
+};
+$formatScoreDisplay = static function (?float $value) use ($truncateToTwoDecimals): string {
+  if ($value === null) {
+    return "";
+  }
+
+  return number_format($truncateToTwoDecimals($value), 2, ".", "");
+};
+$buildRanksUrl = static function (string $schoolYear, string $semester, string $batch, string $saveStatus = ""): string {
+  $query = [];
+  if ($schoolYear !== "") {
+    $query["school_year"] = $schoolYear;
+  }
+  if ($semester !== "") {
+    $query["semester"] = $semester;
+  }
+  if ($batch !== "") {
+    $query["batch"] = $batch;
+  }
+  if ($saveStatus !== "") {
+    $query["rank_save"] = $saveStatus;
+  }
+
+  $queryString = http_build_query($query);
+  return "ranks.php" . ($queryString !== "" ? "?" . $queryString : "");
+};
+$savedRankInputsByApplicantId = [];
+$interviewScoresByApplicantId = [];
+
+if (($conn ?? null) instanceof mysqli) {
+  $conn->query(
+    "CREATE TABLE IF NOT EXISTS applicant_rank_inputs (
+      application_id INT NOT NULL PRIMARY KEY,
+      exam_rating DECIMAL(5,2) DEFAULT NULL,
+      grades_rating DECIMAL(5,2) DEFAULT NULL,
+      remarks VARCHAR(100) DEFAULT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+  );
+
+  $remarksColumnResult = $conn->query("SHOW COLUMNS FROM applicant_rank_inputs LIKE 'remarks'");
+  if ($remarksColumnResult instanceof mysqli_result) {
+    $hasRemarksColumn = $remarksColumnResult->num_rows > 0;
+    $remarksColumnResult->free();
+    if (!$hasRemarksColumn) {
+      $conn->query("ALTER TABLE applicant_rank_inputs ADD COLUMN remarks VARCHAR(100) DEFAULT NULL AFTER grades_rating");
+    }
+  }
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) {
+  $postedSchoolYear = trim((string)($_POST["school_year"] ?? $selectedSchoolYear ?? ""));
+  $postedSemester = trim((string)($_POST["semester"] ?? $selectedSemester ?? ""));
+  $postedBatch = trim((string)($_POST["batch"] ?? $selectedBatch ?? ""));
+  $postedApplicantIds = isset($_POST["applicant_ids"]) && is_array($_POST["applicant_ids"])
+    ? array_values(array_unique(array_map("intval", $_POST["applicant_ids"])))
+    : [];
+  $postedExamRatings = isset($_POST["exam_rating"]) && is_array($_POST["exam_rating"]) ? $_POST["exam_rating"] : [];
+  $postedGradesRatings = isset($_POST["grades_rating"]) && is_array($_POST["grades_rating"]) ? $_POST["grades_rating"] : [];
+  $postedRemarks = isset($_POST["remarks"]) && is_array($_POST["remarks"]) ? $_POST["remarks"] : [];
+  $allowedApplicantIds = [];
+  foreach ($panelistSentApplicants as $panelistSentApplicant) {
+    $applicantId = (int)($panelistSentApplicant["id"] ?? 0);
+    if ($applicantId > 0) {
+      $allowedApplicantIds[$applicantId] = true;
+    }
+  }
+
+  $saveStmt = $conn->prepare(
+    "INSERT INTO applicant_rank_inputs (application_id, exam_rating, grades_rating, remarks)
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       exam_rating = VALUES(exam_rating),
+       grades_rating = VALUES(grades_rating),
+       remarks = VALUES(remarks)"
+  );
+
+  if ($saveStmt) {
+    foreach ($postedApplicantIds as $applicantId) {
+      if ($applicantId <= 0 || !isset($allowedApplicantIds[$applicantId])) {
+        continue;
+      }
+
+      $examValue = array_key_exists((string)$applicantId, $postedExamRatings)
+        ? trim((string)$postedExamRatings[(string)$applicantId])
+        : "";
+      $gradesValue = array_key_exists((string)$applicantId, $postedGradesRatings)
+        ? trim((string)$postedGradesRatings[(string)$applicantId])
+        : "";
+      $remarksValue = array_key_exists((string)$applicantId, $postedRemarks)
+        ? trim((string)$postedRemarks[(string)$applicantId])
+        : "";
+
+      $examRating = ($examValue !== "" && is_numeric($examValue)) ? (float)$examValue : null;
+      $gradesRating = ($gradesValue !== "" && is_numeric($gradesValue)) ? (float)$gradesValue : null;
+      $remarks = in_array($remarksValue, $rankRemarkOptions, true) ? $remarksValue : "";
+
+      if ($examRating !== null && ($examRating < 0 || $examRating > 100)) {
+        $examRating = null;
+      }
+      if ($gradesRating !== null && ($gradesRating < 0 || $gradesRating > 100)) {
+        $gradesRating = null;
+      }
+
+      $saveStmt->bind_param("idds", $applicantId, $examRating, $gradesRating, $remarks);
+      $saveStmt->execute();
+    }
+    $saveStmt->close();
+
+    header("Location: " . $buildRanksUrl($postedSchoolYear, $postedSemester, $postedBatch, "success"));
+    exit;
+  }
+
+  header("Location: " . $buildRanksUrl($postedSchoolYear, $postedSemester, $postedBatch, "error"));
+  exit;
+}
+
+if ($rankSaveStatus === "success") {
+  $rankSaveMessage = "Ranking inputs saved.";
+  $rankSaveMessageType = "success";
+} elseif ($rankSaveStatus === "error") {
+  $rankSaveMessage = "Unable to save ranking inputs.";
+  $rankSaveMessageType = "error";
+}
+
+if (($conn ?? null) instanceof mysqli && !empty($panelistSentApplicants)) {
+  $applicantIds = [];
+  foreach ($panelistSentApplicants as $sentApplicant) {
+    $applicantId = (int)($sentApplicant["id"] ?? 0);
+    if ($applicantId > 0) {
+      $applicantIds[] = $applicantId;
+    }
+  }
+
+  $applicantIds = array_values(array_unique($applicantIds));
+  if (!empty($applicantIds)) {
+    $placeholders = implode(", ", array_fill(0, count($applicantIds), "?"));
+    $types = str_repeat("i", count($applicantIds));
+
+    $savedRankSql = "
+      SELECT application_id, exam_rating, grades_rating, remarks
+      FROM applicant_rank_inputs
+      WHERE application_id IN ({$placeholders})
+    ";
+    $savedRankStmt = $conn->prepare($savedRankSql);
+    if ($savedRankStmt) {
+      $savedRankStmt->bind_param($types, ...$applicantIds);
+      if ($savedRankStmt->execute()) {
+        $savedRankResult = $savedRankStmt->get_result();
+        while ($savedRankRow = $savedRankResult->fetch_assoc()) {
+          $applicantId = (int)($savedRankRow["application_id"] ?? 0);
+          if ($applicantId <= 0) {
+            continue;
+          }
+
+          $savedRankInputsByApplicantId[$applicantId] = [
+            "exam_rating" => is_numeric($savedRankRow["exam_rating"] ?? null) ? (float)$savedRankRow["exam_rating"] : null,
+            "grades_rating" => is_numeric($savedRankRow["grades_rating"] ?? null) ? (float)$savedRankRow["grades_rating"] : null,
+            "remarks" => trim((string)($savedRankRow["remarks"] ?? "")),
+          ];
+        }
+        $savedRankResult->free();
+      }
+      $savedRankStmt->close();
+    }
+
+    foreach ($applicantIds as $applicantId) {
+      $interviewScoresByApplicantId[$applicantId] = [
+        "assigned_panel_count" => 0,
+        "rated_panel_count" => 0,
+        "total_points_sum" => 0.0,
+        "weighted_mean" => null,
+        "interview_rating" => null,
+        "interview_weighted" => null,
+      ];
+    }
+
+    $panelAssignmentSql = "
+      SELECT application_id, COUNT(DISTINCT panelist_username) AS assigned_panel_count
+      FROM panelist_queue
+      WHERE application_id IN ({$placeholders})
+      GROUP BY application_id
+    ";
+    $panelAssignmentStmt = $conn->prepare($panelAssignmentSql);
+    if ($panelAssignmentStmt) {
+      $panelAssignmentStmt->bind_param($types, ...$applicantIds);
+      if ($panelAssignmentStmt->execute()) {
+        $panelAssignmentResult = $panelAssignmentStmt->get_result();
+        while ($panelAssignmentRow = $panelAssignmentResult->fetch_assoc()) {
+          $applicantId = (int)($panelAssignmentRow["application_id"] ?? 0);
+          if ($applicantId <= 0 || !isset($interviewScoresByApplicantId[$applicantId])) {
+            continue;
+          }
+
+          $interviewScoresByApplicantId[$applicantId]["assigned_panel_count"] = (int)($panelAssignmentRow["assigned_panel_count"] ?? 0);
+        }
+        $panelAssignmentResult->free();
+      }
+      $panelAssignmentStmt->close();
+    }
+
+    $evaluationSql = "
+      SELECT ie.applicant_id, ie.interviewer_name, ie.total_points
+      FROM interview_evaluations ie
+      INNER JOIN (
+        SELECT applicant_id, interviewer_name, MAX(id) AS latest_id
+        FROM interview_evaluations
+        WHERE applicant_id IN ({$placeholders})
+        GROUP BY applicant_id, interviewer_name
+      ) latest ON latest.latest_id = ie.id
+      ORDER BY ie.applicant_id ASC, ie.interviewer_name ASC
+    ";
+    $evaluationStmt = $conn->prepare($evaluationSql);
+    if ($evaluationStmt) {
+      $evaluationStmt->bind_param($types, ...$applicantIds);
+      if ($evaluationStmt->execute()) {
+        $evaluationResult = $evaluationStmt->get_result();
+        while ($evaluationRow = $evaluationResult->fetch_assoc()) {
+          $applicantId = (int)($evaluationRow["applicant_id"] ?? 0);
+          if ($applicantId <= 0 || !isset($interviewScoresByApplicantId[$applicantId])) {
+            continue;
+          }
+
+          $totalPoints = is_numeric($evaluationRow["total_points"] ?? null)
+            ? (float)$evaluationRow["total_points"]
+            : 0.0;
+          if ($totalPoints < 0) {
+            $totalPoints = 0.0;
+          }
+
+          $interviewScoresByApplicantId[$applicantId]["rated_panel_count"]++;
+          $interviewScoresByApplicantId[$applicantId]["total_points_sum"] += $totalPoints;
+        }
+        $evaluationResult->free();
+      }
+      $evaluationStmt->close();
+    }
+
+    foreach ($interviewScoresByApplicantId as $applicantId => $summary) {
+      $assignedPanelCount = (int)($summary["assigned_panel_count"] ?? 0);
+      $ratedPanelCount = (int)($summary["rated_panel_count"] ?? 0);
+      if ($assignedPanelCount <= 0 || $ratedPanelCount <= 0 || $ratedPanelCount < $assignedPanelCount) {
+        continue;
+      }
+
+      $averagePanelScore = ((float)($summary["total_points_sum"] ?? 0.0)) / $assignedPanelCount;
+      $weightedMean = ((float)($summary["total_points_sum"] ?? 0.0)) / ($criteriaCount * $assignedPanelCount);
+      $interviewRating = ($averagePanelScore / $maxInterviewPoints) * 100;
+      $interviewWeighted = $interviewRating * 0.40;
+
+      $interviewScoresByApplicantId[$applicantId]["weighted_mean"] = $weightedMean;
+      $interviewScoresByApplicantId[$applicantId]["interview_rating"] = $interviewRating;
+      $interviewScoresByApplicantId[$applicantId]["interview_weighted"] = $interviewWeighted;
+    }
+  }
+}
+
+$rankRows = array_map(static function (array $item) use ($interviewScoresByApplicantId, $savedRankInputsByApplicantId, $rankRemarkOptions, $formatScoreDisplay): array {
+  $applicantId = (int)($item["id"] ?? 0);
+  $summary = $interviewScoresByApplicantId[$applicantId] ?? [];
+  $savedInputs = $savedRankInputsByApplicantId[$applicantId] ?? [];
+  $weightedMean = isset($summary["weighted_mean"]) && is_numeric($summary["weighted_mean"])
+    ? (float)$summary["weighted_mean"]
+    : null;
+  $interviewWeighted = isset($summary["interview_weighted"]) && is_numeric($summary["interview_weighted"])
+    ? (float)$summary["interview_weighted"]
+    : null;
+  $savedExamRating = isset($savedInputs["exam_rating"]) && is_numeric($savedInputs["exam_rating"])
+    ? (float)$savedInputs["exam_rating"]
+    : null;
+  $savedGradesRating = isset($savedInputs["grades_rating"]) && is_numeric($savedInputs["grades_rating"])
+    ? (float)$savedInputs["grades_rating"]
+    : null;
+  $savedRemarks = trim((string)($savedInputs["remarks"] ?? ""));
+  if (!in_array($savedRemarks, $rankRemarkOptions, true)) {
+    $savedRemarks = "";
+  }
+
+  return [
+    "id" => $applicantId,
+    "name" => (string)($item["name"] ?? ""),
+    "exRateInput" => $savedExamRating === null ? "" : $formatScoreDisplay($savedExamRating),
+    "ex30" => "",
+    "inRate" => $formatScoreDisplay($weightedMean),
+    "in40" => $formatScoreDisplay($interviewWeighted),
+    "in40Value" => $interviewWeighted,
+    "grRateInput" => $savedGradesRating === null ? "" : $formatScoreDisplay($savedGradesRating),
+    "gr30" => "",
+    "avg" => "",
+    "rank" => "",
+    "remarks" => $savedRemarks,
+  ];
+}, $panelistSentApplicants);
 ?>
 <html lang="en">
   <head>
@@ -89,6 +398,30 @@ require_once __DIR__ . "/includes/panelist-sent-applicants.php";
       .rating-grades {
         background-color: #fef08a;
       }
+      .score-input {
+        width: 100%;
+        border: 0;
+        padding: 0;
+        background: transparent;
+        text-align: center;
+        font: inherit;
+        outline: none;
+      }
+      .score-input::-webkit-outer-spin-button,
+      .score-input::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      .score-input[type="number"] {
+        appearance: textfield;
+      }
+      .remark-select {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        font: inherit;
+        outline: none;
+      }
       @media (max-width: 767px) {
         .paper {
           padding: 12px;
@@ -166,6 +499,16 @@ require_once __DIR__ . "/includes/panelist-sent-applicants.php";
 
         .paper .overflow-x-auto {
           overflow: visible !important;
+        }
+        .remark-select {
+          appearance: none !important;
+          -webkit-appearance: none !important;
+          -moz-appearance: none !important;
+          background-image: none !important;
+          padding-right: 0 !important;
+        }
+        .remark-select::-ms-expand {
+          display: none !important;
         }
         .rating-exam {
           background-color: #bbf7d0 !important;
@@ -463,17 +806,37 @@ require_once __DIR__ . "/includes/panelist-sent-applicants.php";
                   </a>
                 <?php endif; ?>
               </form>
-              <button
-                type="button"
-                onclick="window.print()"
-                class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a6fac]"
-              >
-                <i class="fas fa-print"></i>
-                <span>Print</span>
-              </button>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="submit"
+                  form="rankInputsForm"
+                  class="inline-flex items-center gap-2 rounded-full border border-[#052c6a] bg-[#052c6a] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#041c43]"
+                >
+                  <i class="fas fa-save"></i>
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onclick="window.print()"
+                  class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a6fac]"
+                >
+                  <i class="fas fa-print"></i>
+                  <span>Print</span>
+                </button>
+              </div>
             </div>
           </div>
 
+          <?php if ($rankSaveMessage !== ""): ?>
+            <div class="no-print mb-4 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $rankSaveMessageType === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"; ?>">
+              <?php echo htmlspecialchars($rankSaveMessage); ?>
+            </div>
+          <?php endif; ?>
+
+          <form id="rankInputsForm" method="post">
+            <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($selectedSchoolYear); ?>" />
+            <input type="hidden" name="semester" value="<?php echo htmlspecialchars($selectedSemester); ?>" />
+            <input type="hidden" name="batch" value="<?php echo htmlspecialchars($selectedBatch); ?>" />
           <div class="paper w-full bg-white border border-slate-300 shadow-xl print:shadow-none print:border-0">
             <div class="document-header">
               <div class="header-top">
@@ -531,12 +894,12 @@ require_once __DIR__ . "/includes/panelist-sent-applicants.php";
                     <th colspan="2" class="border border-black px-2 py-2 bg-yellow-200 rating-grades">Grades</th>
                   </tr>
                   <tr class="text-center font-semibold bg-white">
-                    <th class="border border-black px-2 py-2">Rating</th>
-                    <th class="border border-black px-2 py-2">30%</th>
-                    <th class="border border-black px-2 py-2">Rating</th>
-                    <th class="border border-black px-2 py-2">40%</th>
-                    <th class="border border-black px-2 py-2">Rating</th>
-                    <th class="border border-black px-2 py-2">30%</th>
+                    <th class="border border-black px-2 py-2">100</th>
+                    <th class="border border-black text-red-500 px-2 py-2">30%</th>
+                    <th class="border border-black px-2 py-2">5.00</th>
+                    <th class="border border-black text-red-500 px-2 py-2">40%</th>
+                    <th class="border border-black px-2 py-2">100</th>
+                    <th class="border border-black text-red-500 px-2 py-2">30%</th>
                   </tr>
                 </thead>
                 <tbody id="rankTableBody"></tbody>
@@ -560,39 +923,109 @@ require_once __DIR__ . "/includes/panelist-sent-applicants.php";
               </div>
             </div>
           </div>
+          </form>
         </section>
       </main>
     </div>
     <script>
-      const sampleRows = [
-        { name: "Ramon B. Cruz", ex30: 25.20, exRate: 84.00, in40: 36.80, inRate: 92.00, gr30: 28.20, grRate: 94.00, avg: 90.20, rank: 1, remarks: "" },
-        { name: "Jessa Mae G. Vargas", ex30: 24.00, exRate: 80.00, in40: 34.40, inRate: 86.00, gr30: 27.00, grRate: 90.00, avg: 85.40, rank: 2, remarks: "" },
-        { name: "Lawrence T. Banaybanay", ex30: 23.10, exRate: 77.00, in40: 32.80, inRate: 82.00, gr30: 27.90, grRate: 93.00, avg: 83.80, rank: 3, remarks: "" },
-        { name: "Shiela Marie P. Aquino", ex30: 24.00, exRate: 80.00, in40: 31.40, inRate: 78.50, gr30: 28.50, grRate: 95.00, avg: 83.90, rank: 4, remarks: "" },
-        { name: "Emmanuel D. Ybanez", ex30: 22.50, exRate: 75.00, in40: 30.00, inRate: 75.00, gr30: 26.70, grRate: 89.00, avg: 79.20, rank: 5, remarks: "" },
-        { name: "Kristine Joy R. Sabellano", ex30: 21.60, exRate: 72.00, in40: 29.20, inRate: 73.00, gr30: 26.40, grRate: 88.00, avg: 76.80, rank: 6, remarks: "" },
-        { name: "Ralph Adrian B. Daguplo", ex30: 21.30, exRate: 71.00, in40: 28.80, inRate: 72.00, gr30: 25.50, grRate: 85.00, avg: 75.60, rank: 7, remarks: "" },
-        { name: "Princess Mae G. Rebato", ex30: 20.70, exRate: 69.00, in40: 27.60, inRate: 69.00, gr30: 24.90, grRate: 83.00, avg: 73.20, rank: 8, remarks: "" },
-        { name: "Michael Lloyd E. Ceballos", ex30: 19.80, exRate: 66.00, in40: 26.80, inRate: 67.00, gr30: 23.70, grRate: 79.00, avg: 70.30, rank: 9, remarks: "" },
-        { name: "Mary Rose F. Tual", ex30: 19.20, exRate: 64.00, in40: 25.60, inRate: 64.00, gr30: 22.50, grRate: 75.00, avg: 67.30, rank: 10, remarks: "" }
-      ];
-      const sentApplicants = <?php echo json_encode(array_map(function ($item) {
-        return ["name" => (string)($item["name"] ?? "")];
-      }, $panelistSentApplicants), JSON_UNESCAPED_SLASHES); ?>;
-      const rows = sentApplicants.length > 0
-        ? sentApplicants.map((item, index) => ({
-            name: item.name,
-            ex30: 0,
-            exRate: 0,
-            in40: 0,
-            inRate: 0,
-            gr30: 0,
-            grRate: 0,
-            avg: 0,
-            rank: index + 1,
-            remarks: ""
-          }))
-        : sampleRows;
+      const rows = <?php echo json_encode($rankRows, JSON_UNESCAPED_SLASHES); ?>;
+      const remarkOptions = <?php echo json_encode(array_values($rankRemarkOptions), JSON_UNESCAPED_SLASHES); ?>;
+      const truncateToTwoDecimals = (value) => {
+        if (!Number.isFinite(value)) {
+          return null;
+        }
+        return value >= 0 ? Math.floor(value * 100) / 100 : Math.ceil(value * 100) / 100;
+      };
+      const formatDisplayScore = (value) => {
+        if (value === null || value === undefined || !Number.isFinite(value)) {
+          return "";
+        }
+        return truncateToTwoDecimals(value).toFixed(2);
+      };
+      const parseManualScore = (value) => {
+        if (typeof value !== "string" || value.trim() === "") {
+          return null;
+        }
+
+        const parsedValue = Number(value);
+        if (!Number.isFinite(parsedValue) || parsedValue < 0 || parsedValue > 100) {
+          return null;
+        }
+
+        return parsedValue;
+      };
+
+      function updateRankAssignments() {
+        const rankedRows = rows
+          .map((row, index) => ({ row, index }))
+          .filter(({ row }) => row.avgValue !== null && Number.isFinite(row.avgValue))
+          .sort((left, right) => {
+            if (right.row.avgValue === left.row.avgValue) {
+              return left.index - right.index;
+            }
+            return right.row.avgValue - left.row.avgValue;
+          });
+
+        rows.forEach((row) => {
+          row.rank = "";
+        });
+
+        rankedRows.forEach((item, index) => {
+          item.row.rank = String(index + 1);
+        });
+      }
+
+      function syncRowDisplay(rowIndex) {
+        const row = rows[rowIndex];
+        const rowElement = document.querySelector(`[data-row-index="${rowIndex}"]`);
+        if (!row || !rowElement) {
+          return;
+        }
+
+        const ex30Cell = rowElement.querySelector("[data-field='ex30']");
+        const gr30Cell = rowElement.querySelector("[data-field='gr30']");
+        const avgCell = rowElement.querySelector("[data-field='avg']");
+        const rankCell = rowElement.querySelector("[data-field='rank']");
+
+        if (ex30Cell) ex30Cell.textContent = row.ex30;
+        if (gr30Cell) gr30Cell.textContent = row.gr30;
+        if (avgCell) avgCell.textContent = row.avg;
+        if (rankCell) rankCell.textContent = row.rank;
+      }
+
+      function syncAllRankDisplays() {
+        rows.forEach((_, index) => {
+          syncRowDisplay(index);
+        });
+      }
+
+      function recalculateRow(rowIndex) {
+        const row = rows[rowIndex];
+        if (!row) {
+          return;
+        }
+
+        const examRating = parseManualScore(row.exRateInput);
+        const gradesRating = parseManualScore(row.grRateInput);
+        const interviewWeighted = row.in40Value !== null && Number.isFinite(row.in40Value) ? row.in40Value : null;
+
+        const examWeighted = examRating === null ? null : truncateToTwoDecimals(examRating * 0.30);
+        const gradesWeighted = gradesRating === null ? null : truncateToTwoDecimals(gradesRating * 0.30);
+
+        row.ex30 = formatDisplayScore(examWeighted);
+        row.gr30 = formatDisplayScore(gradesWeighted);
+
+        if (examWeighted === null || gradesWeighted === null || interviewWeighted === null) {
+          row.avgValue = null;
+          row.avg = "";
+        } else {
+          row.avgValue = truncateToTwoDecimals(examWeighted + interviewWeighted + gradesWeighted);
+          row.avg = formatDisplayScore(row.avgValue);
+        }
+
+        updateRankAssignments();
+        syncAllRankDisplays();
+      }
 
       function renderRankRows() {
         const tbody = document.getElementById("rankTableBody");
@@ -602,20 +1035,90 @@ require_once __DIR__ . "/includes/panelist-sent-applicants.php";
         rows.forEach((row, index) => {
           const tr = document.createElement("tr");
           tr.className = "border border-black text-[12px]";
+          tr.dataset.rowIndex = String(index);
+          const remarkOptionsHtml = ['<option value=""></option>']
+            .concat(
+              remarkOptions.map((option) => {
+                const selected = row.remarks === option ? " selected" : "";
+                return `<option value="${option}"${selected}>${option}</option>`;
+              })
+            )
+            .join("");
           tr.innerHTML = `
             <td class="border border-black px-2 py-2 text-center">${index + 1}</td>
             <td class="border border-black px-2 py-2">${row.name}</td>
-            <td class="border border-black px-2 py-2 text-center">${row.exRate.toFixed(2)}</td>
-            <td class="border border-black px-2 py-2 text-center">${row.ex30.toFixed(2)}</td>
-            <td class="border border-black px-2 py-2 text-center">${row.inRate.toFixed(2)}</td>
-            <td class="border border-black px-2 py-2 text-center">${row.in40.toFixed(2)}</td>
-            <td class="border border-black px-2 py-2 text-center">${row.grRate.toFixed(2)}</td>
-            <td class="border border-black px-2 py-2 text-center">${row.gr30.toFixed(2)}</td>
-            <td class="border border-black px-2 py-2 text-center font-semibold">${row.avg.toFixed(2)}</td>
-            <td class="border border-black px-2 py-2 text-center font-semibold">${row.rank}</td>
-            <td class="border border-black px-2 py-2">${row.remarks}</td>
+            <td class="border border-black px-2 py-2 text-center">
+              <input type="hidden" name="applicant_ids[]" value="${row.id}" />
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value="${row.exRateInput}"
+                class="score-input"
+                data-field="exRateInput"
+                data-row-index="${index}"
+                name="exam_rating[${row.id}]"
+              />
+            </td>
+            <td class="border border-black px-2 py-2 text-center" data-field="ex30">${row.ex30}</td>
+            <td class="border border-black px-2 py-2 text-center">${row.inRate}</td>
+            <td class="border border-black px-2 py-2 text-center">${row.in40}</td>
+            <td class="border border-black px-2 py-2 text-center">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value="${row.grRateInput}"
+                class="score-input"
+                data-field="grRateInput"
+                data-row-index="${index}"
+                name="grades_rating[${row.id}]"
+              />
+            </td>
+            <td class="border border-black px-2 py-2 text-center" data-field="gr30">${row.gr30}</td>
+            <td class="border border-black px-2 py-2 text-center font-semibold" data-field="avg">${row.avg}</td>
+            <td class="border border-black px-2 py-2 text-center font-semibold" data-field="rank">${row.rank}</td>
+            <td class="border border-black px-2 py-2">
+              <select
+                class="remark-select"
+                name="remarks[${row.id}]"
+                data-field="remarks"
+                data-row-index="${index}"
+              >
+                ${remarkOptionsHtml}
+              </select>
+            </td>
           `;
           tbody.appendChild(tr);
+        });
+
+        tbody.querySelectorAll("input[data-field='exRateInput']").forEach((input) => {
+          input.addEventListener("input", (event) => {
+            const rowIndex = Number(event.currentTarget.dataset.rowIndex);
+            rows[rowIndex].exRateInput = event.currentTarget.value;
+            recalculateRow(rowIndex);
+          });
+        });
+
+        tbody.querySelectorAll("input[data-field='grRateInput']").forEach((input) => {
+          input.addEventListener("input", (event) => {
+            const rowIndex = Number(event.currentTarget.dataset.rowIndex);
+            rows[rowIndex].grRateInput = event.currentTarget.value;
+            recalculateRow(rowIndex);
+          });
+        });
+
+        tbody.querySelectorAll("select[data-field='remarks']").forEach((select) => {
+          select.addEventListener("change", (event) => {
+            const rowIndex = Number(event.currentTarget.dataset.rowIndex);
+            rows[rowIndex].remarks = event.currentTarget.value;
+          });
+        });
+
+        rows.forEach((_, index) => {
+          recalculateRow(index);
         });
       }
 

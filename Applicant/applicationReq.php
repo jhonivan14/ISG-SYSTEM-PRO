@@ -12,11 +12,308 @@ if (empty($_SESSION["from_index"])) {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ISG List and Requirements • Step 1</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #052c6a;
+      --accent: #0d8ddb;
+      --gold: #fcdc2f;
+      --card-border: rgba(13, 141, 219, 0.18);
+    }
+
+    body {
+      font-family: "IBM Plex Sans", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(13, 141, 219, 0.16), transparent 28%),
+        radial-gradient(circle at 85% 15%, rgba(252, 220, 47, 0.22), transparent 20%),
+        linear-gradient(180deg, #dfefff 0%, #f7fbff 40%, #eef6ff 100%);
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    .display-font {
+      font-family: "Outfit", sans-serif;
+    }
+
+    .page-orbs {
+      position: absolute;
+      inset: 0 0 auto;
+      height: 24rem;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    .page-orbs span {
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(50px);
+      opacity: 0.7;
+    }
+
+    .page-orbs .orb-a {
+      width: 15rem;
+      height: 15rem;
+      top: -3rem;
+      left: -2rem;
+      background: rgba(13, 141, 219, 0.22);
+    }
+
+    .page-orbs .orb-b {
+      width: 13rem;
+      height: 13rem;
+      top: 2rem;
+      right: 2rem;
+      background: rgba(252, 220, 47, 0.25);
+    }
+
+    .hero-shell {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(13, 141, 219, 0.14);
+      border-radius: 2rem;
+      background: linear-gradient(140deg, rgba(255, 255, 255, 0.96), rgba(236, 246, 255, 0.92));
+      box-shadow: 0 28px 60px -36px rgba(5, 44, 106, 0.55);
+      padding: 1.35rem;
+    }
+
+    .hero-shell::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(120deg, rgba(255, 255, 255, 0.24), transparent 40%),
+        radial-gradient(circle at top right, rgba(252, 220, 47, 0.2), transparent 24%);
+      pointer-events: none;
+    }
+
+    .hero-grid {
+      display: grid;
+      gap: 1rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-card {
+      border-radius: 1.5rem;
+      padding: 1.35rem;
+      color: #fff;
+      background: linear-gradient(135deg, #052c6a 0%, #0d8ddb 58%, #37b7f5 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+
+    .step-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.38rem 0.8rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    .step-flow {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+
+    .step-flow span {
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.1);
+      padding: 0.45rem 0.8rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .metric-grid {
+      display: grid;
+      gap: 0.9rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .metric-card {
+      border-radius: 1.4rem;
+      border: 1px solid rgba(13, 141, 219, 0.14);
+      background: rgba(255, 255, 255, 0.9);
+      padding: 1rem;
+      box-shadow: 0 18px 36px -30px rgba(5, 44, 106, 0.45);
+    }
+
+    .metric-card strong {
+      display: block;
+      color: var(--ink);
+      font-family: "Outfit", sans-serif;
+      font-size: 1.8rem;
+      line-height: 1;
+    }
+
+    .metric-card span {
+      display: block;
+      margin-top: 0.35rem;
+      color: rgba(5, 44, 106, 0.76);
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .hero-progress {
+      position: relative;
+      z-index: 1;
+      margin-top: 1rem;
+      border-radius: 1.5rem;
+      border: 1px solid rgba(13, 141, 219, 0.12);
+      background: rgba(255, 255, 255, 0.78);
+      padding: 1rem;
+    }
+
+    .notice-shell {
+      border: 1px solid rgba(252, 220, 47, 0.45);
+      border-radius: 1.75rem;
+      background: linear-gradient(135deg, rgba(255, 251, 230, 0.98), rgba(255, 247, 199, 0.9));
+      box-shadow: 0 18px 40px -34px rgba(120, 53, 15, 0.45);
+    }
+
+    .notice-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      border-radius: 999px;
+      border: 1px solid rgba(120, 53, 15, 0.14);
+      background: rgba(255, 255, 255, 0.62);
+      padding: 0.42rem 0.72rem;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #7c3f10;
+    }
+
+    .grants-layout {
+      display: grid;
+      gap: 1.5rem;
+      align-items: start;
+    }
+
+    .grants-layout > section:nth-of-type(1),
+    .grants-layout > section:nth-of-type(2),
+    .grants-layout > section:nth-of-type(18) {
+      grid-column: 1 / -1;
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17) {
+      position: relative;
+      overflow: hidden;
+      border-color: rgba(255, 255, 255, 0.34) !important;
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.16)) !important;
+      box-shadow:
+        0 28px 60px -42px rgba(5, 44, 106, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
+      backdrop-filter: blur(16px) saturate(150%);
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17)::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 34%),
+        radial-gradient(circle at 100% 0, rgba(13, 141, 219, 0.12), transparent 24%),
+        radial-gradient(circle at 0 100%, rgba(252, 220, 47, 0.1), transparent 24%);
+      pointer-events: none;
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17) > div:first-child {
+      position: relative;
+      overflow: hidden;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17) > div:first-child::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(120deg, rgba(255, 255, 255, 0.16), transparent 40%),
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.1), transparent 26%);
+      pointer-events: none;
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17) > div:last-child {
+      position: relative;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(245, 250, 255, 0.56));
+      backdrop-filter: blur(12px);
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17) ul {
+      margin-top: 0.4rem;
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17) li {
+      margin-bottom: 0.28rem;
+      padding-left: 0.1rem;
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17) li::marker {
+      color: var(--accent);
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17) button {
+      border: 1px solid rgba(4, 44, 106, 0.08);
+      background-image: linear-gradient(135deg, #0d8ddb 0%, #1354c8 100%);
+      box-shadow: 0 14px 28px -20px rgba(13, 141, 219, 0.8);
+    }
+
+    main > section:nth-of-type(n+3):nth-of-type(-n+17) button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 18px 34px -22px rgba(13, 141, 219, 0.9);
+    }
+
+    .final-cta {
+      border: 1px solid rgba(13, 141, 219, 0.14);
+      border-radius: 1.75rem;
+      background: linear-gradient(140deg, rgba(255, 255, 255, 0.96), rgba(234, 248, 255, 0.94));
+      box-shadow: 0 24px 54px -40px rgba(5, 44, 106, 0.4);
+    }
+
+    @media (min-width: 960px) {
+      .grants-layout {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .hero-grid {
+        grid-template-columns: minmax(0, 1.25fr) minmax(0, 0.9fr);
+        align-items: stretch;
+      }
+    }
+
+    @media (max-width: 767px) {
+      .metric-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-card,
+      .hero-progress,
+      .metric-card {
+        border-radius: 1.2rem;
+      }
+    }
+  </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-[#e0f2ff] via-white to-[#e0f2ff] font-sans flex flex-col">
   <!-- TOP NAV / BRAND -->
-  <header class="bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-lg sticky top-0 z-20">
-    <div class="max-w-6xl mx-auto flex items-center gap-3 px-4 sm:px-6 py-3">
+  <header class="bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md sticky top-0 z-20">
+    <div class="w-full flex items-center gap-3 px-4 sm:px-6 lg:px-10 py-3">
       <img
         src="../img/SMCCNEWLOGO.png"
         alt="SMCC Logo"
@@ -26,61 +323,96 @@ if (empty($_SESSION["from_index"])) {
         <p class="text-[10px] sm:text-xs text-blue-100 uppercase tracking-[0.18em]">
           SMCC Admission and Scholarship Office
         </p>
-        <h1 class="text-white text-sm sm:text-lg font-semibold leading-tight">
-          Institutional Scholarship Grants
-        </h1>
-        <p class="text-[10px] sm:text-xs text-blue-100/80">
-          Step 1 of 3 • View ISG List and Requirements
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="text-white text-sm sm:text-base font-semibold leading-tight">
+            Institutional Scholarship Grants
+          </h1>
+          <span class="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-white/10 text-[10px] sm:text-[11px] text-blue-50">
+            Step 1 of 3
+          </span>
+        </div>
+        <p class="text-[10px] sm:text-xs text-blue-100">
+          View ISG List and Requirements
         </p>
       </div>
     </div>
   </header>
 
-  <main class="flex-1 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-10 space-y-6">
+  <main class="grants-layout relative flex-1 w-full px-4 sm:px-6 lg:px-10 xl:px-12 py-6 sm:py-10">
+    <div class="page-orbs" aria-hidden="true">
+      <span class="orb-a"></span>
+      <span class="orb-b"></span>
+    </div>
     <!-- PAGE TITLE + STEP BAR -->
-    <section class="space-y-4">
-      <div class="text-center space-y-2">
-        <h2 class="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#0b63d1] tracking-wide drop-shadow-sm">
-          ISG LIST AND REQUIREMENTS
-        </h2>
-        <p class="text-xs sm:text-sm text-[#052c6a]/80 max-w-2xl mx-auto">
-          Step 1: Review each scholarship grant or discount and prepare your requirements.
-          In Step 2 you will fill out the application form, and in Step 3 you will upload your documents.
-        </p>
+    <section class="hero-shell">
+      <div class="hero-grid">
+        <div class="hero-card">
+          <span class="step-pill">Step 1 of 3</span>
+          <h2 class="mt-4 text-3xl sm:text-4xl font-extrabold tracking-tight">
+            Review Every Grant Before You Apply
+          </h2>
+          <p class="mt-3 max-w-2xl text-sm sm:text-base text-blue-50/92">
+            Check the qualifications, prepare the correct requirements, then continue to the application form with the grant you want already selected.
+          </p>
+          <div class="step-flow">
+            <span>Review eligibility</span>
+            <span>Prepare documents</span>
+            <span>Continue to Step 2</span>
+          </div>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric-card">
+            <strong>15</strong>
+            <span>Available grants and discounts</span>
+          </div>
+          <div class="metric-card">
+            <strong>3</strong>
+            <span>Simple application steps</span>
+          </div>
+          <div class="metric-card">
+            <strong>Online</strong>
+            <span>Document upload after applying</span>
+          </div>
+        </div>
       </div>
 
-      <!-- STEP PROGRESS BAR -->
-      <div class="max-w-xl mx-auto">
-        <div class="flex justify-between text-[10px] sm:text-xs font-semibold text-[#052c6a]/80 mb-2">
+      <div class="hero-progress">
+        <div class="flex flex-wrap justify-between gap-2 text-[10px] sm:text-xs font-semibold text-[#052c6a]/80 mb-2">
           <span class="text-[#0d8ddb]">Step 1: List & Requirements</span>
           <span>Step 2: Application Form</span>
           <span>Step 3: Upload Documents</span>
         </div>
-        <div class="h-1.5 rounded-full bg-[#dbe6ff] overflow-hidden">
-          <div class="h-full w-1/3 bg-gradient-to-r from-[#0d8ddb] to-[#fcdc2f]"></div>
+        <div class="h-2 rounded-full bg-[#dbe6ff] overflow-hidden">
+          <div class="h-full w-1/3 rounded-full bg-gradient-to-r from-[#0d8ddb] via-[#1499e8] to-[#fcdc2f]"></div>
         </div>
       </div>
     </section>
 
     <!-- NOTE CARD -->
     <section
-      class="bg-white/90 backdrop-blur rounded-2xl border border-[#d3e2ff] shadow-md px-5 sm:px-7 py-4 sm:py-5 flex gap-3"
+      class="notice-shell px-5 sm:px-7 py-4 sm:py-5 flex gap-3"
     >
       <div class="mt-1 hidden sm:block">
-        <div class="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center border border-red-200">
+        <div class="w-11 h-11 rounded-2xl bg-white/70 flex items-center justify-center border border-yellow-300/80 shadow-sm">
           <span class="text-red-500 font-bold text-sm">!</span>
         </div>
       </div>
       <div class="text-xs sm:text-sm text-[#052c6a]">
-        <p>
+        <p class="text-sm sm:text-base">
           <span class="font-bold text-red-600">Important Reminder:</span>
           Non-compliance with any of the requirements listed under each grant, or with
           any provision of the scholarship contract, will be a ground for the forfeiture
           of the scholarship program.
         </p>
-        <p class="mt-1 text-[11px] sm:text-xs text-[#052c6a]/80">
+        <p class="mt-2 text-[11px] sm:text-sm text-[#052c6a]/80">
           Make sure your documents are complete and clearly scanned before you proceed to the application form.
         </p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <span class="notice-chip">Check qualifications</span>
+          <span class="notice-chip">Prepare clear scans</span>
+          <span class="notice-chip">Choose the correct grant</span>
+        </div>
       </div>
     </section>
 
@@ -845,9 +1177,40 @@ if (empty($_SESSION["from_index"])) {
       </div>
     </section>
 
+       <!-- ============ 15. Michaelinian Stakeholders Grant  ============ -->
+    <section class="bg-white/95 backdrop-blur rounded-3xl shadow-xl border border-[#cddfff] overflow-hidden transition hover:shadow-2xl hover:-translate-y-0.5">
+      <div class="bg-gradient-to-r from-[#0d8ddb] to-[#052c6a] px-6 sm:px-8 py-4 sm:py-5 flex items-center justify-between gap-3">
+        <div>
+          <p class="text-[11px] sm:text-xs text-blue-100 uppercase tracking-[0.25em]">
+            Discount Category
+          </p>
+          <h3 class="text-lg sm:text-xl font-extrabold text-white">
+            15. Michaelinian Stakeholders Grant
+          </h3>
+        </div>
+        <span class="inline-flex items-center rounded-full bg-white/90 text-[#0d8ddb] text-[11px] sm:text-xs font-semibold px-3 py-1 shadow">
+          Stakeholders
+        </span>
+      </div>
+
+      <div class="px-6 sm:px-8 py-6 sm:py-8 space-y-4 text-[#052c6a] text-sm sm:text-base">
+        <p class="text-xs sm:text-sm text-[#052c6a]/90 italic">
+        </p>
+        <div class="pt-2 flex justify-center">
+          <button
+            type="button"
+            onclick="goApply(15)"
+            class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#0d8ddb] hover:bg-[#0b63d1] text-white font-semibold text-sm sm:text-base px-8 py-2.5 rounded-full shadow-md transition-transform duration-150 hover:-translate-y-[1px]"
+          >
+            APPLY FOR THIS DISCOUNT
+          </button>
+        </div>
+      </div>
+    </section>
+
     <!-- GLOBAL CTA -->
-    <section class="pt-2">
-      <div class="bg-white/85 border border-[#d3e2ff] rounded-2xl shadow-sm px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+    <section class="pt-4">
+      <div class="final-cta px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
         <p class="text-[11px] sm:text-xs text-[#052c6a]/80 text-center sm:text-left">
           Already reviewed the grants and discounts? You may now proceed to
           <span class="font-semibold text-[#0d8ddb]">Step 2: Application Form</span>.

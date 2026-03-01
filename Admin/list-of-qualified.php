@@ -1,5 +1,5 @@
 <?php
-$defaultBatchLabel = "Batch 1";
+$defaultBatchLabel = "All Batches";
 require_once __DIR__ . "/includes/school-term-filter.php";
 ?>
 <html lang="en">

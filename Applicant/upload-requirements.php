@@ -126,12 +126,19 @@ $grants = [
       "Certification from Alumni Association"
     ]
   ],
+  
+  15 => [
+    "title" => "Michaelinian Stakeholders Grant",
+    "requirements" => [
+    ]
+  ]
 ];
 
 // Prefer POST (gikan Step 2), fallback to GET (direct link)
 $draft = $_SESSION["application_draft"] ?? null;
 $id = $_POST["grant_id"] ?? $_GET["grant"] ?? ($draft["grant_id"] ?? 0);
 $selected = $grants[$id] ?? null;
+$hasRequirements = $selected && !empty($selected["requirements"]);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -141,13 +148,18 @@ $selected = $grants[$id] ?? null;
   <title>Upload Requirements • Step 3</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    body {
+      font-family: 'Roboto Slab', serif;
+    }
+  </style>
 </head>
 
 <body class="bg-gradient-to-b from-[#e0f2ff] via-white to-[#e0f2ff] min-h-screen font-sans">
 
   <!-- TOP BAR / BRAND -->
   <header class="bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md">
-    <div class="max-w-5xl mx-auto flex items-center gap-3 px-4 sm:px-6 py-3">
+    <div class="w-full flex items-center gap-3 px-4 sm:px-6 lg:px-10 py-3">
       <!-- LOGO -->
       <div class="flex items-center justify-center">
         <img
@@ -246,11 +258,18 @@ $selected = $grants[$id] ?? null;
 
           <!-- Reminder / Note -->
           <div class="mb-4 sm:mb-5 rounded-xl bg-[#fef9c3] border border-[#facc15]/70 px-3 sm:px-4 py-2.5">
-            <p class="text-[11px] sm:text-xs text-[#78350f]">
-              <span class="font-semibold">Reminder:</span>
-              Accepted file types: <span class="font-semibold">PDF, JPG, JPEG, PNG</span>.
-              Upload one file per requirement.
-            </p>
+            <?php if ($hasRequirements): ?>
+              <p class="text-[11px] sm:text-xs text-[#78350f]">
+                <span class="font-semibold">Reminder:</span>
+                Accepted file types: <span class="font-semibold">PDF, JPG, JPEG, PNG</span>.
+                Upload one file per requirement.
+              </p>
+            <?php else: ?>
+              <p class="text-[11px] sm:text-xs text-[#78350f]">
+                <span class="font-semibold">Notice:</span>
+                This scholarship grant has no documentary requirements. You may proceed directly to submit your application.
+              </p>
+            <?php endif; ?>
           </div>
 
           <form id="uploadForm" action="submit_upload.php" method="POST" enctype="multipart/form-data" class="space-y-4 sm:space-y-5">
@@ -262,51 +281,59 @@ $selected = $grants[$id] ?? null;
               <h4 class="text-sm sm:text-base font-semibold text-[#0d8ddb]">
                 Requirements to upload:
               </h4>
-              <ul class="list-disc list-inside text-[11px] sm:text-xs text-[#052c6a]/80">
-                <?php foreach ($selected["requirements"] as $req): ?>
-                  <li><?php echo htmlspecialchars($req); ?></li>
-                <?php endforeach; ?>
-              </ul>
+              <?php if ($hasRequirements): ?>
+                <ul class="list-disc list-inside text-[11px] sm:text-xs text-[#052c6a]/80">
+                  <?php foreach ($selected["requirements"] as $req): ?>
+                    <li><?php echo htmlspecialchars($req); ?></li>
+                  <?php endforeach; ?>
+                </ul>
+              <?php else: ?>
+                <p class="text-[11px] sm:text-xs text-[#052c6a]/80">
+                  No upload is required for this scholarship grant.
+                </p>
+              <?php endif; ?>
             </div>
 
             <hr class="border-dashed border-[#d3defe] my-3">
 
             <!-- File inputs (one per requirement) with CLEAR button -->
-            <?php foreach ($selected["requirements"] as $index => $req):
-              $inputId = 'file-' . $index;
-            ?>
-              <div class="space-y-1">
-                <label class="font-semibold text-[#052c6a] text-xs sm:text-sm block">
-                  <?php echo htmlspecialchars($req); ?>
-                </label>
+            <?php if ($hasRequirements): ?>
+              <?php foreach ($selected["requirements"] as $index => $req):
+                $inputId = 'file-' . $index;
+              ?>
+                <div class="space-y-1">
+                  <label class="font-semibold text-[#052c6a] text-xs sm:text-sm block">
+                    <?php echo htmlspecialchars($req); ?>
+                  </label>
 
-                <!-- Hidden requirement label so backend knows kung para asa ni nga file -->
-                <input type="hidden" name="requirements[]" value="<?php echo htmlspecialchars($req); ?>">
+                  <!-- Hidden requirement label so backend knows kung para asa ni nga file -->
+                  <input type="hidden" name="requirements[]" value="<?php echo htmlspecialchars($req); ?>">
 
-                <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
-                  <input
-                    id="<?php echo $inputId; ?>"
-                    type="file"
-                    name="files[]"
-                    required
-                    class="mt-1 block w-full border rounded-xl px-3 py-2 text-xs sm:text-sm border-[#b7c7ff]
-                           focus:outline-none focus:ring-2 focus:ring-[#0d8ddb] focus:border-[#0d8ddb]
-                           file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0
-                           file:text-xs file:sm:text-sm file:bg-[#0d8ddb] file:text-white"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                  >
+                  <div class="flex flex-col sm:flex-row gap-2 sm:items-center">
+                    <input
+                      id="<?php echo $inputId; ?>"
+                      type="file"
+                      name="files[]"
+                      required
+                      class="mt-1 block w-full border rounded-xl px-3 py-2 text-xs sm:text-sm border-[#b7c7ff]
+                             focus:outline-none focus:ring-2 focus:ring-[#0d8ddb] focus:border-[#0d8ddb]
+                             file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0
+                             file:text-xs file:sm:text-sm file:bg-[#0d8ddb] file:text-white"
+                      accept=".pdf,.jpg,.jpeg,.png"
+                    >
 
-                  <button
-                    type="button"
-                    onclick="clearFileInput('<?php echo $inputId; ?>')"
-                    class="inline-flex items-center justify-center px-3 py-1.5 text-[11px] sm:text-xs
-                           rounded-full border border-red-400 text-red-600 bg-red-50
-                           hover:bg-red-100 hover:border-red-500">
-                    Clear File
-                  </button>
+                    <button
+                      type="button"
+                      onclick="clearFileInput('<?php echo $inputId; ?>')"
+                      class="inline-flex items-center justify-center px-3 py-1.5 text-[11px] sm:text-xs
+                             rounded-full border border-red-400 text-red-600 bg-red-50
+                             hover:bg-red-100 hover:border-red-500">
+                      Clear File
+                    </button>
+                  </div>
                 </div>
-              </div>
-            <?php endforeach; ?>
+              <?php endforeach; ?>
+            <?php endif; ?>
 
             <!-- Submit -->
             <div class="pt-2">
@@ -316,7 +343,7 @@ $selected = $grants[$id] ?? null;
                 class="w-full inline-flex items-center justify-center gap-2 bg-[#fcdc2f]
                        text-[#052c6a] font-bold text-sm sm:text-base py-2.5 sm:py-3 rounded-full
                        shadow-md hover:bg-[#ffe45c] active:scale-[0.99] transition">
-                Submit Requirements
+                <?php echo $hasRequirements ? "Submit Requirements" : "Submit Application"; ?>
               </button>
             </div>
           </form>
