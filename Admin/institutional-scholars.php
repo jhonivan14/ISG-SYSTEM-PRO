@@ -30,6 +30,91 @@ $grantLabels = [
   14 => "SMCC Alumni Discount",
 ];
 
+$serverScholarRecords = [
+  "official" => [],
+  "student_assistant" => [],
+];
+
+if (($conn ?? null) instanceof mysqli) {
+  $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
+  if ($assignedOfficeColumnResult instanceof mysqli_result) {
+    $hasAssignedOfficeColumn = $assignedOfficeColumnResult->num_rows > 0;
+    $assignedOfficeColumnResult->free();
+    if (!$hasAssignedOfficeColumn) {
+      $conn->query("ALTER TABLE applications ADD COLUMN assigned_office VARCHAR(100) DEFAULT NULL AFTER year_level");
+      $hasAssignedOfficeColumn = true;
+    }
+  } else {
+    $hasAssignedOfficeColumn = false;
+  }
+
+  $rankInputTableResult = $conn->query("SHOW TABLES LIKE 'applicant_rank_inputs'");
+  if ($hasAssignedOfficeColumn && $rankInputTableResult instanceof mysqli_result && $rankInputTableResult->num_rows > 0) {
+    $rankInputTableResult->free();
+
+    $whereClauses = [
+      "a.grant_id = 1",
+      "LOWER(TRIM(a.status)) = 'approved'",
+      "LOWER(TRIM(COALESCE(ari.remarks, ''))) = 'hired'",
+      "TRIM(COALESCE(a.assigned_office, '')) <> ''",
+    ];
+    $params = [];
+    $types = "";
+
+    $sql = "
+      SELECT
+        a.id,
+        a.applicant_name,
+        a.program_course,
+        a.year_level,
+        a.assigned_office,
+        a.school_year,
+        a.semester
+      FROM applicant_rank_inputs ari
+      INNER JOIN applications a ON a.id = ari.application_id
+      WHERE " . implode(" AND ", $whereClauses) . "
+      ORDER BY a.applicant_name ASC
+    ";
+
+    $stmt = $conn->prepare($sql);
+    if ($stmt) {
+      if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+      }
+      if ($stmt->execute()) {
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+          $program = trim((string)($row["program_course"] ?? ""));
+          $yearLevel = trim((string)($row["year_level"] ?? ""));
+          $programYear = $program;
+          if ($yearLevel !== "") {
+            $programYear .= ($programYear !== "" ? " / " : "") . $yearLevel;
+          }
+
+          $record = [
+            "source_application_id" => (int)($row["id"] ?? 0),
+            "scholar_id" => "APP-" . str_pad((string)((int)($row["id"] ?? 0)), 5, "0", STR_PAD_LEFT),
+            "grant_applied" => "Student Assistant",
+            "full_name" => trim((string)($row["applicant_name"] ?? "")),
+            "program_year" => $programYear,
+            "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
+            "semester" => trim((string)($row["semester"] ?? "")),
+            "academic_year" => trim((string)($row["school_year"] ?? "")),
+            "remarks" => "Hired",
+          ];
+
+          $serverScholarRecords["official"][] = $record;
+          $serverScholarRecords["student_assistant"][] = $record;
+        }
+        $result->free();
+      }
+      $stmt->close();
+    }
+  } elseif ($rankInputTableResult instanceof mysqli_result) {
+    $rankInputTableResult->free();
+  }
+}
+
 if (
   isset($_GET["source"], $_GET["applicant_id"]) &&
   strtolower(trim((string)$_GET["source"])) === "approved"
@@ -423,7 +508,7 @@ if (
                 <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div>
                     <h2 class="text-base font-bold text-[#052c6a]">Scholar Category Tables</h2>
-                    <p class="text-xs text-gray-600">Blanko pa ang table rows, ready na para sa next data entry/storage.</p>
+                    <p class="text-xs text-gray-600">Live records include hired student assistants with assigned office plus any saved scholar entries.</p>
                   </div>
                   <span class="inline-flex items-center gap-2 text-[11px] font-semibold text-[#0f172a] bg-white border border-[#e2e8f0] px-3 py-1 rounded-full">
                     Active: <span id="activeCategoryLabel" class="text-[#052c6a]">Official Scholars</span>
@@ -481,6 +566,7 @@ if (
       const activeFilterSemester = String(selectedSemester || displaySemester || "").trim();
       const pendingImportRecord = <?php echo json_encode($pendingImportRecord, JSON_UNESCAPED_UNICODE); ?>;
       const pendingImportCategory = <?php echo json_encode($pendingImportCategory); ?>;
+      const serverScholarRecords = <?php echo json_encode($serverScholarRecords, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
       const categoryConfig = {
         official: {
@@ -507,6 +593,17 @@ if (
 
       let activeCategory = "official";
 
+      function getServerBackedRecords(category) {
+        const records = serverScholarRecords && typeof serverScholarRecords === "object"
+          ? serverScholarRecords[category]
+          : [];
+        return Array.isArray(records) ? records : [];
+      }
+
+      function isServerBackedCategory(category) {
+        return category === "official" || category === "student_assistant";
+      }
+
       function safeParseArray(value) {
         try {
           const parsed = JSON.parse(value);
@@ -532,10 +629,43 @@ if (
         const raw = localStorage.getItem(config.storageKey);
         if (raw === null) {
           localStorage.setItem(config.storageKey, "[]");
-          return [];
         }
 
-        return safeParseArray(raw);
+        const persistedRecords = raw === null ? [] : safeParseArray(raw);
+        if (!isServerBackedCategory(category)) {
+          return persistedRecords;
+        }
+
+        const serverRecords = getServerBackedRecords(category);
+        const persistedByKey = new Map();
+        persistedRecords.forEach((record, index) => {
+          persistedByKey.set(getRecordKey(record, index), record);
+        });
+
+        const mergedRecords = serverRecords.map((record, index) => {
+          const recordKey = getRecordKey(record, index);
+          const persisted = persistedByKey.get(recordKey);
+          if (!persisted || typeof persisted !== "object") {
+            return record;
+          }
+
+          return {
+            ...record,
+            renewal_status: String(persisted.renewal_status || "").trim(),
+            renewal_scope: String(persisted.renewal_scope || "").trim(),
+            second_semester_renewed: persisted.second_semester_renewed === true
+          };
+        });
+
+        const mergedKeys = new Set(mergedRecords.map((record, index) => getRecordKey(record, index)));
+        persistedRecords.forEach((record, index) => {
+          const recordKey = getRecordKey(record, index);
+          if (!mergedKeys.has(recordKey)) {
+            mergedRecords.push(record);
+          }
+        });
+
+        return mergedRecords;
       }
 
       function saveCategoryRecords(category, records) {
@@ -701,7 +831,7 @@ if (
       }
 
       function shouldShowAssignedOfficeColumn(category) {
-        return category === "student_assistant";
+        return category === "student_assistant" || category === "official";
       }
 
       function getRenewalActionAvailability() {

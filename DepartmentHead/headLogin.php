@@ -10,7 +10,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   if ($username === "" || $password === "") {
     $loginError = "Please enter your username and password.";
   } else {
-    $stmt = $conn->prepare("SELECT full_name, password_hash, status FROM head_offices WHERE username = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT full_name, office, password_hash, status FROM head_offices WHERE username = ? LIMIT 1");
     if ($stmt) {
       $stmt->bind_param("s", $username);
       $stmt->execute();
@@ -36,8 +36,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           if ($displayName === "") {
             $displayName = $username;
           }
+          $headOffice = trim((string)($row["office"] ?? ""));
           $_SESSION["head_username"] = $username;
           $_SESSION["head_name"] = $displayName;
+          $_SESSION["head_office"] = $headOffice;
           header("Location: headDashboard.php");
           exit();
         }

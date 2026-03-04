@@ -1,4 +1,89 @@
-<?php require_once __DIR__ . "/includes/school-term-filter.php"; ?>
+<?php
+require_once __DIR__ . "/includes/school-term-filter.php";
+
+$assistantEvaluationRecords = [];
+
+if (($conn ?? null) instanceof mysqli) {
+  $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
+  if ($assignedOfficeColumnResult instanceof mysqli_result) {
+    $hasAssignedOfficeColumn = $assignedOfficeColumnResult->num_rows > 0;
+    $assignedOfficeColumnResult->free();
+    if (!$hasAssignedOfficeColumn) {
+      $conn->query("ALTER TABLE applications ADD COLUMN assigned_office VARCHAR(100) DEFAULT NULL AFTER year_level");
+      $hasAssignedOfficeColumn = true;
+    }
+  } else {
+    $hasAssignedOfficeColumn = false;
+  }
+
+  $rankInputTableResult = $conn->query("SHOW TABLES LIKE 'applicant_rank_inputs'");
+  if ($hasAssignedOfficeColumn && $rankInputTableResult instanceof mysqli_result && $rankInputTableResult->num_rows > 0) {
+    $rankInputTableResult->free();
+
+    $whereClauses = [
+      "a.grant_id = 1",
+      "LOWER(TRIM(a.status)) = 'approved'",
+      "LOWER(TRIM(COALESCE(ari.remarks, ''))) = 'hired'",
+      "TRIM(COALESCE(a.assigned_office, '')) <> ''",
+    ];
+    $params = [];
+    $types = "";
+
+    if ($selectedSchoolYear !== "") {
+      $whereClauses[] = "a.school_year = ?";
+      $params[] = $selectedSchoolYear;
+      $types .= "s";
+    }
+    if ($selectedSemester !== "") {
+      $whereClauses[] = "a.semester = ?";
+      $params[] = $selectedSemester;
+      $types .= "s";
+    }
+
+    $sql = "
+      SELECT
+        a.id,
+        a.applicant_name,
+        a.program_course,
+        a.year_level,
+        a.assigned_office,
+        a.school_year,
+        a.semester
+      FROM applicant_rank_inputs ari
+      INNER JOIN applications a ON a.id = ari.application_id
+      WHERE " . implode(" AND ", $whereClauses) . "
+      ORDER BY a.assigned_office ASC, a.applicant_name ASC
+    ";
+
+    $stmt = $conn->prepare($sql);
+    if ($stmt) {
+      if (!empty($params)) {
+        $stmt->bind_param($types, ...$params);
+      }
+      if ($stmt->execute()) {
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+          $assistantEvaluationRecords[] = [
+            "applicantId" => (int)($row["id"] ?? 0),
+            "name" => trim((string)($row["applicant_name"] ?? "")),
+            "course" => trim((string)($row["program_course"] ?? "")),
+            "yearLevel" => trim((string)($row["year_level"] ?? "")),
+            "office" => trim((string)($row["assigned_office"] ?? "")),
+            "status" => "not yet evaluated",
+            "academicYear" => trim((string)($row["school_year"] ?? "")),
+            "semester" => trim((string)($row["semester"] ?? "")),
+            "evaluatedAt" => null,
+          ];
+        }
+        $result->free();
+      }
+      $stmt->close();
+    }
+  } elseif ($rankInputTableResult instanceof mysqli_result) {
+    $rankInputTableResult->free();
+  }
+}
+?>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -348,48 +433,7 @@
 
       // Populate student assistants list; hide status/action until opened
       document.addEventListener("DOMContentLoaded", () => {
-        const assistantData = [
-          {
-            name: "John Michael Santos",
-            course: "BSIT",
-            yearLevel: "3rd Year",
-            office: "Learning Resource Center",
-            status: "evaluated",
-            academicYear: "2024-2025",
-            semester: "2nd Semester",
-            evaluatedAt: "2025-03-15T09:30:00",
-          },
-          {
-            name: "Maria Johnson",
-            course: "BSA",
-            yearLevel: "2nd Year",
-            office: "Accounting Office",
-            status: "not yet evaluated",
-            academicYear: "2024-2025",
-            semester: "2nd Semester",
-            evaluatedAt: null,
-          },
-          {
-            name: "Aisha Khan",
-            course: "BSBA",
-            yearLevel: "4th Year",
-            office: "Registrar",
-            status: "evaluated",
-            academicYear: "2024-2025",
-            semester: "1st Semester",
-            evaluatedAt: "2025-03-12T14:10:00",
-          },
-          {
-            name: "Daniel Lee",
-            course: "BSIT",
-            yearLevel: "1st Year",
-            office: "IT Department",
-            status: "not yet evaluated",
-            academicYear: "2024-2025",
-            semester: "1st Semester",
-            evaluatedAt: null,
-          },
-        ];
+        const assistantData = <?php echo json_encode($assistantEvaluationRecords, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 
         const tbody = document.getElementById("assistantRows");
         const openBtn = document.getElementById("openEvalBtn");
@@ -417,6 +461,17 @@
             return matchesSearch && matchesYear && matchesSem;
           });
 
+          if (filtered.length === 0) {
+            tbody.innerHTML = `
+              <tr>
+                <td colspan="7" class="px-3 py-6 text-center text-gray-500 italic">
+                  No hired student assistants with assigned office found.
+                </td>
+              </tr>
+            `;
+            return;
+          }
+
           filtered.forEach((item) => {
             const row = document.createElement("tr");
 
@@ -430,7 +485,9 @@
                 ? "bg-green-100 text-green-800"
                 : "bg-yellow-100 text-yellow-800";
 
-            const disabled = !evalOpen || item.status !== "evaluated";
+            const disabled = !evalOpen;
+            const actionLabel = item.status === "evaluated" ? "View Evaluation" : "Open Evaluation";
+            const actionHref = `department-evaluation-indi.php?applicant_id=${encodeURIComponent(String(item.applicantId || ""))}#evaluation-details`;
 
             row.innerHTML = `
               <td class="px-3 py-2 text-[#052c6a]">${timestamp}</td>
@@ -451,14 +508,14 @@
                 ${
                   evalOpen
                     ? `<a
-                        href="${disabled ? "#" : "department-evaluation-indi.php#evaluation-details"}"
+                        href="${disabled ? "#" : actionHref}"
                         class="inline-flex items-center gap-1 px-3 py-1.5 rounded text-white text-[11px] ${
                           disabled ? "bg-gray-400 cursor-not-allowed opacity-70" : "bg-[#0d8ddb] hover:bg-[#0b7cc4]"
                         }"
                         ${disabled ? "aria-disabled='true' tabindex='-1'" : ""}
                       >
                         <i class="fas fa-eye"></i>
-                        View Evaluation
+                        ${actionLabel}
                       </a>`
                     : `<span class="text-[11px] text-red-600 italic">Not yet opened</span>`
                 }

@@ -14,49 +14,130 @@ if ($headName === "") {
   $headName = "Head of Office";
 }
 $headUsername = trim((string)($_SESSION["head_username"] ?? ""));
+$headOffice = trim((string)($_SESSION["head_office"] ?? ""));
 
 $grantId = 1;
 $grantLabel = "Student Assistant";
 $approvedApplicants = [];
+$evaluatedApplicants = [];
 $loadError = "";
+$evaluationLoadError = "";
+$hasHeadEvaluationTable = false;
 
-$approvedQuery = "SELECT created_at, applicant_name, program_course, status
-  FROM applications
-  WHERE grant_id = ?
-    AND LOWER(TRIM(status)) = 'approved'
-  ORDER BY created_at DESC";
-
-if ($stmt = $conn->prepare($approvedQuery)) {
-  $stmt->bind_param("i", $grantId);
-  if ($stmt->execute()) {
-    $result = $stmt->get_result();
-    while ($row = $result->fetch_assoc()) {
-      $submittedAtRaw = $row["created_at"] ?? "";
-      $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
-      $approvedApplicants[] = [
-        "submitted_at" => $submittedAt,
-        "name" => $row["applicant_name"] ?? "",
-        "program_course" => $row["program_course"] ?? "",
-        "status" => $row["status"] ?? "Approved",
-      ];
+if ($headOffice === "" && $headUsername !== "") {
+  $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
+  if ($officeStmt) {
+    $officeStmt->bind_param("s", $headUsername);
+    if ($officeStmt->execute()) {
+      $officeResult = $officeStmt->get_result();
+      $officeRow = $officeResult ? $officeResult->fetch_assoc() : null;
+      if (is_array($officeRow)) {
+        $headOffice = trim((string)($officeRow["office"] ?? ""));
+        $_SESSION["head_office"] = $headOffice;
+      }
+      if ($officeResult instanceof mysqli_result) {
+        $officeResult->free();
+      }
     }
-    $result->free();
-  } else {
-    $loadError = "Unable to load approved applicants.";
+    $officeStmt->close();
   }
-  $stmt->close();
+}
+
+if ($headOffice === "") {
+  $loadError = "No office is assigned to this head account.";
+  $evaluationLoadError = $loadError;
 } else {
-  $loadError = "Unable to prepare approved applicants query.";
+  $headOfficeKey = strtolower(trim($headOffice));
+  $approvedQuery = "SELECT id, created_at, applicant_name, program_course, status
+    FROM applications
+    WHERE grant_id = ?
+      AND LOWER(TRIM(status)) = 'approved'
+      AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
+    ORDER BY created_at DESC";
+
+  if ($stmt = $conn->prepare($approvedQuery)) {
+    $stmt->bind_param("is", $grantId, $headOfficeKey);
+    if ($stmt->execute()) {
+      $result = $stmt->get_result();
+      while ($row = $result->fetch_assoc()) {
+        $submittedAtRaw = $row["created_at"] ?? "";
+        $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
+        $approvedApplicants[] = [
+          "id" => (int)($row["id"] ?? 0),
+          "submitted_at" => $submittedAt,
+          "name" => $row["applicant_name"] ?? "",
+          "program_course" => $row["program_course"] ?? "",
+          "status" => $row["status"] ?? "Approved",
+        ];
+      }
+      $result->free();
+    } else {
+      $loadError = "Unable to load approved applicants.";
+    }
+    $stmt->close();
+  } else {
+    $loadError = "Unable to prepare approved applicants query.";
+  }
+
+  $headEvaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
+  if ($headEvaluationTableResult instanceof mysqli_result) {
+    $hasHeadEvaluationTable = $headEvaluationTableResult->num_rows > 0;
+    $headEvaluationTableResult->free();
+  }
+
+  if ($hasHeadEvaluationTable) {
+    $evaluatedQuery = "SELECT
+        a.id,
+        a.applicant_name,
+        a.program_course,
+        dhe.evaluation_date,
+        dhe.updated_at
+      FROM department_head_evaluations dhe
+      INNER JOIN applications a ON a.id = dhe.application_id
+      WHERE dhe.head_username = ?
+        AND a.grant_id = ?
+        AND LOWER(TRIM(a.status)) = 'approved'
+        AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
+      ORDER BY dhe.updated_at DESC";
+
+    if ($evalStmt = $conn->prepare($evaluatedQuery)) {
+      $evalStmt->bind_param("sis", $headUsername, $grantId, $headOfficeKey);
+      if ($evalStmt->execute()) {
+        $evalResult = $evalStmt->get_result();
+        while ($evalRow = $evalResult->fetch_assoc()) {
+          $updatedAtRaw = trim((string)($evalRow["updated_at"] ?? ""));
+          $evaluationDateRaw = trim((string)($evalRow["evaluation_date"] ?? ""));
+          $displayUpdatedAt = "";
+          if ($updatedAtRaw !== "") {
+            $displayUpdatedAt = date("Y-m-d h:i A", strtotime($updatedAtRaw));
+          } elseif ($evaluationDateRaw !== "") {
+            $displayUpdatedAt = date("Y-m-d", strtotime($evaluationDateRaw));
+          }
+          $evaluatedApplicants[] = [
+            "id" => (int)($evalRow["id"] ?? 0),
+            "name" => (string)($evalRow["applicant_name"] ?? ""),
+            "program_course" => (string)($evalRow["program_course"] ?? ""),
+            "updated_at" => $displayUpdatedAt,
+          ];
+        }
+        $evalResult->free();
+      } else {
+        $evaluationLoadError = "Unable to load evaluation entries.";
+      }
+      $evalStmt->close();
+    } else {
+      $evaluationLoadError = "Unable to prepare evaluation entries query.";
+    }
+  }
 }
 
 $approvedCount = count($approvedApplicants);
+$evaluatedCount = count($evaluatedApplicants);
 
 $requestedTab = trim((string)($_GET["tab"] ?? ""));
 $initialSection = "homeSection";
 if ($requestedTab === "my-sas") {
   $initialSection = "mySAsSection";
-} elseif ($requestedTab === "show-evaluation") {
-  $initialSection = "showEvaluationSection";
 }
 ?>
 
@@ -243,14 +324,14 @@ if ($requestedTab === "my-sas") {
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              data-target-section="showEvaluationSection"
+              onclick="window.location.href='show-evaluation.php'"
             >
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='head-changePassword.phpz'"
+              onclick="window.location.href='head-changePassword.php'"
             >
               <i class="fas fa-key w-5"></i>
               <span>Change Password</span>
@@ -337,7 +418,7 @@ if ($requestedTab === "my-sas") {
             </div>
             <div class="stat-card rounded-2xl bg-gradient-to-br from-[#fcdc2f] to-[#f7b500] p-5 text-[#052c6a]">
               <p class="text-xs uppercase tracking-wide">Show Evaluation</p>
-              <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$approvedCount) ?></p>
+              <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$evaluatedCount) ?></p>
               <p class="mt-1 text-[11px] text-[#052c6a]">
                 Entries available in the evaluation view.
               </p>
@@ -428,7 +509,7 @@ if ($requestedTab === "my-sas") {
                         <button
                           class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
                           type="button"
-                          onclick="window.location.href='SaEvaluation.php?applicant=<?= urlencode((string)($applicant['name'] ?? '')) ?>'"
+                          onclick="window.location.href='SaEvaluation.php?application_id=<?= urlencode((string)($applicant['id'] ?? 0)) ?>'"
                         >
                           Open Evaluation Form
                         </button>
@@ -468,12 +549,17 @@ if ($requestedTab === "my-sas") {
                 />
               </div>
               <span class="rounded-full bg-[#052c6a] px-3 py-1 text-white shadow-sm">
-                Entries: <?= htmlspecialchars((string)$approvedCount) ?>
+                Entries: <?= htmlspecialchars((string)$evaluatedCount) ?>
               </span>
             </div>
           </div>
 
           <div class="mt-4 overflow-x-auto">
+            <?php if ($evaluationLoadError !== ""): ?>
+              <div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                <?= htmlspecialchars($evaluationLoadError) ?>
+              </div>
+            <?php endif; ?>
             <table class="table-hover min-w-full overflow-hidden rounded-2xl border border-[#0d8ddb] text-xs text-left">
               <thead>
                 <tr class="bg-gradient-to-r from-[#052c6a] to-[#0b3f8f] text-white">
@@ -485,19 +571,19 @@ if ($requestedTab === "my-sas") {
                 </tr>
               </thead>
               <tbody>
-                <?php if (empty($approvedApplicants)): ?>
+                <?php if (empty($evaluatedApplicants)): ?>
                   <tr>
                     <td colspan="5" class="px-3 py-4 text-center text-[#052c6a]">
                       No evaluation entries yet.
                     </td>
                   </tr>
                 <?php else: ?>
-                  <?php foreach ($approvedApplicants as $applicant): ?>
+                  <?php foreach ($evaluatedApplicants as $applicant): ?>
                     <?php
                       $searchText = strtolower(
                         ($applicant["name"] ?? "") . " " .
                         ($applicant["program_course"] ?? "") . " " .
-                        ($applicant["submitted_at"] ?? "")
+                        ($applicant["updated_at"] ?? "")
                       );
                     ?>
                     <tr class="border-b border-[#0d8ddb]" data-show-eval-row data-search-text="<?= htmlspecialchars($searchText) ?>">
@@ -508,7 +594,7 @@ if ($requestedTab === "my-sas") {
                         <?= htmlspecialchars($applicant["program_course"]) ?>
                       </td>
                       <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                        <?= htmlspecialchars($applicant["submitted_at"]) ?>
+                        <?= htmlspecialchars($applicant["updated_at"]) ?>
                       </td>
                       <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
                         <?= htmlspecialchars($grantLabel) ?>
@@ -517,9 +603,9 @@ if ($requestedTab === "my-sas") {
                         <button
                           class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] font-semibold text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
                           type="button"
-                          onclick="window.location.href='SaEvaluation.php?applicant=<?= urlencode((string)($applicant['name'] ?? '')) ?>'"
+                          onclick="window.location.href='department-evaluation-view.php?application_id=<?= urlencode((string)($applicant['id'] ?? 0)) ?>'"
                         >
-                          Show Evaluation
+                          View Evaluation
                         </button>
                       </td>
                     </tr>

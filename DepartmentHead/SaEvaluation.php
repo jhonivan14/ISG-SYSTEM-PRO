@@ -1,3 +1,301 @@
+<?php
+session_start();
+if (empty($_SESSION["head_username"])) {
+  header("Location: headLogin.php");
+  exit;
+}
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
+require_once "../db.php";
+
+$headUsername = trim((string)($_SESSION["head_username"] ?? ""));
+$headName = trim((string)($_SESSION["head_name"] ?? ""));
+if ($headName === "") {
+  $headName = "Head of Office";
+}
+$headOffice = trim((string)($_SESSION["head_office"] ?? ""));
+
+$applicationId = isset($_GET["application_id"])
+  ? (int)$_GET["application_id"]
+  : (int)($_POST["application_id"] ?? 0);
+if ($applicationId <= 0 && isset($_GET["id"])) {
+  $applicationId = (int)$_GET["id"];
+}
+
+$loadError = "";
+$applicationProfile = [
+  "id" => 0,
+  "applicant_name" => "",
+  "semester" => "",
+  "school_year" => "",
+  "assigned_office" => "",
+];
+$ratingGroups = [
+  "a" => ["score-a1", "score-a2", "score-a3", "score-a4", "score-a5"],
+  "b" => ["score-b1", "score-b2", "score-b3", "score-b4", "score-b5"],
+  "c" => ["score-c1", "score-c2", "score-c3", "score-c4", "score-c5"],
+];
+$ratingFieldNames = array_merge($ratingGroups["a"], $ratingGroups["b"], $ratingGroups["c"]);
+$formRatings = [];
+foreach ($ratingFieldNames as $fieldName) {
+  $formRatings[$fieldName] = null;
+}
+$strengthsInput = "";
+$recommendationsInput = "";
+$signatureDataInput = "";
+$saveSuccess = "";
+$saveError = "";
+$evaluationDateValue = date("Y-m-d");
+$hasEvaluationTable = false;
+
+if ($headOffice === "" && $headUsername !== "") {
+  $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
+  if ($officeStmt) {
+    $officeStmt->bind_param("s", $headUsername);
+    if ($officeStmt->execute()) {
+      $officeResult = $officeStmt->get_result();
+      $officeRow = $officeResult ? $officeResult->fetch_assoc() : null;
+      if (is_array($officeRow)) {
+        $headOffice = trim((string)($officeRow["office"] ?? ""));
+        $_SESSION["head_office"] = $headOffice;
+      }
+      if ($officeResult instanceof mysqli_result) {
+        $officeResult->free();
+      }
+    }
+    $officeStmt->close();
+  }
+}
+
+if ($applicationId <= 0) {
+  $loadError = "No applicant selected.";
+} elseif ($headOffice === "") {
+  $loadError = "No office is assigned to this head account.";
+} else {
+  $headOfficeKey = strtolower(trim($headOffice));
+  $appStmt = $conn->prepare(
+    "SELECT id, applicant_name, semester, school_year, assigned_office
+     FROM applications
+     WHERE id = ?
+       AND grant_id = 1
+       AND LOWER(TRIM(status)) = 'approved'
+       AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
+     LIMIT 1"
+  );
+  if ($appStmt) {
+    $appStmt->bind_param("is", $applicationId, $headOfficeKey);
+    if ($appStmt->execute()) {
+      $appResult = $appStmt->get_result();
+      $appRow = $appResult ? $appResult->fetch_assoc() : null;
+      if (is_array($appRow)) {
+        $applicationProfile = [
+          "id" => (int)($appRow["id"] ?? 0),
+          "applicant_name" => trim((string)($appRow["applicant_name"] ?? "")),
+          "semester" => trim((string)($appRow["semester"] ?? "")),
+          "school_year" => trim((string)($appRow["school_year"] ?? "")),
+          "assigned_office" => trim((string)($appRow["assigned_office"] ?? "")),
+        ];
+      } else {
+        $loadError = "Applicant not found for your office.";
+      }
+      if ($appResult instanceof mysqli_result) {
+        $appResult->free();
+      }
+    } else {
+      $loadError = "Unable to load applicant details.";
+    }
+    $appStmt->close();
+  } else {
+    $loadError = "Unable to prepare applicant details query.";
+  }
+}
+
+if ($loadError === "" && ($conn ?? null) instanceof mysqli) {
+  $createTableSql = "CREATE TABLE IF NOT EXISTS department_head_evaluations (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    application_id INT NOT NULL,
+    applicant_name VARCHAR(255) NOT NULL,
+    semester VARCHAR(50) DEFAULT NULL,
+    school_year VARCHAR(50) DEFAULT NULL,
+    assigned_office VARCHAR(120) DEFAULT NULL,
+    head_username VARCHAR(100) NOT NULL,
+    head_name VARCHAR(150) NOT NULL,
+    evaluation_date DATE NOT NULL,
+    ratings_json LONGTEXT NOT NULL,
+    section_a_total INT NOT NULL DEFAULT 0,
+    section_b_total INT NOT NULL DEFAULT 0,
+    section_c_total INT NOT NULL DEFAULT 0,
+    overall_total INT NOT NULL DEFAULT 0,
+    strengths TEXT DEFAULT NULL,
+    recommendations TEXT DEFAULT NULL,
+    signature_data LONGTEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_application_head (application_id, head_username)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+  $hasEvaluationTable = $conn->query($createTableSql) === true;
+  if (!$hasEvaluationTable) {
+    $saveError = "Unable to prepare evaluation storage.";
+  }
+}
+
+if ($loadError === "" && $hasEvaluationTable) {
+  $existingStmt = $conn->prepare(
+    "SELECT ratings_json, strengths, recommendations, signature_data, evaluation_date
+     FROM department_head_evaluations
+     WHERE application_id = ? AND head_username = ?
+     LIMIT 1"
+  );
+  if ($existingStmt) {
+    $existingStmt->bind_param("is", $applicationId, $headUsername);
+    if ($existingStmt->execute()) {
+      $existingResult = $existingStmt->get_result();
+      $existingRow = $existingResult ? $existingResult->fetch_assoc() : null;
+      if (is_array($existingRow)) {
+        $decodedRatings = json_decode((string)($existingRow["ratings_json"] ?? ""), true);
+        if (is_array($decodedRatings)) {
+          foreach ($formRatings as $fieldName => $unusedValue) {
+            $ratingValue = isset($decodedRatings[$fieldName]) ? (int)$decodedRatings[$fieldName] : 0;
+            if ($ratingValue >= 1 && $ratingValue <= 4) {
+              $formRatings[$fieldName] = $ratingValue;
+            }
+          }
+        }
+        $strengthsInput = trim((string)($existingRow["strengths"] ?? ""));
+        $recommendationsInput = trim((string)($existingRow["recommendations"] ?? ""));
+        $signatureDataInput = trim((string)($existingRow["signature_data"] ?? ""));
+        $existingDate = trim((string)($existingRow["evaluation_date"] ?? ""));
+        if ($existingDate !== "") {
+          $evaluationDateValue = $existingDate;
+        }
+      }
+      if ($existingResult instanceof mysqli_result) {
+        $existingResult->free();
+      }
+    }
+    $existingStmt->close();
+  }
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  $strengthsInput = trim((string)($_POST["strengths"] ?? ""));
+  $recommendationsInput = trim((string)($_POST["recommendations"] ?? ""));
+  $signatureDataInput = trim((string)($_POST["signature_data"] ?? ""));
+  $evaluationDateValue = date("Y-m-d");
+
+  $invalidRatings = [];
+  foreach ($formRatings as $fieldName => $unusedValue) {
+    $ratingValue = isset($_POST[$fieldName]) ? (int)$_POST[$fieldName] : 0;
+    if ($ratingValue < 1 || $ratingValue > 4) {
+      $formRatings[$fieldName] = null;
+      $invalidRatings[] = $fieldName;
+    } else {
+      $formRatings[$fieldName] = $ratingValue;
+    }
+  }
+
+  if ($loadError !== "") {
+    $saveError = $loadError;
+  } elseif (!$hasEvaluationTable) {
+    $saveError = "Evaluation storage is unavailable.";
+  } elseif (!empty($invalidRatings)) {
+    $saveError = "Please complete all ratings before submitting.";
+  } elseif ($signatureDataInput === "" || stripos($signatureDataInput, "data:image/") !== 0) {
+    $saveError = "Signature is required before saving.";
+  } else {
+    $sectionATotal = 0;
+    foreach ($ratingGroups["a"] as $fieldName) {
+      $sectionATotal += (int)($formRatings[$fieldName] ?? 0);
+    }
+    $sectionBTotal = 0;
+    foreach ($ratingGroups["b"] as $fieldName) {
+      $sectionBTotal += (int)($formRatings[$fieldName] ?? 0);
+    }
+    $sectionCTotal = 0;
+    foreach ($ratingGroups["c"] as $fieldName) {
+      $sectionCTotal += (int)($formRatings[$fieldName] ?? 0);
+    }
+    $overallTotal = $sectionATotal + $sectionBTotal + $sectionCTotal;
+
+    $ratingsJson = json_encode($formRatings, JSON_UNESCAPED_SLASHES);
+    $strengthsValue = $strengthsInput !== "" ? $strengthsInput : null;
+    $recommendationsValue = $recommendationsInput !== "" ? $recommendationsInput : null;
+    $assignedOfficeValue = $applicationProfile["assigned_office"] !== ""
+      ? $applicationProfile["assigned_office"]
+      : $headOffice;
+
+    $saveStmt = $conn->prepare(
+      "INSERT INTO department_head_evaluations (
+        application_id, applicant_name, semester, school_year, assigned_office, head_username, head_name,
+        evaluation_date, ratings_json, section_a_total, section_b_total, section_c_total, overall_total,
+        strengths, recommendations, signature_data
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        applicant_name = VALUES(applicant_name),
+        semester = VALUES(semester),
+        school_year = VALUES(school_year),
+        assigned_office = VALUES(assigned_office),
+        head_name = VALUES(head_name),
+        evaluation_date = VALUES(evaluation_date),
+        ratings_json = VALUES(ratings_json),
+        section_a_total = VALUES(section_a_total),
+        section_b_total = VALUES(section_b_total),
+        section_c_total = VALUES(section_c_total),
+        overall_total = VALUES(overall_total),
+        strengths = VALUES(strengths),
+        recommendations = VALUES(recommendations),
+        signature_data = VALUES(signature_data)"
+    );
+
+    if ($saveStmt) {
+      $saveStmt->bind_param(
+        "issssssssiiiisss",
+        $applicationId,
+        $applicationProfile["applicant_name"],
+        $applicationProfile["semester"],
+        $applicationProfile["school_year"],
+        $assignedOfficeValue,
+        $headUsername,
+        $headName,
+        $evaluationDateValue,
+        $ratingsJson,
+        $sectionATotal,
+        $sectionBTotal,
+        $sectionCTotal,
+        $overallTotal,
+        $strengthsValue,
+        $recommendationsValue,
+        $signatureDataInput
+      );
+      if ($saveStmt->execute()) {
+        $saveSuccess = "Evaluation saved successfully.";
+      } else {
+        $saveError = "Failed to save evaluation.";
+      }
+      $saveStmt->close();
+    } else {
+      $saveError = "Unable to prepare evaluation save.";
+    }
+  }
+}
+
+$displayApplicantName = $applicationProfile["applicant_name"] !== "" ? $applicationProfile["applicant_name"] : "N/A";
+$displaySemesterSchoolYear = "N/A";
+if ($applicationProfile["semester"] !== "" && $applicationProfile["school_year"] !== "") {
+  $displaySemesterSchoolYear = $applicationProfile["semester"] . ", S.Y. " . $applicationProfile["school_year"];
+} elseif ($applicationProfile["semester"] !== "") {
+  $displaySemesterSchoolYear = $applicationProfile["semester"];
+} elseif ($applicationProfile["school_year"] !== "") {
+  $displaySemesterSchoolYear = $applicationProfile["school_year"];
+}
+$displayAreaOfAssignment = $applicationProfile["assigned_office"] !== ""
+  ? $applicationProfile["assigned_office"]
+  : ($headOffice !== "" ? $headOffice : "N/A");
+$displayHeadName = $headName;
+$displayHeadUsername = $headUsername !== "" ? $headUsername : "head-office";
+$displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
+?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -121,7 +419,7 @@
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
-            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='headDashboard.php?tab=show-evaluation'">
+            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='show-evaluation.php'">
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>
@@ -140,8 +438,8 @@
                 <i class="fas fa-user-tie text-[12px]"></i>
               </div>
               <div class="leading-tight min-w-0">
-                <p class="font-semibold truncate">Head of Office</p>
-                <p class="text-[10px] text-blue-200/80 truncate">department head</p>
+                <p class="font-semibold truncate"><?= htmlspecialchars($displayHeadName) ?></p>
+                <p class="text-[10px] text-blue-200/80 truncate"><?= htmlspecialchars($displayHeadUsername) ?></p>
               </div>
             </div>
             <div class="px-3 pb-3 pt-1">
@@ -182,29 +480,45 @@
         <header class="border-b border-slate-200 px-10 py-8">
             <h1 class="text-center text-2xl font-semibold uppercase tracking-wide text-slate-800">Student Assistants&#39; Evaluation Form</h1>
 
+            <?php if ($loadError !== ""): ?>
+              <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= htmlspecialchars($loadError) ?>
+              </div>
+            <?php endif; ?>
+
             <div class="mt-6 grid gap-4 text-sm text-slate-700 md:grid-cols-2">
                 <div class="space-y-3">
                     <div class="flex items-center gap-4">
                         <span class="w-48 font-medium">Name of Student Assistant</span>
-                        <div class="h-8 flex-1 border-b border-slate-400"></div>
+                        <div class="h-8 flex-1 border-b border-slate-400 flex items-end pb-1 font-semibold text-slate-800">
+                          <?= htmlspecialchars($displayApplicantName) ?>
+                        </div>
                     </div>
                     <div class="flex items-center gap-4">
                         <span class="w-48 font-medium">Semester &amp; School Year</span>
-                        <div class="h-8 flex-1 border-b border-slate-400"></div>
+                        <div class="h-8 flex-1 border-b border-slate-400 flex items-end pb-1 font-semibold text-slate-800">
+                          <?= htmlspecialchars($displaySemesterSchoolYear) ?>
+                        </div>
                     </div>
                     <div class="flex items-center gap-4">
                         <span class="w-48 font-medium">Area of Assignment</span>
-                        <div class="h-8 flex-1 border-b border-slate-400"></div>
+                        <div class="h-8 flex-1 border-b border-slate-400 flex items-end pb-1 font-semibold text-slate-800">
+                          <?= htmlspecialchars($displayAreaOfAssignment) ?>
+                        </div>
                     </div>
                 </div>
                 <div class="space-y-3">
                     <div class="flex items-center gap-4">
                         <span class="w-40 font-medium">Head of Office</span>
-                        <div class="h-8 flex-1 border-b border-slate-400"></div>
+                        <div class="h-8 flex-1 border-b border-slate-400 flex items-end pb-1 font-semibold text-slate-800">
+                          <?= htmlspecialchars($displayHeadName) ?>
+                        </div>
                     </div>
                     <div class="flex items-center gap-4">
                         <span class="w-40 font-medium">Date of Evaluation</span>
-                        <div class="h-8 flex-1 border-b border-slate-400"></div>
+                        <div class="h-8 flex-1 border-b border-slate-400 flex items-end pb-1 font-semibold text-slate-800">
+                          <?= htmlspecialchars($displayEvaluationDate) ?>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -249,7 +563,19 @@
                 </table>
             </div>
 
-            <form class="mt-8 overflow-hidden rounded-lg border border-slate-300">
+            <?php if ($saveSuccess !== ""): ?>
+              <div class="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                <?= htmlspecialchars($saveSuccess) ?>
+              </div>
+            <?php endif; ?>
+            <?php if ($saveError !== ""): ?>
+              <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= htmlspecialchars($saveError) ?>
+              </div>
+            <?php endif; ?>
+
+            <form id="evaluation-form" method="POST" class="mt-8 overflow-hidden rounded-lg border border-slate-300">
+                <input type="hidden" name="application_id" value="<?= htmlspecialchars((string)$applicationId) ?>" />
                 <table class="min-w-full border-collapse text-sm text-slate-700">
                     <thead>
                         <tr class="bg-slate-100">
@@ -347,10 +673,7 @@
                         </tr>
                         <tr class="bg-slate-100 font-semibold">
                             <td class="border border-slate-300 px-3 py-2" colspan="2">Total</td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
+                            <td id="section-a-total" colspan="4" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">0</td>
                         </tr>
 
                         <tr class="bg-blue-50/60 font-semibold">
@@ -438,10 +761,7 @@
                         </tr>
                         <tr class="bg-slate-100 font-semibold">
                             <td class="border border-slate-300 px-3 py-2" colspan="2">Total</td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
+                            <td id="section-b-total" colspan="4" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">0</td>
                         </tr>
 
                         <tr class="bg-blue-50/60 font-semibold">
@@ -529,40 +849,64 @@
                         </tr>
                         <tr class="bg-slate-100 font-semibold">
                             <td class="border border-slate-300 px-3 py-2" colspan="2">Total</td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
+                            <td id="section-c-total" colspan="4" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">0</td>
                         </tr>
 
                         <tr class="bg-slate-100 font-semibold">
                             <td class="border border-slate-300 px-3 py-2" colspan="2">Over-all Total</td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
-                            <td class="border border-slate-300"></td>
+                            <td id="overall-total" colspan="4" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-900">0</td>
                         </tr>
                     </tbody>
                 </table>
-            </form>
 
             <div class="mt-8 space-y-6 text-sm text-slate-700">
                 <div>
                     <p class="font-semibold">D. Strength(s)/Areas for Improvement:</p>
-                    <div class="mt-2 h-16 rounded-lg border border-dashed border-slate-300"></div>
+                    <textarea
+                      name="strengths"
+                      rows="3"
+                      class="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring focus:ring-blue-500/20"
+                    ><?= htmlspecialchars($strengthsInput) ?></textarea>
                 </div>
                 <div>
                     <p class="font-semibold">E. Evaluator&#39;s Comment(s)/Recommendation:</p>
-                    <div class="mt-2 h-16 rounded-lg border border-dashed border-slate-300"></div>
+                    <textarea
+                      name="recommendations"
+                      rows="3"
+                      class="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring focus:ring-blue-500/20"
+                    ><?= htmlspecialchars($recommendationsInput) ?></textarea>
                 </div>
             </div>
 
             <div class="mt-10 flex justify-end">
-                <div class="w-64 text-center text-sm text-slate-700">
-                    <div class="h-10 border-b border-slate-400"></div>
-                    <p class="mt-2 italic">Evaluator&#39;s Signature</p>
+                <div class="w-72 text-sm text-slate-700">
+                    <label class="mb-2 block font-semibold" for="signature-pad">Evaluator&#39;s Signature</label>
+                    <div class="rounded-lg border border-slate-300 bg-white p-3">
+                      <canvas id="signature-pad" class="h-36 w-full rounded border border-dashed border-slate-300"></canvas>
+                      <input type="hidden" id="signature-data" name="signature_data" value="<?= htmlspecialchars($signatureDataInput) ?>" />
+                      <div class="mt-2 flex items-center justify-between text-xs text-slate-500">
+                        <span>Draw your signature above.</span>
+                        <button type="button" id="signature-clear" class="rounded-full border border-slate-200 px-3 py-1 font-semibold text-slate-600 hover:border-blue-400 hover:text-blue-600">
+                          Clear
+                        </button>
+                      </div>
+                    </div>
                 </div>
             </div>
+
+            <div class="mt-8 flex flex-col gap-3 border-t border-slate-200 pt-6 md:flex-row md:items-center md:justify-between">
+                <p class="text-xs text-slate-500">
+                  Complete all ratings and signature before saving.
+                </p>
+                <button
+                  type="submit"
+                  class="rounded-full bg-gradient-to-r from-blue-700 to-blue-500 px-6 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg shadow-blue-500/30 transition hover:from-blue-800 hover:to-blue-600 focus:outline-none focus:ring focus:ring-blue-400/40 disabled:cursor-not-allowed disabled:opacity-60"
+                  <?php echo $loadError !== "" ? "disabled" : ""; ?>
+                >
+                  Save Evaluation
+                </button>
+            </div>
+            </form>
         </section>
               </div>
         </section>
@@ -573,10 +917,150 @@
       document.addEventListener("DOMContentLoaded", () => {
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
-
         if (toggleBtn && sidebar) {
           toggleBtn.addEventListener("click", () => {
             sidebar.classList.toggle("-translate-x-full");
+          });
+        }
+
+        const form = document.getElementById("evaluation-form");
+        const ratingGroups = <?= json_encode($ratingGroups, JSON_UNESCAPED_SLASHES) ?>;
+        const savedRatings = <?= json_encode($formRatings, JSON_UNESCAPED_SLASHES) ?>;
+
+        Object.entries(savedRatings).forEach(([fieldName, ratingValue]) => {
+          const value = parseInt(String(ratingValue ?? ""), 10);
+          if (Number.isNaN(value) || value < 1 || value > 4) return;
+          const selectedInput = document.querySelector(`input[type="radio"][name="${fieldName}"][value="${value}"]`);
+          if (selectedInput) {
+            selectedInput.checked = true;
+          }
+        });
+
+        Object.values(ratingGroups).forEach((groupFields) => {
+          groupFields.forEach((fieldName) => {
+            const radios = Array.from(document.querySelectorAll(`input[type="radio"][name="${fieldName}"]`));
+            radios.forEach((radio, index) => {
+              radio.required = index === 0;
+            });
+          });
+        });
+
+        const sectionATotalEl = document.getElementById("section-a-total");
+        const sectionBTotalEl = document.getElementById("section-b-total");
+        const sectionCTotalEl = document.getElementById("section-c-total");
+        const overallTotalEl = document.getElementById("overall-total");
+
+        const getFieldScore = (fieldName) => {
+          const selected = document.querySelector(`input[type="radio"][name="${fieldName}"]:checked`);
+          const value = selected ? parseInt(selected.value, 10) : 0;
+          return Number.isNaN(value) ? 0 : value;
+        };
+
+        const updateTotals = () => {
+          const sectionA = (ratingGroups.a || []).reduce((sum, fieldName) => sum + getFieldScore(fieldName), 0);
+          const sectionB = (ratingGroups.b || []).reduce((sum, fieldName) => sum + getFieldScore(fieldName), 0);
+          const sectionC = (ratingGroups.c || []).reduce((sum, fieldName) => sum + getFieldScore(fieldName), 0);
+          const overall = sectionA + sectionB + sectionC;
+
+          if (sectionATotalEl) sectionATotalEl.textContent = String(sectionA);
+          if (sectionBTotalEl) sectionBTotalEl.textContent = String(sectionB);
+          if (sectionCTotalEl) sectionCTotalEl.textContent = String(sectionC);
+          if (overallTotalEl) overallTotalEl.textContent = String(overall);
+        };
+
+        const allRatingInputs = Array.from(document.querySelectorAll('input[type="radio"][name^="score-"]'));
+        allRatingInputs.forEach((input) => {
+          input.addEventListener("change", updateTotals);
+        });
+        updateTotals();
+
+        const canvas = document.getElementById("signature-pad");
+        const clearBtn = document.getElementById("signature-clear");
+        const signatureInput = document.getElementById("signature-data");
+        if (!canvas || !clearBtn || !signatureInput) return;
+
+        const ctx = canvas.getContext("2d");
+        const getCanvasSize = () => {
+          const rect = canvas.getBoundingClientRect();
+          return { width: rect.width, height: rect.height };
+        };
+        const scaleCanvas = () => {
+          const { width, height } = getCanvasSize();
+          const ratio = window.devicePixelRatio || 1;
+          canvas.width = Math.max(1, Math.floor(width * ratio));
+          canvas.height = Math.max(1, Math.floor(height * ratio));
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.scale(ratio, ratio);
+          ctx.lineWidth = 2;
+          ctx.lineCap = "round";
+          ctx.strokeStyle = "#0f172a";
+        };
+        const renderSignatureFromData = (dataUrl) => {
+          if (!dataUrl) return;
+          const image = new Image();
+          image.onload = () => {
+            const { width, height } = getCanvasSize();
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(image, 0, 0, width, height);
+          };
+          image.src = dataUrl;
+        };
+
+        let drawing = false;
+        const getPoint = (event) => {
+          const rect = canvas.getBoundingClientRect();
+          const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+          const clientY = event.touches ? event.touches[0].clientY : event.clientY;
+          return { x: clientX - rect.left, y: clientY - rect.top };
+        };
+        const startDraw = (event) => {
+          drawing = true;
+          const point = getPoint(event);
+          ctx.beginPath();
+          ctx.moveTo(point.x, point.y);
+          event.preventDefault();
+        };
+        const draw = (event) => {
+          if (!drawing) return;
+          const point = getPoint(event);
+          ctx.lineTo(point.x, point.y);
+          ctx.stroke();
+          event.preventDefault();
+        };
+        const endDraw = () => {
+          if (!drawing) return;
+          drawing = false;
+          signatureInput.value = canvas.toDataURL("image/png");
+        };
+
+        scaleCanvas();
+        renderSignatureFromData(signatureInput.value.trim());
+        window.addEventListener("resize", () => {
+          const currentSignature = signatureInput.value.trim();
+          scaleCanvas();
+          renderSignatureFromData(currentSignature);
+        });
+
+        canvas.addEventListener("mousedown", startDraw);
+        canvas.addEventListener("mousemove", draw);
+        canvas.addEventListener("mouseup", endDraw);
+        canvas.addEventListener("mouseleave", endDraw);
+        canvas.addEventListener("touchstart", startDraw, { passive: false });
+        canvas.addEventListener("touchmove", draw, { passive: false });
+        canvas.addEventListener("touchend", endDraw);
+
+        clearBtn.addEventListener("click", () => {
+          const { width, height } = getCanvasSize();
+          ctx.clearRect(0, 0, width, height);
+          signatureInput.value = "";
+        });
+
+        if (form) {
+          form.addEventListener("submit", (event) => {
+            if (signatureInput.value.trim() === "") {
+              event.preventDefault();
+              alert("Please provide your signature before saving.");
+            }
           });
         }
       });

@@ -197,7 +197,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='headDashboard.php?tab=show-evaluation'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='show-evaluation.php'">
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>

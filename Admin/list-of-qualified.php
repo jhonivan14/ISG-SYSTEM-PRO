@@ -1,6 +1,262 @@
 <?php
 $defaultBatchLabel = "All Batches";
 require_once __DIR__ . "/includes/school-term-filter.php";
+
+$qualifiedApplicants = [];
+$qualifiedApplicantsError = "";
+$officeOptions = [];
+$officeOptionsError = "";
+$officeSaveStatus = isset($_GET["office_save"]) ? strtolower(trim((string)$_GET["office_save"])) : "";
+$officeSaveMessage = "";
+$officeSaveMessageType = "";
+$hasBatchColumn = false;
+$hasAssignedOfficeColumn = false;
+$hasRankInputTable = false;
+
+$buildQualifiedUrl = static function (string $schoolYear, string $semester, string $batch, string $saveStatus = ""): string {
+  $query = [];
+  if ($schoolYear !== "") {
+    $query["school_year"] = $schoolYear;
+  }
+  if ($semester !== "") {
+    $query["semester"] = $semester;
+  }
+  if ($batch !== "") {
+    $query["batch"] = $batch;
+  }
+  if ($saveStatus !== "") {
+    $query["office_save"] = $saveStatus;
+  }
+
+  $queryString = http_build_query($query);
+  return "list-of-qualified.php" . ($queryString !== "" ? "?" . $queryString : "");
+};
+
+if (($conn ?? null) instanceof mysqli) {
+  $batchColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'batch'");
+  if ($batchColumnResult instanceof mysqli_result) {
+    $hasBatchColumn = $batchColumnResult->num_rows > 0;
+    $batchColumnResult->free();
+  }
+
+  $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
+  if ($assignedOfficeColumnResult instanceof mysqli_result) {
+    $hasAssignedOfficeColumn = $assignedOfficeColumnResult->num_rows > 0;
+    $assignedOfficeColumnResult->free();
+    if (!$hasAssignedOfficeColumn) {
+      $conn->query("ALTER TABLE applications ADD COLUMN assigned_office VARCHAR(100) DEFAULT NULL AFTER year_level");
+      $hasAssignedOfficeColumn = true;
+    }
+  }
+
+  $headOfficeTableResult = $conn->query("SHOW TABLES LIKE 'head_offices'");
+  if ($headOfficeTableResult instanceof mysqli_result && $headOfficeTableResult->num_rows > 0) {
+    $headOfficeTableResult->free();
+
+    $officeResult = $conn->query(
+      "SELECT DISTINCT TRIM(office) AS office
+       FROM head_offices
+       WHERE office IS NOT NULL
+         AND TRIM(office) <> ''
+         AND (status IS NULL OR LOWER(TRIM(status)) <> 'inactive')
+       ORDER BY office ASC"
+    );
+    if ($officeResult instanceof mysqli_result) {
+      while ($officeRow = $officeResult->fetch_assoc()) {
+        $officeValue = trim((string)($officeRow["office"] ?? ""));
+        if ($officeValue !== "") {
+          $officeOptions[] = $officeValue;
+        }
+      }
+      $officeResult->free();
+    }
+  } else {
+    if ($headOfficeTableResult instanceof mysqli_result) {
+      $headOfficeTableResult->free();
+    }
+    $officeOptionsError = "Head office accounts table is not available.";
+  }
+
+  $rankInputTableResult = $conn->query("SHOW TABLES LIKE 'applicant_rank_inputs'");
+  if ($rankInputTableResult instanceof mysqli_result && $rankInputTableResult->num_rows > 0) {
+    $hasRankInputTable = true;
+    $rankInputTableResult->free();
+  } else {
+    if ($rankInputTableResult instanceof mysqli_result) {
+      $rankInputTableResult->free();
+    }
+  }
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) {
+  $postedSchoolYear = trim((string)($_POST["school_year"] ?? $selectedSchoolYear));
+  $postedSemester = trim((string)($_POST["semester"] ?? $selectedSemester));
+  $postedBatch = trim((string)($_POST["batch"] ?? $selectedBatch));
+  $postedApplicantIds = isset($_POST["applicant_ids"]) && is_array($_POST["applicant_ids"])
+    ? array_values(array_unique(array_map("intval", $_POST["applicant_ids"])))
+    : [];
+  $postedAssignedOffices = isset($_POST["assigned_office"]) && is_array($_POST["assigned_office"])
+    ? $_POST["assigned_office"]
+    : [];
+
+  if (!$hasAssignedOfficeColumn || !$hasRankInputTable) {
+    header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "error"));
+    exit;
+  }
+
+  $allowedApplicantIds = [];
+  $whereClauses = [
+    "a.grant_id = 1",
+    "LOWER(TRIM(a.status)) = 'approved'",
+    "LOWER(TRIM(COALESCE(ari.remarks, ''))) = 'hired'",
+  ];
+  $params = [];
+  $types = "";
+
+  if ($postedSchoolYear !== "") {
+    $whereClauses[] = "a.school_year = ?";
+    $params[] = $postedSchoolYear;
+    $types .= "s";
+  }
+  if ($postedSemester !== "") {
+    $whereClauses[] = "a.semester = ?";
+    $params[] = $postedSemester;
+    $types .= "s";
+  }
+  if ($postedBatch !== "" && $hasBatchColumn) {
+    $whereClauses[] = "a.batch = ?";
+    $params[] = $postedBatch;
+    $types .= "s";
+  }
+
+  $allowedSql = "
+    SELECT a.id
+    FROM applicant_rank_inputs ari
+    INNER JOIN applications a ON a.id = ari.application_id
+    WHERE " . implode(" AND ", $whereClauses);
+  $allowedStmt = $conn->prepare($allowedSql);
+  if ($allowedStmt) {
+    if (!empty($params)) {
+      $allowedStmt->bind_param($types, ...$params);
+    }
+    if ($allowedStmt->execute()) {
+      $allowedResult = $allowedStmt->get_result();
+      while ($allowedRow = $allowedResult->fetch_assoc()) {
+        $allowedApplicantIds[(int)($allowedRow["id"] ?? 0)] = true;
+      }
+      $allowedResult->free();
+    }
+    $allowedStmt->close();
+  }
+
+  $saveStmt = $conn->prepare("UPDATE applications SET assigned_office = ? WHERE id = ? LIMIT 1");
+  if ($saveStmt) {
+    foreach ($postedApplicantIds as $applicantId) {
+      if ($applicantId <= 0 || !isset($allowedApplicantIds[$applicantId])) {
+        continue;
+      }
+
+      $selectedOffice = array_key_exists((string)$applicantId, $postedAssignedOffices)
+        ? trim((string)$postedAssignedOffices[(string)$applicantId])
+        : "";
+      if ($selectedOffice !== "" && !in_array($selectedOffice, $officeOptions, true)) {
+        $selectedOffice = "";
+      }
+
+      $saveStmt->bind_param("si", $selectedOffice, $applicantId);
+      $saveStmt->execute();
+    }
+    $saveStmt->close();
+
+    header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "success"));
+    exit;
+  }
+
+  header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "error"));
+  exit;
+}
+
+if ($officeSaveStatus === "success") {
+  $officeSaveMessage = "Assigned offices saved.";
+  $officeSaveMessageType = "success";
+} elseif ($officeSaveStatus === "error") {
+  $officeSaveMessage = "Unable to save assigned offices.";
+  $officeSaveMessageType = "error";
+}
+
+if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
+  $whereClauses = [
+    "a.grant_id = 1",
+    "LOWER(TRIM(a.status)) = 'approved'",
+    "LOWER(TRIM(COALESCE(ari.remarks, ''))) = 'hired'",
+  ];
+  $params = [];
+  $types = "";
+
+  if ($selectedSchoolYear !== "") {
+    $whereClauses[] = "a.school_year = ?";
+    $params[] = $selectedSchoolYear;
+    $types .= "s";
+  }
+  if ($selectedSemester !== "") {
+    $whereClauses[] = "a.semester = ?";
+    $params[] = $selectedSemester;
+    $types .= "s";
+  }
+  if ($selectedBatch !== "" && $hasBatchColumn) {
+    $whereClauses[] = "a.batch = ?";
+    $params[] = $selectedBatch;
+    $types .= "s";
+  }
+
+  $assignedOfficeSelect = $hasAssignedOfficeColumn
+    ? "COALESCE(NULLIF(TRIM(a.assigned_office), ''), '') AS assigned_office"
+    : "'' AS assigned_office";
+
+  $qualifiedSql = "
+    SELECT
+      a.id,
+      a.applicant_name,
+      a.permanent_address,
+      a.contact_number,
+      a.program_course,
+      a.year_level,
+      {$assignedOfficeSelect}
+    FROM applicant_rank_inputs ari
+    INNER JOIN applications a ON a.id = ari.application_id
+    WHERE " . implode(" AND ", $whereClauses) . "
+    ORDER BY a.applicant_name ASC
+  ";
+
+  $qualifiedStmt = $conn->prepare($qualifiedSql);
+  if ($qualifiedStmt) {
+    if (!empty($params)) {
+      $qualifiedStmt->bind_param($types, ...$params);
+    }
+    if ($qualifiedStmt->execute()) {
+      $qualifiedResult = $qualifiedStmt->get_result();
+      while ($row = $qualifiedResult->fetch_assoc()) {
+        $qualifiedApplicants[] = [
+          "id" => (int)($row["id"] ?? 0),
+          "name" => trim((string)($row["applicant_name"] ?? "")),
+          "address" => trim((string)($row["permanent_address"] ?? "")),
+          "contact_number" => trim((string)($row["contact_number"] ?? "")),
+          "program_course" => trim((string)($row["program_course"] ?? "")),
+          "year_level" => trim((string)($row["year_level"] ?? "")),
+          "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
+        ];
+      }
+      $qualifiedResult->free();
+    } else {
+      $qualifiedApplicantsError = "Unable to load qualified applicants.";
+    }
+    $qualifiedStmt->close();
+  } else {
+    $qualifiedApplicantsError = "Unable to prepare qualified applicants lookup.";
+  }
+} elseif ($qualifiedApplicantsError === "") {
+  $qualifiedApplicantsError = "Ranking inputs table is not available yet.";
+}
 ?>
 <html lang="en">
   <head>
@@ -45,6 +301,13 @@ require_once __DIR__ . "/includes/school-term-filter.php";
       }
       .plain-table th:nth-child(2),
       .plain-table td:nth-child(2) { white-space: nowrap; }
+      .office-select {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        font: inherit;
+        outline: none;
+      }
       .sig-role { font-size: 10pt; }
       /* widen table for readability */
       .plain-table table { width: 100%; table-layout: auto; }
@@ -56,6 +319,16 @@ require_once __DIR__ . "/includes/school-term-filter.php";
         .paper { border: none !important; box-shadow: none !important; margin: 0 auto !important; padding: 0 !important; }
         .paper-wrap { max-width: 100% !important; width: 100% !important; padding: 0 4px 12px 4px !important; }
         .plain-table table { width: 100% !important; }
+        .office-select {
+          appearance: none !important;
+          -webkit-appearance: none !important;
+          -moz-appearance: none !important;
+          background-image: none !important;
+          padding-right: 0 !important;
+        }
+        .office-select::-ms-expand {
+          display: none !important;
+        }
       }
           #sidebar nav ul {
         padding: 0.35rem 0.5rem 5.5rem;
@@ -333,17 +606,42 @@ require_once __DIR__ . "/includes/school-term-filter.php";
                   </a>
                 <?php endif; ?>
               </form>
-              <button
-                type="button"
-                onclick="window.print()"
-                class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a6fac]"
-              >
-                <i class="fas fa-print"></i>
-                <span>Print</span>
-              </button>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  type="submit"
+                  form="qualifiedOfficeForm"
+                  class="inline-flex items-center gap-2 rounded-full border border-[#052c6a] bg-[#052c6a] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#041c43]"
+                >
+                  <i class="fas fa-save"></i>
+                  <span>Save</span>
+                </button>
+                <button
+                  type="button"
+                  onclick="window.print()"
+                  class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a6fac]"
+                >
+                  <i class="fas fa-print"></i>
+                  <span>Print</span>
+                </button>
+              </div>
             </div>
           </div>
 
+          <?php if ($officeSaveMessage !== ""): ?>
+            <div class="no-print mb-4 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $officeSaveMessageType === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"; ?>">
+              <?php echo htmlspecialchars($officeSaveMessage); ?>
+            </div>
+          <?php endif; ?>
+          <?php if ($officeOptionsError !== "" || empty($officeOptions)): ?>
+            <div class="no-print mb-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-xs font-semibold text-yellow-800">
+              <?php echo htmlspecialchars($officeOptionsError !== "" ? $officeOptionsError : "No registered head office found yet."); ?>
+            </div>
+          <?php endif; ?>
+
+          <form id="qualifiedOfficeForm" method="post">
+            <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($selectedSchoolYear); ?>" />
+            <input type="hidden" name="semester" value="<?php echo htmlspecialchars($selectedSemester); ?>" />
+            <input type="hidden" name="batch" value="<?php echo htmlspecialchars($selectedBatch); ?>" />
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6 paper">
             <div class="w-full mx-auto paper-wrap">
               <header>
@@ -389,22 +687,42 @@ require_once __DIR__ . "/includes/school-term-filter.php";
                       </tr>
                     </thead>
                     <tbody>
-                      <tr><td>1</td><td>Maria L. Santos</td><td>Brgy. 1, Nasipit</td><td>0917 201 1123</td><td>BSIT</td><td>2</td><td>ICT Office</td></tr>
-                      <tr><td>2</td><td>John P. Dela Cruz</td><td>Brgy. 7, Nasipit</td><td>0908 334 5566</td><td>BSBA</td><td>3</td><td>Registrar</td></tr>
-                      <tr><td>3</td><td>Angela R. Gomez</td><td>Brgy. 4, Butuan City</td><td>0920 889 7733</td><td>BSHM</td><td>1</td><td>Hospitality Lab</td></tr>
-                      <tr><td>4</td><td>Kevin J. Ramos</td><td>Brgy. 3, Nasipit</td><td>0945 123 0044</td><td>BSED English</td><td>2</td><td>Library</td></tr>
-                      <tr><td>5</td><td>Ella Mae P. Rivera</td><td>Magallanes, Agusan del Norte</td><td>0910 555 8877</td><td>BEED</td><td>4</td><td>SAS Office</td></tr>
-                      <tr><td>6</td><td>Mark Adrian T. Uy</td><td>Brgy. 5, Nasipit</td><td>0936 778 9922</td><td>BSCRIM</td><td>3</td><td>Security</td></tr>
-                      <tr><td>7</td><td>Rose Ann G. Casing</td><td>Carmen, Agusan del Norte</td><td>0918 667 4411</td><td>BSN</td><td>1</td><td>Clinic</td></tr>
-                      <tr><td>8</td><td>Jasper K. Lim</td><td>Brgy. Triangulo, Nasipit</td><td>0921 903 2205</td><td>BSIT</td><td>3</td><td>ICT Office</td></tr>
-                      <tr><td>9</td><td>Patricia D. Villanueva</td><td>Buenavista, Agusan del Norte</td><td>0956 441 0033</td><td>BSAcc</td><td>2</td><td>Finance</td></tr>
-                      <tr><td>10</td><td>Vincent R. Alonzo</td><td>Brgy. 2, Nasipit</td><td>0995 812 6677</td><td>BSCE</td><td>2</td><td>Engineering</td></tr>
-                      <tr><td>11</td><td>Hazel Joy B. Ramos</td><td>Las Nieves, Agusan del Norte</td><td>0917 330 9911</td><td>BSHM</td><td>4</td><td>Guidance</td></tr>
-                      <tr><td>12</td><td>Ryan G. Mondejar</td><td>Butuan City</td><td>0906 421 5570</td><td>BSBA</td><td>1</td><td>HRMDO</td></tr>
-                      <tr><td>13</td><td>Shaira M. Quiazon</td><td>Brgy. 8, Nasipit</td><td>0927 665 3101</td><td>BSAIS</td><td>2</td><td>Accounting</td></tr>
-                      <tr><td>14</td><td>Louie C. Bayla</td><td>Jabonga, Agusan del Norte</td><td>0915 220 1188</td><td>BSIT</td><td>4</td><td>Research</td></tr>
-                      <tr><td>15</td><td>Kathleen S. Domingo</td><td>Kitcharao, Agusan del Norte</td><td>0991 702 4410</td><td>BSED Math</td><td>3</td><td>Basic Ed</td></tr>
-                      <tr><td>16</td><td>Alfredo T. Manlangit</td><td>RTR, Agusan del Norte</td><td>0938 770 5521</td><td>BSCS</td><td>1</td><td>NSTP</td></tr>
+                      <?php if (!empty($qualifiedApplicants)): ?>
+                        <?php foreach ($qualifiedApplicants as $index => $qualifiedApplicant): ?>
+                          <tr>
+                            <td><?php echo htmlspecialchars((string)($index + 1)); ?></td>
+                            <td><?php echo htmlspecialchars((string)($qualifiedApplicant["name"] ?? "")); ?></td>
+                            <td><?php echo htmlspecialchars((string)($qualifiedApplicant["address"] ?? "")); ?></td>
+                            <td><?php echo htmlspecialchars((string)($qualifiedApplicant["contact_number"] ?? "")); ?></td>
+                            <td><?php echo htmlspecialchars((string)($qualifiedApplicant["program_course"] ?? "")); ?></td>
+                            <td><?php echo htmlspecialchars((string)($qualifiedApplicant["year_level"] ?? "")); ?></td>
+                            <td>
+                              <input type="hidden" name="applicant_ids[]" value="<?php echo htmlspecialchars((string)($qualifiedApplicant["id"] ?? 0)); ?>" />
+                              <select
+                                name="assigned_office[<?php echo htmlspecialchars((string)($qualifiedApplicant["id"] ?? 0)); ?>]"
+                                class="office-select"
+                                <?php echo empty($officeOptions) ? "disabled" : ""; ?>
+                              >
+                                <option value=""></option>
+                                <?php foreach ($officeOptions as $officeOption): ?>
+                                  <option
+                                    value="<?php echo htmlspecialchars($officeOption); ?>"
+                                    <?php echo (($qualifiedApplicant["assigned_office"] ?? "") === $officeOption) ? "selected" : ""; ?>
+                                  >
+                                    <?php echo htmlspecialchars($officeOption); ?>
+                                  </option>
+                                <?php endforeach; ?>
+                              </select>
+                            </td>
+                          </tr>
+                        <?php endforeach; ?>
+                      <?php else: ?>
+                        <tr>
+                          <td colspan="7">
+                            <?php echo htmlspecialchars($qualifiedApplicantsError !== "" ? $qualifiedApplicantsError : "No hired applicants found."); ?>
+                          </td>
+                        </tr>
+                      <?php endif; ?>
                     </tbody>
                   </table>
                 </div>
@@ -437,6 +755,7 @@ require_once __DIR__ . "/includes/school-term-filter.php";
               </div>
             </div>
           </div>
+          </form>
         </section>
       </main>
     </div>
