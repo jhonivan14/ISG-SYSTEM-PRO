@@ -154,11 +154,11 @@ $_SESSION["from_index"] = true;
 
     <button
        id="applyBtn"
-      class="mt-6 md:mt-8 bg-[#fcdc2f] text-[#052c6a] font-semibold rounded-full px-6 py-2.5 md:px-7 md:py-3 text-sm md:text-base shadow-md hover:bg-[#ffe45c] hover:shadow-lg transition-transform duration-200 hover:-translate-y-1"
+      class="mt-3 md:mt-4 bg-[#fcdc2f] text-[#052c6a] font-semibold rounded-full px-6 py-2.5 md:px-7 md:py-3 text-sm md:text-base shadow-md hover:bg-[#ffe45c] hover:shadow-lg transition-transform duration-200 hover:-translate-y-1"
       type="button"
       
     >
-      Proceed to Application
+      Click Here to Apply
       <i class="fas fa-arrow-right ml-2 text-xs"></i>
     </button>
   </div>
@@ -286,7 +286,7 @@ $_SESSION["from_index"] = true;
             class="w-20 h-20 animate-pulse mb-4"
           />
           <p class="text-sm text-gray-600">
-            Loading application form…
+            Loading application form...
           </p>
         </div>
       `,

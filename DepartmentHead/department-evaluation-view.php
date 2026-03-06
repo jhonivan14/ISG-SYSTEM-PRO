@@ -8,6 +8,7 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 require_once "../db.php";
+date_default_timezone_set("Asia/Manila");
 
 $headUsername = trim((string)($_SESSION["head_username"] ?? ""));
 $headName = trim((string)($_SESSION["head_name"] ?? ""));
@@ -64,7 +65,7 @@ if ($headOffice === "" && $headUsername !== "") {
   }
 }
 
-if ($applicationId <= 0) {
+if ($applicationId === 0) {
   $loadError = "No applicant selected.";
 } elseif ($headOffice === "") {
   $loadError = "No office is assigned to this head account.";
@@ -79,65 +80,140 @@ if ($applicationId <= 0) {
     $loadError = "No saved evaluation found yet.";
   } else {
     $officeKey = strtolower(trim($headOffice));
-    $stmt = $conn->prepare(
-      "SELECT
-        dhe.applicant_name,
-        dhe.semester,
-        dhe.school_year,
-        dhe.assigned_office,
-        dhe.head_name,
-        dhe.evaluation_date,
-        dhe.ratings_json,
-        dhe.strengths,
-        dhe.recommendations,
-        dhe.signature_data,
-        a.program_course
-      FROM department_head_evaluations dhe
-      INNER JOIN applications a ON a.id = dhe.application_id
-      WHERE dhe.application_id = ?
-        AND dhe.head_username = ?
-        AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
-      LIMIT 1"
-    );
-    if ($stmt) {
-      $stmt->bind_param("iss", $applicationId, $headUsername, $officeKey);
-      if ($stmt->execute()) {
-        $result = $stmt->get_result();
-        $row = $result ? $result->fetch_assoc() : null;
-        if (is_array($row)) {
-          $evaluation = [
-            "applicant_name" => trim((string)($row["applicant_name"] ?? "")),
-            "program_course" => trim((string)($row["program_course"] ?? "")),
-            "semester" => trim((string)($row["semester"] ?? "")),
-            "school_year" => trim((string)($row["school_year"] ?? "")),
-            "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
-            "head_name" => trim((string)($row["head_name"] ?? "")),
-            "evaluation_date" => trim((string)($row["evaluation_date"] ?? "")),
-            "strengths" => trim((string)($row["strengths"] ?? "")),
-            "recommendations" => trim((string)($row["recommendations"] ?? "")),
-            "signature_data" => trim((string)($row["signature_data"] ?? "")),
-          ];
-          $decoded = json_decode((string)($row["ratings_json"] ?? ""), true);
-          if (is_array($decoded)) {
-            foreach ($decoded as $key => $val) {
-              $score = (int)$val;
-              if ($score >= 1 && $score <= 4) {
-                $ratings[(string)$key] = $score;
+    if ($applicationId > 0) {
+      $stmt = $conn->prepare(
+        "SELECT
+          dhe.applicant_name,
+          dhe.semester,
+          dhe.school_year,
+          dhe.assigned_office,
+          dhe.head_name,
+          dhe.evaluation_date,
+          dhe.ratings_json,
+          dhe.strengths,
+          dhe.recommendations,
+          dhe.signature_data,
+          a.program_course
+        FROM department_head_evaluations dhe
+        INNER JOIN applications a ON a.id = dhe.application_id
+        WHERE dhe.application_id = ?
+          AND dhe.head_username = ?
+          AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
+        LIMIT 1"
+      );
+      if ($stmt) {
+        $stmt->bind_param("iss", $applicationId, $headUsername, $officeKey);
+        if ($stmt->execute()) {
+          $result = $stmt->get_result();
+          $row = $result ? $result->fetch_assoc() : null;
+          if (is_array($row)) {
+            $evaluation = [
+              "applicant_name" => trim((string)($row["applicant_name"] ?? "")),
+              "program_course" => trim((string)($row["program_course"] ?? "")),
+              "semester" => trim((string)($row["semester"] ?? "")),
+              "school_year" => trim((string)($row["school_year"] ?? "")),
+              "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
+              "head_name" => trim((string)($row["head_name"] ?? "")),
+              "evaluation_date" => trim((string)($row["evaluation_date"] ?? "")),
+              "strengths" => trim((string)($row["strengths"] ?? "")),
+              "recommendations" => trim((string)($row["recommendations"] ?? "")),
+              "signature_data" => trim((string)($row["signature_data"] ?? "")),
+            ];
+            $decoded = json_decode((string)($row["ratings_json"] ?? ""), true);
+            if (is_array($decoded)) {
+              foreach ($decoded as $key => $val) {
+                $score = (int)$val;
+                if ($score >= 1 && $score <= 4) {
+                  $ratings[(string)$key] = $score;
+                }
               }
             }
+          } else {
+            $loadError = "No saved evaluation found for this applicant.";
+          }
+          if ($result instanceof mysqli_result) {
+            $result->free();
           }
         } else {
-          $loadError = "No saved evaluation found for this applicant.";
+          $loadError = "Unable to load evaluation details.";
         }
-        if ($result instanceof mysqli_result) {
-          $result->free();
-        }
+        $stmt->close();
       } else {
-        $loadError = "Unable to load evaluation details.";
+        $loadError = "Unable to prepare evaluation query.";
       }
-      $stmt->close();
     } else {
-      $loadError = "Unable to prepare evaluation query.";
+      $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
+      $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
+      if ($scholarTableResult instanceof mysqli_result) {
+        $scholarTableResult->free();
+      }
+      if (!$hasScholarTable) {
+        $loadError = "Scholar records table is not available.";
+      } else {
+        $stmt = $conn->prepare(
+          "SELECT
+            dhe.applicant_name,
+            dhe.semester,
+            dhe.school_year,
+            dhe.assigned_office,
+            dhe.head_name,
+            dhe.evaluation_date,
+            dhe.ratings_json,
+            dhe.strengths,
+            dhe.recommendations,
+            dhe.signature_data,
+            COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course
+          FROM department_head_evaluations dhe
+          INNER JOIN institutional_scholar_records isr ON isr.id = (0 - dhe.application_id)
+          WHERE dhe.application_id = ?
+            AND dhe.head_username = ?
+            AND dhe.application_id < 0
+            AND isr.category = 'student_assistant'
+            AND isr.contract_ended = 0
+            AND LOWER(TRIM(COALESCE(isr.assigned_office, ''))) = ?
+          LIMIT 1"
+        );
+        if ($stmt) {
+          $stmt->bind_param("iss", $applicationId, $headUsername, $officeKey);
+          if ($stmt->execute()) {
+            $result = $stmt->get_result();
+            $row = $result ? $result->fetch_assoc() : null;
+            if (is_array($row)) {
+              $evaluation = [
+                "applicant_name" => trim((string)($row["applicant_name"] ?? "")),
+                "program_course" => trim((string)($row["program_course"] ?? "")),
+                "semester" => trim((string)($row["semester"] ?? "")),
+                "school_year" => trim((string)($row["school_year"] ?? "")),
+                "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
+                "head_name" => trim((string)($row["head_name"] ?? "")),
+                "evaluation_date" => trim((string)($row["evaluation_date"] ?? "")),
+                "strengths" => trim((string)($row["strengths"] ?? "")),
+                "recommendations" => trim((string)($row["recommendations"] ?? "")),
+                "signature_data" => trim((string)($row["signature_data"] ?? "")),
+              ];
+              $decoded = json_decode((string)($row["ratings_json"] ?? ""), true);
+              if (is_array($decoded)) {
+                foreach ($decoded as $key => $val) {
+                  $score = (int)$val;
+                  if ($score >= 1 && $score <= 4) {
+                    $ratings[(string)$key] = $score;
+                  }
+                }
+              }
+            } else {
+              $loadError = "No saved evaluation found for this student assistant.";
+            }
+            if ($result instanceof mysqli_result) {
+              $result->free();
+            }
+          } else {
+            $loadError = "Unable to load evaluation details.";
+          }
+          $stmt->close();
+        } else {
+          $loadError = "Unable to prepare evaluation query.";
+        }
+      }
     }
   }
 }

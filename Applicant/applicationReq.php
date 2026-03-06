@@ -39,6 +39,11 @@ if (empty($_SESSION["from_index"])) {
       font-family: "Outfit", sans-serif;
     }
 
+    .top-brand,
+    .top-brand * {
+      font-family: sans-serif;
+    }
+
     .page-orbs {
       position: absolute;
       inset: 0 0 auto;
@@ -201,6 +206,8 @@ if (empty($_SESSION["from_index"])) {
       display: grid;
       gap: 1.5rem;
       align-items: start;
+      max-width: 1100px;
+      margin: 0 auto;
     }
 
     .grants-layout > section:nth-of-type(1),
@@ -212,47 +219,30 @@ if (empty($_SESSION["from_index"])) {
     main > section:nth-of-type(n+3):nth-of-type(-n+17) {
       position: relative;
       overflow: hidden;
-      border-color: rgba(255, 255, 255, 0.34) !important;
-      background:
-        linear-gradient(135deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.16)) !important;
-      box-shadow:
-        0 28px 60px -42px rgba(5, 44, 106, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
-      backdrop-filter: blur(16px) saturate(150%);
+      border-color: rgba(13, 141, 219, 0.2) !important;
+      background: #ffffff !important;
+      box-shadow: 0 18px 34px -30px rgba(5, 44, 106, 0.32) !important;
+      backdrop-filter: none;
     }
 
     main > section:nth-of-type(n+3):nth-of-type(-n+17)::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent 34%),
-        radial-gradient(circle at 100% 0, rgba(13, 141, 219, 0.12), transparent 24%),
-        radial-gradient(circle at 0 100%, rgba(252, 220, 47, 0.1), transparent 24%);
-      pointer-events: none;
+      display: none;
     }
 
     main > section:nth-of-type(n+3):nth-of-type(-n+17) > div:first-child {
       position: relative;
       overflow: hidden;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+      border-bottom: 1px solid rgba(13, 141, 219, 0.12);
     }
 
     main > section:nth-of-type(n+3):nth-of-type(-n+17) > div:first-child::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background:
-        linear-gradient(120deg, rgba(255, 255, 255, 0.16), transparent 40%),
-        radial-gradient(circle at top right, rgba(255, 255, 255, 0.1), transparent 26%);
-      pointer-events: none;
+      display: none;
     }
 
     main > section:nth-of-type(n+3):nth-of-type(-n+17) > div:last-child {
       position: relative;
-      background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(245, 250, 255, 0.56));
-      backdrop-filter: blur(12px);
+      background: #ffffff;
+      backdrop-filter: none;
     }
 
     main > section:nth-of-type(n+3):nth-of-type(-n+17) ul {
@@ -282,13 +272,13 @@ if (empty($_SESSION["from_index"])) {
     .final-cta {
       border: 1px solid rgba(13, 141, 219, 0.14);
       border-radius: 1.75rem;
-      background: linear-gradient(140deg, rgba(255, 255, 255, 0.96), rgba(234, 248, 255, 0.94));
-      box-shadow: 0 24px 54px -40px rgba(5, 44, 106, 0.4);
+      background: #ffffff;
+      box-shadow: 0 16px 32px -28px rgba(5, 44, 106, 0.32);
     }
 
     @media (min-width: 960px) {
       .grants-layout {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: minmax(0, 1fr);
       }
 
       .hero-grid {
@@ -311,15 +301,20 @@ if (empty($_SESSION["from_index"])) {
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-[#e0f2ff] via-white to-[#e0f2ff] font-sans flex flex-col">
-  <!-- TOP NAV / BRAND -->
-  <header class="bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md sticky top-0 z-20">
+  <!-- TOP BAR / BRAND -->
+  <header class="top-brand sticky top-0 z-20 bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md">
     <div class="w-full flex items-center gap-3 px-4 sm:px-6 lg:px-10 py-3">
-      <img
-        src="../img/SMCCNEWLOGO.png"
-        alt="SMCC Logo"
-        class="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover bg-white shadow-md border border-white"
-      />
-      <div>
+      <!-- LOGO -->
+      <div class="flex items-center justify-center">
+        <img
+          src="../img/SMCCNEWLOGO.png"
+          alt="SMCC Logo"
+          class="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover bg-white shadow-md border border-white"
+        />
+      </div>
+
+      <!-- TEXT -->
+      <div class="flex-1">
         <p class="text-[10px] sm:text-xs text-blue-100 uppercase tracking-[0.18em]">
           SMCC Admission and Scholarship Office
         </p>
@@ -460,7 +455,7 @@ if (empty($_SESSION["from_index"])) {
           <div class="space-y-2">
             <h4 class="font-semibold text-[#0d8ddb] flex items-center gap-2">
               <span class="inline-block w-1 h-5 rounded-full bg-[#0d8ddb]"></span>
-              Bachelor Programs
+              Bachelor Programs need to enroll in this grant
             </h4>
             <ul class="list-disc list-inside space-y-1.5 pl-1">
               <li>Bachelor of Arts in English Language (AB English)</li>

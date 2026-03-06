@@ -8,6 +8,7 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 require_once "../db.php";
+date_default_timezone_set("Asia/Manila");
 
 $headName = trim((string)($_SESSION["head_name"] ?? ""));
 if ($headName === "") {
@@ -20,6 +21,7 @@ $grantId = 1;
 $grantLabel = "Student Assistant";
 $evaluatedApplicants = [];
 $loadError = "";
+$hasScholarTable = false;
 
 if ($headOffice === "" && $headUsername !== "") {
   $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
@@ -43,6 +45,12 @@ if ($headOffice === "" && $headUsername !== "") {
 if ($headOffice === "") {
   $loadError = "No office is assigned to this head account.";
 } else {
+  $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
+  $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
+  if ($scholarTableResult instanceof mysqli_result) {
+    $scholarTableResult->free();
+  }
+
   $headEvaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
   $hasHeadEvaluationTable = $headEvaluationTableResult instanceof mysqli_result && $headEvaluationTableResult->num_rows > 0;
   if ($headEvaluationTableResult instanceof mysqli_result) {
@@ -53,25 +61,64 @@ if ($headOffice === "") {
     $loadError = "No evaluation entries yet.";
   } else {
     $headOfficeKey = strtolower(trim($headOffice));
-    $evaluatedQuery = "SELECT
-        a.id,
-        a.applicant_name,
-        a.program_course,
-        dhe.evaluation_date,
-        dhe.updated_at
-      FROM department_head_evaluations dhe
-      INNER JOIN applications a ON a.id = dhe.application_id
-      WHERE dhe.head_username = ?
-        AND a.grant_id = ?
-        AND LOWER(TRIM(a.status)) = 'approved'
-        AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
-      ORDER BY dhe.updated_at DESC";
+    if ($hasScholarTable) {
+      $evaluatedQuery = "SELECT * FROM (
+          SELECT
+            dhe.application_id AS reference_id,
+            a.applicant_name,
+            a.program_course,
+            dhe.evaluation_date,
+            dhe.updated_at
+          FROM department_head_evaluations dhe
+          INNER JOIN applications a ON a.id = dhe.application_id
+          WHERE dhe.head_username = ?
+            AND a.grant_id = ?
+            AND LOWER(TRIM(a.status)) = 'approved'
+            AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
+
+          UNION ALL
+
+          SELECT
+            dhe.application_id AS reference_id,
+            COALESCE(NULLIF(TRIM(dhe.applicant_name), ''), isr.full_name) AS applicant_name,
+            COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course,
+            dhe.evaluation_date,
+            dhe.updated_at
+          FROM department_head_evaluations dhe
+          INNER JOIN institutional_scholar_records isr ON isr.id = (0 - dhe.application_id)
+          WHERE dhe.head_username = ?
+            AND dhe.application_id < 0
+            AND isr.category = 'student_assistant'
+            AND isr.contract_ended = 0
+            AND LOWER(TRIM(COALESCE(isr.assigned_office, ''))) = ?
+        ) evaluated_rows
+        ORDER BY updated_at DESC";
+    } else {
+      $evaluatedQuery = "SELECT
+          dhe.application_id AS reference_id,
+          a.applicant_name,
+          a.program_course,
+          dhe.evaluation_date,
+          dhe.updated_at
+        FROM department_head_evaluations dhe
+        INNER JOIN applications a ON a.id = dhe.application_id
+        WHERE dhe.head_username = ?
+          AND a.grant_id = ?
+          AND LOWER(TRIM(a.status)) = 'approved'
+          AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
+        ORDER BY dhe.updated_at DESC";
+    }
 
     if ($stmt = $conn->prepare($evaluatedQuery)) {
-      $stmt->bind_param("sis", $headUsername, $grantId, $headOfficeKey);
+      if ($hasScholarTable) {
+        $stmt->bind_param("sisss", $headUsername, $grantId, $headOfficeKey, $headUsername, $headOfficeKey);
+      } else {
+        $stmt->bind_param("sis", $headUsername, $grantId, $headOfficeKey);
+      }
       if ($stmt->execute()) {
         $result = $stmt->get_result();
         while ($row = $result->fetch_assoc()) {
+          $referenceId = isset($row["reference_id"]) ? (int)$row["reference_id"] : (int)($row["id"] ?? 0);
           $updatedAtRaw = trim((string)($row["updated_at"] ?? ""));
           $evaluationDateRaw = trim((string)($row["evaluation_date"] ?? ""));
           $displayUpdatedAt = "";
@@ -81,7 +128,7 @@ if ($headOffice === "") {
             $displayUpdatedAt = date("Y-m-d", strtotime($evaluationDateRaw));
           }
           $evaluatedApplicants[] = [
-            "id" => (int)($row["id"] ?? 0),
+            "id" => $referenceId,
             "name" => (string)($row["applicant_name"] ?? ""),
             "program_course" => (string)($row["program_course"] ?? ""),
             "updated_at" => $displayUpdatedAt,

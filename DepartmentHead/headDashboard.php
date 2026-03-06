@@ -8,6 +8,7 @@ header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 require_once "../db.php";
+date_default_timezone_set("Asia/Manila");
 
 $headName = trim((string)($_SESSION["head_name"] ?? ""));
 if ($headName === "") {
@@ -23,6 +24,40 @@ $evaluatedApplicants = [];
 $loadError = "";
 $evaluationLoadError = "";
 $hasHeadEvaluationTable = false;
+$hasScholarTable = false;
+
+function headDashboardDisplayStatusLabel(string $status): string
+{
+  $key = strtolower(trim($status));
+  if ($key === "" || $key === "approved") return "Approved";
+  if ($key === "official_scholar" || $key === "official scholar") return "Official Scholar";
+  if ($key === "for_renewal" || $key === "for renewal") return "For Renewal";
+  if ($key === "renewed") return "Renewed";
+  if ($key === "expired") return "Expired";
+  if ($key === "contract_ended" || $key === "contract ended") return "Contract Ended";
+  return ucwords(str_replace("_", " ", $key));
+}
+
+function headDashboardStatusBadgeClass(string $statusLabel): string
+{
+  $key = strtolower(trim($statusLabel));
+  if ($key === "approved" || $key === "official scholar") {
+    return "bg-green-500 text-white";
+  }
+  if ($key === "for renewal") {
+    return "bg-amber-500 text-white";
+  }
+  if ($key === "renewed") {
+    return "bg-emerald-600 text-white";
+  }
+  if ($key === "expired") {
+    return "bg-red-500 text-white";
+  }
+  if ($key === "contract ended") {
+    return "bg-slate-600 text-white";
+  }
+  return "bg-blue-500 text-white";
+}
 
 if ($headOffice === "" && $headUsername !== "") {
   $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
@@ -55,6 +90,7 @@ if ($headOffice === "") {
       AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
     ORDER BY created_at DESC";
 
+  $loadFailed = false;
   if ($stmt = $conn->prepare($approvedQuery)) {
     $stmt->bind_param("is", $grantId, $headOfficeKey);
     if ($stmt->execute()) {
@@ -64,19 +100,91 @@ if ($headOffice === "") {
         $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
         $approvedApplicants[] = [
           "id" => (int)($row["id"] ?? 0),
+          "record_key" => "app-" . (string)((int)($row["id"] ?? 0)),
           "submitted_at" => $submittedAt,
+          "sort_timestamp" => $submittedAtRaw ? (int)strtotime((string)$submittedAtRaw) : 0,
           "name" => $row["applicant_name"] ?? "",
           "program_course" => $row["program_course"] ?? "",
-          "status" => $row["status"] ?? "Approved",
+          "status_text" => headDashboardDisplayStatusLabel((string)($row["status"] ?? "approved")),
+          "can_evaluate" => true,
+          "evaluation_url" => "SaEvaluation.php?application_id=" . urlencode((string)((int)($row["id"] ?? 0))),
         ];
       }
       $result->free();
     } else {
       $loadError = "Unable to load approved applicants.";
+      $loadFailed = true;
     }
     $stmt->close();
   } else {
     $loadError = "Unable to prepare approved applicants query.";
+    $loadFailed = true;
+  }
+
+  if (!$loadFailed) {
+    $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
+    $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
+    if ($scholarTableResult instanceof mysqli_result) {
+      $scholarTableResult->free();
+    }
+
+    if ($hasScholarTable) {
+      $manualScholarQuery = "SELECT
+          id,
+          scholar_id,
+          full_name,
+          program_year,
+          assigned_office,
+          status,
+          created_at
+        FROM institutional_scholar_records
+        WHERE category = 'student_assistant'
+          AND COALESCE(source_application_id, 0) = 0
+          AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
+          AND contract_ended = 0
+        ORDER BY created_at DESC";
+
+      if ($scholarStmt = $conn->prepare($manualScholarQuery)) {
+        $scholarStmt->bind_param("s", $headOfficeKey);
+        if ($scholarStmt->execute()) {
+          $scholarResult = $scholarStmt->get_result();
+          while ($scholarRow = $scholarResult->fetch_assoc()) {
+            $scholarRecordId = (int)($scholarRow["id"] ?? 0);
+            $scholarId = trim((string)($scholarRow["scholar_id"] ?? ""));
+            $submittedAtRaw = trim((string)($scholarRow["created_at"] ?? ""));
+            $submittedAt = $submittedAtRaw !== "" ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
+            $approvedApplicants[] = [
+              "id" => 0,
+              "record_key" => "scholar-" . ($scholarRecordId > 0 ? (string)$scholarRecordId : ($scholarId !== "" ? $scholarId : md5((string)json_encode($scholarRow)))),
+              "submitted_at" => $submittedAt,
+              "sort_timestamp" => $submittedAtRaw !== "" ? (int)strtotime($submittedAtRaw) : 0,
+              "name" => trim((string)($scholarRow["full_name"] ?? "")),
+              "program_course" => trim((string)($scholarRow["program_year"] ?? "")),
+              "status_text" => headDashboardDisplayStatusLabel((string)($scholarRow["status"] ?? "official_scholar")),
+              "can_evaluate" => $scholarRecordId > 0,
+              "evaluation_url" => $scholarRecordId > 0
+                ? ("SaEvaluation.php?application_id=" . urlencode((string)(0 - $scholarRecordId)))
+                : "",
+            ];
+          }
+          if ($scholarResult instanceof mysqli_result) {
+            $scholarResult->free();
+          }
+        }
+        $scholarStmt->close();
+      }
+    }
+  }
+
+  if (!empty($approvedApplicants)) {
+    usort($approvedApplicants, function (array $left, array $right): int {
+      $leftTs = (int)($left["sort_timestamp"] ?? 0);
+      $rightTs = (int)($right["sort_timestamp"] ?? 0);
+      if ($leftTs === $rightTs) {
+        return strcmp((string)($left["record_key"] ?? ""), (string)($right["record_key"] ?? ""));
+      }
+      return $rightTs <=> $leftTs;
+    });
   }
 
   $headEvaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
@@ -86,25 +194,64 @@ if ($headOffice === "") {
   }
 
   if ($hasHeadEvaluationTable) {
-    $evaluatedQuery = "SELECT
-        a.id,
-        a.applicant_name,
-        a.program_course,
-        dhe.evaluation_date,
-        dhe.updated_at
-      FROM department_head_evaluations dhe
-      INNER JOIN applications a ON a.id = dhe.application_id
-      WHERE dhe.head_username = ?
-        AND a.grant_id = ?
-        AND LOWER(TRIM(a.status)) = 'approved'
-        AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
-      ORDER BY dhe.updated_at DESC";
+    if ($hasScholarTable) {
+      $evaluatedQuery = "SELECT * FROM (
+          SELECT
+            dhe.application_id AS reference_id,
+            a.applicant_name,
+            a.program_course,
+            dhe.evaluation_date,
+            dhe.updated_at
+          FROM department_head_evaluations dhe
+          INNER JOIN applications a ON a.id = dhe.application_id
+          WHERE dhe.head_username = ?
+            AND a.grant_id = ?
+            AND LOWER(TRIM(a.status)) = 'approved'
+            AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
+
+          UNION ALL
+
+          SELECT
+            dhe.application_id AS reference_id,
+            COALESCE(NULLIF(TRIM(dhe.applicant_name), ''), isr.full_name) AS applicant_name,
+            COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course,
+            dhe.evaluation_date,
+            dhe.updated_at
+          FROM department_head_evaluations dhe
+          INNER JOIN institutional_scholar_records isr ON isr.id = (0 - dhe.application_id)
+          WHERE dhe.head_username = ?
+            AND dhe.application_id < 0
+            AND isr.category = 'student_assistant'
+            AND isr.contract_ended = 0
+            AND LOWER(TRIM(COALESCE(isr.assigned_office, ''))) = ?
+        ) evaluated_rows
+        ORDER BY updated_at DESC";
+    } else {
+      $evaluatedQuery = "SELECT
+          dhe.application_id AS reference_id,
+          a.applicant_name,
+          a.program_course,
+          dhe.evaluation_date,
+          dhe.updated_at
+        FROM department_head_evaluations dhe
+        INNER JOIN applications a ON a.id = dhe.application_id
+        WHERE dhe.head_username = ?
+          AND a.grant_id = ?
+          AND LOWER(TRIM(a.status)) = 'approved'
+          AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
+        ORDER BY dhe.updated_at DESC";
+    }
 
     if ($evalStmt = $conn->prepare($evaluatedQuery)) {
-      $evalStmt->bind_param("sis", $headUsername, $grantId, $headOfficeKey);
+      if ($hasScholarTable) {
+        $evalStmt->bind_param("sisss", $headUsername, $grantId, $headOfficeKey, $headUsername, $headOfficeKey);
+      } else {
+        $evalStmt->bind_param("sis", $headUsername, $grantId, $headOfficeKey);
+      }
       if ($evalStmt->execute()) {
         $evalResult = $evalStmt->get_result();
         while ($evalRow = $evalResult->fetch_assoc()) {
+          $referenceId = isset($evalRow["reference_id"]) ? (int)$evalRow["reference_id"] : (int)($evalRow["id"] ?? 0);
           $updatedAtRaw = trim((string)($evalRow["updated_at"] ?? ""));
           $evaluationDateRaw = trim((string)($evalRow["evaluation_date"] ?? ""));
           $displayUpdatedAt = "";
@@ -114,7 +261,7 @@ if ($headOffice === "") {
             $displayUpdatedAt = date("Y-m-d", strtotime($evaluationDateRaw));
           }
           $evaluatedApplicants[] = [
-            "id" => (int)($evalRow["id"] ?? 0),
+            "id" => $referenceId,
             "name" => (string)($evalRow["applicant_name"] ?? ""),
             "program_course" => (string)($evalRow["program_course"] ?? ""),
             "updated_at" => $displayUpdatedAt,
@@ -132,6 +279,12 @@ if ($headOffice === "") {
 }
 
 $approvedCount = count($approvedApplicants);
+$readyToEvaluateCount = 0;
+foreach ($approvedApplicants as $approvedApplicantRow) {
+  if (($approvedApplicantRow["can_evaluate"] ?? false) === true) {
+    $readyToEvaluateCount++;
+  }
+}
 $evaluatedCount = count($evaluatedApplicants);
 
 $requestedTab = trim((string)($_GET["tab"] ?? ""));
@@ -411,7 +564,7 @@ if ($requestedTab === "my-sas") {
             </div>
             <div class="stat-card rounded-2xl bg-white p-5 text-[#052c6a]">
               <p class="text-xs uppercase tracking-wide text-[#0d8ddb]">Ready to Evaluate</p>
-              <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$approvedCount) ?></p>
+              <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$readyToEvaluateCount) ?></p>
               <p class="mt-1 text-[11px] text-slate-500">
                 Available records for evaluation form processing.
               </p>
@@ -433,7 +586,7 @@ if ($requestedTab === "my-sas") {
                 My SA's
               </p>
               <p class="text-xs text-[#052c6a]">
-                Showing <?= htmlspecialchars((string)$approvedCount) ?> approved applicants for
+                Showing <?= htmlspecialchars((string)$approvedCount) ?> records for
                 <?= htmlspecialchars($grantLabel) ?>.
               </p>
             </div>
@@ -484,10 +637,12 @@ if ($requestedTab === "my-sas") {
                       $searchText = strtolower(
                         ($applicant["name"] ?? "") . " " .
                         ($applicant["program_course"] ?? "") . " " .
-                        ($applicant["status"] ?? "")
+                        ($applicant["status_text"] ?? "")
                       );
+                      $statusLabel = (string)($applicant["status_text"] ?? "Approved");
+                      $statusBadgeClass = headDashboardStatusBadgeClass($statusLabel);
                     ?>
-                    <tr class="border-b border-[#0d8ddb]" data-my-sa-row data-search-text="<?= htmlspecialchars($searchText) ?>">
+                    <tr class="border-b border-[#0d8ddb]" data-my-sa-row data-search-text="<?= htmlspecialchars($searchText) ?>" data-record-key="<?= htmlspecialchars((string)($applicant["record_key"] ?? "")) ?>">
                       <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
                         <?= htmlspecialchars($applicant["submitted_at"]) ?>
                       </td>
@@ -501,18 +656,24 @@ if ($requestedTab === "my-sas") {
                         <?= htmlspecialchars($grantLabel) ?>
                       </td>
                       <td class="border-r border-[#0d8ddb] px-3 py-2">
-                        <span class="rounded-full bg-green-500 px-2 py-1 text-[10px] text-white shadow-sm">
-                          Approved
+                        <span class="rounded-full px-2 py-1 text-[10px] shadow-sm <?= htmlspecialchars($statusBadgeClass) ?>">
+                          <?= htmlspecialchars($statusLabel) ?>
                         </span>
                       </td>
                       <td class="px-3 py-2">
-                        <button
-                          class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
-                          type="button"
-                          onclick="window.location.href='SaEvaluation.php?application_id=<?= urlencode((string)($applicant['id'] ?? 0)) ?>'"
-                        >
-                          Open Evaluation Form
-                        </button>
+                        <?php if (($applicant["can_evaluate"] ?? false) === true): ?>
+                          <button
+                            class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
+                            type="button"
+                            onclick="window.location.href='<?= htmlspecialchars((string)($applicant['evaluation_url'] ?? 'SaEvaluation.php')) ?>'"
+                          >
+                            Open Evaluation Form
+                          </button>
+                        <?php else: ?>
+                          <span class="inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[10px] font-semibold text-slate-600">
+                            View Only
+                          </span>
+                        <?php endif; ?>
                       </td>
                     </tr>
                   <?php endforeach; ?>
