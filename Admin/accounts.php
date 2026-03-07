@@ -4,57 +4,187 @@ require_once "../db.php";
 
 $resetMessage = "";
 $resetError = "";
+$accountMessage = "";
 $panelistAccounts = [];
 $headOfficeAccounts = [];
 $panelistError = "";
 $headOfficeError = "";
+$panelistFormError = "";
+$headOfficeFormError = "";
+$activeModal = "";
+$panelistFormData = [
+  "username" => "",
+  "full_name" => "",
+  "status" => "active",
+];
+$headOfficeFormData = [
+  "username" => "",
+  "name" => "",
+  "lastname" => "",
+  "office" => "",
+  "status" => "active",
+];
 
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["reset_account_password"])) {
-  $accountType = trim((string)($_POST["account_type"] ?? ""));
-  $resetUsername = trim((string)($_POST["reset_username"] ?? ""));
-  $resetPassword = (string)($_POST["reset_password"] ?? "");
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  if (isset($_POST["reset_account_password"])) {
+    $accountType = trim((string)($_POST["account_type"] ?? ""));
+    $resetUsername = trim((string)($_POST["reset_username"] ?? ""));
+    $resetPassword = (string)($_POST["reset_password"] ?? "");
 
-  $tableMap = [
-    "panelist" => "panelists",
-    "head_office" => "head_offices",
-  ];
+    $tableMap = [
+      "panelist" => "panelists",
+      "head_office" => "head_offices",
+    ];
 
-  if (!isset($tableMap[$accountType])) {
-    $resetError = "Invalid account type.";
-  } elseif ($resetUsername === "" || $resetPassword === "") {
-    $resetError = "Please complete all fields.";
-  } else {
-    $tableName = $tableMap[$accountType];
-    $checkStmt = $conn->prepare("SELECT id FROM {$tableName} WHERE username = ? LIMIT 1");
-    if ($checkStmt) {
-      $checkStmt->bind_param("s", $resetUsername);
-      $checkStmt->execute();
-      $checkStmt->store_result();
+    if (!isset($tableMap[$accountType])) {
+      $resetError = "Invalid account type.";
+    } elseif ($resetUsername === "" || $resetPassword === "") {
+      $resetError = "Please complete all fields.";
+    } else {
+      $tableName = $tableMap[$accountType];
+      $checkStmt = $conn->prepare("SELECT id FROM {$tableName} WHERE username = ? LIMIT 1");
+      if ($checkStmt) {
+        $checkStmt->bind_param("s", $resetUsername);
+        $checkStmt->execute();
+        $checkStmt->store_result();
 
-      if ($checkStmt->num_rows === 0) {
-        $resetError = "Username not found.";
-      } else {
-        $passwordHash = password_hash($resetPassword, PASSWORD_DEFAULT);
-        if ($passwordHash === false) {
-          $resetError = "Unable to reset password. Please try again.";
+        if ($checkStmt->num_rows === 0) {
+          $resetError = "Username not found.";
         } else {
-          $updateStmt = $conn->prepare("UPDATE {$tableName} SET password_hash = ? WHERE username = ? LIMIT 1");
-          if ($updateStmt) {
-            $updateStmt->bind_param("ss", $passwordHash, $resetUsername);
-            if ($updateStmt->execute()) {
-              $resetMessage = "Password reset successful.";
+          $passwordHash = password_hash($resetPassword, PASSWORD_DEFAULT);
+          if ($passwordHash === false) {
+            $resetError = "Unable to reset password. Please try again.";
+          } else {
+            $updateStmt = $conn->prepare("UPDATE {$tableName} SET password_hash = ? WHERE username = ? LIMIT 1");
+            if ($updateStmt) {
+              $updateStmt->bind_param("ss", $passwordHash, $resetUsername);
+              if ($updateStmt->execute()) {
+                $resetMessage = "Password reset successful.";
+              } else {
+                $resetError = "Unable to update the password.";
+              }
+              $updateStmt->close();
             } else {
               $resetError = "Unable to update the password.";
             }
-            $updateStmt->close();
+          }
+        }
+        $checkStmt->close();
+      } else {
+        $resetError = "Unable to reset the password.";
+      }
+    }
+  } elseif (isset($_POST["create_account"])) {
+    $createAccountType = trim((string)($_POST["create_account_type"] ?? ""));
+    $status = strtolower(trim((string)($_POST["status"] ?? "active")));
+    $status = in_array($status, ["active", "inactive"], true) ? $status : "active";
+
+    if ($createAccountType === "panelist") {
+      $activeModal = "panelistModal";
+      $panelistFormData = [
+        "username" => trim((string)($_POST["username"] ?? "")),
+        "full_name" => trim((string)($_POST["full_name"] ?? "")),
+        "status" => $status,
+      ];
+      $password = (string)($_POST["password"] ?? "");
+
+      if ($panelistFormData["username"] === "" || $panelistFormData["full_name"] === "" || $password === "") {
+        $panelistFormError = "Please complete all fields.";
+      } else {
+        $checkStmt = $conn->prepare("SELECT id FROM panelists WHERE username = ? LIMIT 1");
+        if ($checkStmt) {
+          $checkStmt->bind_param("s", $panelistFormData["username"]);
+          $checkStmt->execute();
+          $checkStmt->store_result();
+          if ($checkStmt->num_rows > 0) {
+            $panelistFormError = "Username already exists.";
+          }
+          $checkStmt->close();
+        } else {
+          $panelistFormError = "Unable to save the account.";
+        }
+
+        if ($panelistFormError === "") {
+          $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+          if ($passwordHash === false) {
+            $panelistFormError = "Unable to save the account.";
           } else {
-            $resetError = "Unable to update the password.";
+            $insertStmt = $conn->prepare("INSERT INTO panelists (username, full_name, password_hash, status) VALUES (?, ?, ?, ?)");
+            if ($insertStmt) {
+              $insertStmt->bind_param("ssss", $panelistFormData["username"], $panelistFormData["full_name"], $passwordHash, $panelistFormData["status"]);
+              if ($insertStmt->execute()) {
+                $accountMessage = "Panelist account created.";
+                $activeModal = "";
+                $panelistFormData = [
+                  "username" => "",
+                  "full_name" => "",
+                  "status" => "active",
+                ];
+              } else {
+                $panelistFormError = "Unable to save the account.";
+              }
+              $insertStmt->close();
+            } else {
+              $panelistFormError = "Unable to save the account.";
+            }
           }
         }
       }
-      $checkStmt->close();
-    } else {
-      $resetError = "Unable to reset the password.";
+    } elseif ($createAccountType === "head_office") {
+      $activeModal = "headOfficeModal";
+      $headOfficeFormData = [
+        "username" => trim((string)($_POST["username"] ?? "")),
+        "name" => trim((string)($_POST["name"] ?? "")),
+        "lastname" => trim((string)($_POST["lastname"] ?? "")),
+        "office" => trim((string)($_POST["office"] ?? "")),
+        "status" => $status,
+      ];
+      $password = (string)($_POST["password"] ?? "");
+
+      if ($headOfficeFormData["username"] === "" || $headOfficeFormData["name"] === "" || $headOfficeFormData["lastname"] === "" || $headOfficeFormData["office"] === "" || $password === "") {
+        $headOfficeFormError = "Please complete all fields.";
+      } else {
+        $checkStmt = $conn->prepare("SELECT id FROM head_offices WHERE username = ? LIMIT 1");
+        if ($checkStmt) {
+          $checkStmt->bind_param("s", $headOfficeFormData["username"]);
+          $checkStmt->execute();
+          $checkStmt->store_result();
+          if ($checkStmt->num_rows > 0) {
+            $headOfficeFormError = "Username already exists.";
+          }
+          $checkStmt->close();
+        } else {
+          $headOfficeFormError = "Unable to save the account.";
+        }
+
+        if ($headOfficeFormError === "") {
+          $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+          if ($passwordHash === false) {
+            $headOfficeFormError = "Unable to save the account.";
+          } else {
+            $insertStmt = $conn->prepare("INSERT INTO head_offices (username, name, lastname, office, password_hash, status) VALUES (?, ?, ?, ?, ?, ?)");
+            if ($insertStmt) {
+              $insertStmt->bind_param("ssssss", $headOfficeFormData["username"], $headOfficeFormData["name"], $headOfficeFormData["lastname"], $headOfficeFormData["office"], $passwordHash, $headOfficeFormData["status"]);
+              if ($insertStmt->execute()) {
+                $accountMessage = "Head of office account created.";
+                $activeModal = "";
+                $headOfficeFormData = [
+                  "username" => "",
+                  "name" => "",
+                  "lastname" => "",
+                  "office" => "",
+                  "status" => "active",
+                ];
+              } else {
+                $headOfficeFormError = "Unable to save the account.";
+              }
+              $insertStmt->close();
+            } else {
+              $headOfficeFormError = "Unable to save the account.";
+            }
+          }
+        }
+      }
     }
   }
 }
@@ -69,7 +199,7 @@ if ($panelistResult) {
   $panelistError = "Panelist accounts table is not available.";
 }
 
-$headOfficeResult = $conn->query("SELECT username, full_name, office, password_hash, status FROM head_offices ORDER BY username ASC");
+$headOfficeResult = $conn->query("SELECT username, name, lastname, office, password_hash, status FROM head_offices ORDER BY username ASC");
 if ($headOfficeResult) {
   while ($row = $headOfficeResult->fetch_assoc()) {
     $headOfficeAccounts[] = $row;
@@ -338,19 +468,25 @@ if ($headOfficeResult) {
                 <button
                   type="button"
                   class="rounded-full bg-[#052c6a] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b3d86]"
-                  onclick="window.location.href='add-panelist.php'"
+                  data-open-modal="panelistModal"
                 >
                   Add Panelist
                 </button>
                 <button
                   type="button"
                   class="rounded-full bg-[#0d8ddb] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
-                  onclick="window.location.href='add-head-office.php'"
+                  data-open-modal="headOfficeModal"
                 >
                   Add Head of Office
                 </button>
               </div>
             </div>
+
+            <?php if ($accountMessage !== ""): ?>
+              <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                <?= htmlspecialchars($accountMessage) ?>
+              </div>
+            <?php endif; ?>
 
             <?php if ($resetError !== ""): ?>
               <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -455,7 +591,8 @@ if ($headOfficeResult) {
                   <thead class="bg-[#052c6a] text-white">
                     <tr>
                       <th class="border-r border-white/10 px-3 py-2">Username</th>
-                      <th class="border-r border-white/10 px-3 py-2">Full Name</th>
+                      <th class="border-r border-white/10 px-3 py-2">Name</th>
+                      <th class="border-r border-white/10 px-3 py-2">Last Name</th>
                       <th class="border-r border-white/10 px-3 py-2">Office</th>
                       <th class="border-r border-white/10 px-3 py-2">Password Hash</th>
                       <th class="border-r border-white/10 px-3 py-2">Status</th>
@@ -476,7 +613,10 @@ if ($headOfficeResult) {
                             <?= htmlspecialchars((string)($account["username"] ?? "")) ?>
                           </td>
                           <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                            <?= htmlspecialchars((string)($account["full_name"] ?? "")) ?>
+                            <?= htmlspecialchars((string)($account["name"] ?? "")) ?>
+                          </td>
+                          <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                            <?= htmlspecialchars((string)($account["lastname"] ?? "")) ?>
                           </td>
                           <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
                             <?= htmlspecialchars((string)($account["office"] ?? "")) ?>
@@ -521,6 +661,229 @@ if ($headOfficeResult) {
             <?php endif; ?>
           </div>
         </section>
+         
+
+        <!-- Panelist Modal -->
+        <div
+          id="panelistModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/60 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="panelist-modal-title"
+        >
+          <div class="absolute inset-0" data-close-modal="panelistModal"></div>
+          <div class="relative z-10 w-full max-w-2xl rounded-2xl border border-[#0d8ddb]/20 bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0d8ddb]">Accounts</p>
+                <h3 id="panelist-modal-title" class="text-lg font-semibold text-[#052c6a]">Create Panelist Account</h3>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                data-close-modal="panelistModal"
+              >
+                Close
+              </button>
+            </div>
+            <div class="px-6 py-5">
+              <p class="text-xs text-[#052c6a]">
+                Provide the account details below to add a new panelist without leaving this page.
+              </p>
+
+              <?php if ($panelistFormError !== ""): ?>
+                <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <?= htmlspecialchars($panelistFormError) ?>
+                </div>
+              <?php endif; ?>
+
+              <form method="POST" class="mt-6 grid gap-4 md:grid-cols-2">
+                <input type="hidden" name="create_account" value="1" />
+                <input type="hidden" name="create_account_type" value="panelist" />
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="panelist-username">Username</label>
+                  <input
+                    id="panelist-username"
+                    name="username"
+                    type="text"
+                    value="<?= htmlspecialchars($panelistFormData["username"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="panelist-full-name">Full Name</label>
+                  <input
+                    id="panelist-full-name"
+                    name="full_name"
+                    type="text"
+                    value="<?= htmlspecialchars($panelistFormData["full_name"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="panelist-password">Password</label>
+                  <input
+                    id="panelist-password"
+                    name="password"
+                    type="password"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="panelist-status">Status</label>
+                  <select
+                    id="panelist-status"
+                    name="status"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  >
+                    <option value="active" <?= $panelistFormData["status"] === "active" ? "selected" : "" ?>>Active</option>
+                    <option value="inactive" <?= $panelistFormData["status"] === "inactive" ? "selected" : "" ?>>Inactive</option>
+                  </select>
+                </div>
+                <div class="md:col-span-2 flex flex-wrap justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    class="rounded-full border border-slate-300 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400 hover:text-slate-700"
+                    data-close-modal="panelistModal"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="rounded-full bg-[#0d8ddb] px-6 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow hover:bg-[#0b7bbf]"
+                  >
+                    Save Panelist
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Head of Office Modal -->
+        <div
+          id="headOfficeModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/60 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="head-office-modal-title"
+        >
+          <div class="absolute inset-0" data-close-modal="headOfficeModal"></div>
+          <div class="relative z-10 w-full max-w-2xl rounded-2xl border border-[#0d8ddb]/20 bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0d8ddb]">Accounts</p>
+                <h3 id="head-office-modal-title" class="text-lg font-semibold text-[#052c6a]">Create Department Head Account</h3>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                data-close-modal="headOfficeModal"
+              >
+                Close
+              </button>
+            </div>
+            <div class="px-6 py-5">
+              <p class="text-xs text-[#052c6a]">
+                Provide the account details below to add a new head of office without leaving this page.
+              </p>
+
+              <?php if ($headOfficeFormError !== ""): ?>
+                <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <?= htmlspecialchars($headOfficeFormError) ?>
+                </div>
+              <?php endif; ?>
+
+              <form method="POST" class="mt-6 grid gap-4 md:grid-cols-2">
+                <input type="hidden" name="create_account" value="1" />
+                <input type="hidden" name="create_account_type" value="head_office" />
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="head-office-username">Username</label>
+                  <input
+                    id="head-office-username"
+                    name="username"
+                    type="text"
+                    value="<?= htmlspecialchars($headOfficeFormData["username"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="head-office-full-name">Name</label>
+                  <input
+                    id="head-office-full-name"
+                    name="name"
+                    type="text"
+                    value="<?= htmlspecialchars($headOfficeFormData["name"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="head-office-last-name">Last Name</label>
+                  <input
+                    id="head-office-last-name"
+                    name="lastname"
+                    type="text"
+                    value="<?= htmlspecialchars($headOfficeFormData["lastname"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="head-office-office">Office</label>
+                  <input
+                    id="head-office-office"
+                    name="office"
+                    type="text"
+                    value="<?= htmlspecialchars($headOfficeFormData["office"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="head-office-password">Password</label>
+                  <input
+                    id="head-office-password"
+                    name="password"
+                    type="password"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="head-office-status">Status</label>
+                  <select
+                    id="head-office-status"
+                    name="status"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  >
+                    <option value="active" <?= $headOfficeFormData["status"] === "active" ? "selected" : "" ?>>Active</option>
+                    <option value="inactive" <?= $headOfficeFormData["status"] === "inactive" ? "selected" : "" ?>>Inactive</option>
+                  </select>
+                </div>
+                <div class="md:col-span-2 flex flex-wrap justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    class="rounded-full border border-slate-300 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400 hover:text-slate-700"
+                    data-close-modal="headOfficeModal"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="rounded-full bg-[#0d8ddb] px-6 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow hover:bg-[#0b7bbf]"
+                  >
+                    Save Head of Office
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
 
@@ -529,6 +892,18 @@ if ($headOfficeResult) {
       document.addEventListener("DOMContentLoaded", () => {
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
+        const initialModal = <?= json_encode($activeModal) ?>;
+
+        const setModalState = (modalId, isOpen) => {
+          const modal = document.getElementById(modalId);
+          if (!modal) {
+            return;
+          }
+
+          modal.classList.toggle("hidden", !isOpen);
+          modal.classList.toggle("flex", isOpen);
+          document.body.classList.toggle("overflow-hidden", isOpen);
+        };
 
         if (toggleBtn && sidebar) {
           toggleBtn.addEventListener("click", () => {
@@ -543,6 +918,40 @@ if ($headOfficeResult) {
               }
             });
           });
+        }
+
+        document.querySelectorAll("[data-open-modal]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const modalId = button.getAttribute("data-open-modal");
+            if (modalId) {
+              setModalState(modalId, true);
+            }
+          });
+        });
+
+        document.querySelectorAll("[data-close-modal]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const modalId = button.getAttribute("data-close-modal");
+            if (modalId) {
+              setModalState(modalId, false);
+            }
+          });
+        });
+
+        document.addEventListener("keydown", (event) => {
+          if (event.key !== "Escape") {
+            return;
+          }
+
+          document.querySelectorAll("[id$='Modal']").forEach((modal) => {
+            if (!modal.classList.contains("hidden")) {
+              setModalState(modal.id, false);
+            }
+          });
+        });
+
+        if (initialModal) {
+          setModalState(initialModal, true);
         }
       });
 

@@ -3,6 +3,23 @@ require_once __DIR__ . "/includes/school-term-filter.php";
 
 $assistantEvaluationRecords = [];
 
+function isgSplitProgramYearForDepartmentList(string $programYear): array
+{
+  $value = trim($programYear);
+  if ($value === "") {
+    return ["", ""];
+  }
+
+  $parts = preg_split('/\s*\/\s*/', $value, 2);
+  $course = trim((string)($parts[0] ?? ""));
+  $yearLevel = trim((string)($parts[1] ?? ""));
+  if ($course === "") {
+    $course = $value;
+  }
+
+  return [$course, $yearLevel];
+}
+
 if (($conn ?? null) instanceof mysqli) {
   $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
   if ($assignedOfficeColumnResult instanceof mysqli_result) {
@@ -63,8 +80,8 @@ if (($conn ?? null) instanceof mysqli) {
       if ($stmt->execute()) {
         $result = $stmt->get_result();
         while ($row = $result->fetch_assoc()) {
-          $assistantEvaluationRecords[] = [
-            "applicantId" => (int)($row["id"] ?? 0),
+            $assistantEvaluationRecords[] = [
+              "applicantId" => (int)($row["id"] ?? 0),
             "name" => trim((string)($row["applicant_name"] ?? "")),
             "course" => trim((string)($row["program_course"] ?? "")),
             "yearLevel" => trim((string)($row["year_level"] ?? "")),
@@ -73,7 +90,8 @@ if (($conn ?? null) instanceof mysqli) {
             "academicYear" => trim((string)($row["school_year"] ?? "")),
             "semester" => trim((string)($row["semester"] ?? "")),
             "evaluatedAt" => null,
-          ];
+              "sourceType" => "application",
+            ];
         }
         $result->free();
       }
@@ -81,6 +99,97 @@ if (($conn ?? null) instanceof mysqli) {
     }
   } elseif ($rankInputTableResult instanceof mysqli_result) {
     $rankInputTableResult->free();
+  }
+
+  $institutionalTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
+  if ($institutionalTableResult instanceof mysqli_result) {
+    $hasInstitutionalTable = $institutionalTableResult->num_rows > 0;
+    $institutionalTableResult->free();
+
+    if ($hasInstitutionalTable) {
+      $hasContractEndedColumn = false;
+      $contractEndedColumnResult = $conn->query("SHOW COLUMNS FROM institutional_scholar_records LIKE 'contract_ended'");
+      if ($contractEndedColumnResult instanceof mysqli_result) {
+        $hasContractEndedColumn = $contractEndedColumnResult->num_rows > 0;
+        $contractEndedColumnResult->free();
+      }
+
+      $isrWhereClauses = [
+        "LOWER(TRIM(COALESCE(category, ''))) = 'student_assistant'",
+        "TRIM(COALESCE(assigned_office, '')) <> ''",
+        "(scholar_id LIKE 'MAN-%' OR scholar_id LIKE 'CSV-%')",
+      ];
+      $isrParams = [];
+      $isrTypes = "";
+
+      if ($hasContractEndedColumn) {
+        $isrWhereClauses[] = "COALESCE(contract_ended, 0) = 0";
+      }
+      if ($selectedSchoolYear !== "") {
+        $isrWhereClauses[] = "academic_year = ?";
+        $isrParams[] = $selectedSchoolYear;
+        $isrTypes .= "s";
+      }
+      if ($selectedSemester !== "") {
+        $isrWhereClauses[] = "semester = ?";
+        $isrParams[] = $selectedSemester;
+        $isrTypes .= "s";
+      }
+
+      $isrSql = "
+        SELECT
+          id,
+          scholar_id,
+          full_name,
+          program_year,
+          assigned_office,
+          academic_year,
+          semester
+        FROM institutional_scholar_records
+        WHERE " . implode(" AND ", $isrWhereClauses) . "
+        ORDER BY assigned_office ASC, full_name ASC
+      ";
+      $isrStmt = $conn->prepare($isrSql);
+      if ($isrStmt) {
+        if (!empty($isrParams)) {
+          $isrStmt->bind_param($isrTypes, ...$isrParams);
+        }
+        if ($isrStmt->execute()) {
+          $isrResult = $isrStmt->get_result();
+          while ($row = $isrResult->fetch_assoc()) {
+            [$programCourse, $yearLevel] = isgSplitProgramYearForDepartmentList((string)($row["program_year"] ?? ""));
+            $assistantEvaluationRecords[] = [
+              "applicantId" => 0 - (int)($row["id"] ?? 0),
+              "name" => trim((string)($row["full_name"] ?? "")),
+              "course" => $programCourse,
+              "yearLevel" => $yearLevel,
+              "office" => trim((string)($row["assigned_office"] ?? "")),
+              "status" => "not yet evaluated",
+              "academicYear" => trim((string)($row["academic_year"] ?? "")),
+              "semester" => trim((string)($row["semester"] ?? "")),
+              "evaluatedAt" => null,
+              "sourceType" => "institutional",
+            ];
+          }
+          $isrResult->free();
+        }
+        $isrStmt->close();
+      }
+    }
+  }
+
+  if (!empty($assistantEvaluationRecords)) {
+    usort($assistantEvaluationRecords, static function (array $left, array $right): int {
+      $leftOffice = strtolower(trim((string)($left["office"] ?? "")));
+      $rightOffice = strtolower(trim((string)($right["office"] ?? "")));
+      if ($leftOffice !== $rightOffice) {
+        return $leftOffice <=> $rightOffice;
+      }
+
+      $leftName = strtolower(trim((string)($left["name"] ?? "")));
+      $rightName = strtolower(trim((string)($right["name"] ?? "")));
+      return $leftName <=> $rightName;
+    });
   }
 }
 ?>
@@ -465,7 +574,7 @@ if (($conn ?? null) instanceof mysqli) {
             tbody.innerHTML = `
               <tr>
                 <td colspan="7" class="px-3 py-6 text-center text-gray-500 italic">
-                  No hired student assistants with assigned office found.
+                  No student assistants with assigned office found.
                 </td>
               </tr>
             `;
@@ -487,7 +596,7 @@ if (($conn ?? null) instanceof mysqli) {
 
             const disabled = !evalOpen;
             const actionLabel = item.status === "evaluated" ? "View Evaluation" : "Open Evaluation";
-            const actionHref = `department-evaluation-indi.php?applicant_id=${encodeURIComponent(String(item.applicantId || ""))}#evaluation-details`;
+            const actionHref = `department-evaluation-indi.php?application_id=${encodeURIComponent(String(item.applicantId || ""))}#evaluation-details`;
 
             row.innerHTML = `
               <td class="px-3 py-2 text-[#052c6a]">${timestamp}</td>

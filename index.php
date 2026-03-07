@@ -286,7 +286,7 @@ $_SESSION["from_index"] = true;
             class="w-20 h-20 animate-pulse mb-4"
           />
           <p class="text-sm text-gray-600">
-            Loading application form...
+            Loading application ...
           </p>
         </div>
       `,

@@ -1,3 +1,294 @@
+<?php
+require_once "../db.php";
+
+$applicationId = isset($_GET["application_id"])
+  ? (int)$_GET["application_id"]
+  : (isset($_GET["id"]) ? (int)$_GET["id"] : 0);
+
+$displayApplicantName = "";
+$displaySemesterSchoolYear = "";
+$displayAreaOfAssignment = "";
+$displayHeadOfOffice = "";
+$displayEvaluationDate = "";
+$displayStrengths = "";
+$displayRecommendations = "";
+$displaySignatureData = "";
+$displayProgramYearLevel = "";
+$displayHeadAccountLastName = "";
+
+$ratings = [
+  "score-a1" => 0,
+  "score-a2" => 0,
+  "score-a3" => 0,
+  "score-a4" => 0,
+  "score-a5" => 0,
+  "score-b1" => 0,
+  "score-b2" => 0,
+  "score-b3" => 0,
+  "score-b4" => 0,
+  "score-b5" => 0,
+  "score-c1" => 0,
+  "score-c2" => 0,
+  "score-c3" => 0,
+  "score-c4" => 0,
+  "score-c5" => 0,
+];
+
+$sectionFields = [
+  "a" => ["score-a1", "score-a2", "score-a3", "score-a4", "score-a5"],
+  "b" => ["score-b1", "score-b2", "score-b3", "score-b4", "score-b5"],
+  "c" => ["score-c1", "score-c2", "score-c3", "score-c4", "score-c5"],
+];
+
+$sectionWeightedTotals = [
+  "a" => [4 => 0, 3 => 0, 2 => 0, 1 => 0],
+  "b" => [4 => 0, 3 => 0, 2 => 0, 1 => 0],
+  "c" => [4 => 0, 3 => 0, 2 => 0, 1 => 0],
+];
+$overallWeightedTotals = [4 => 0, 3 => 0, 2 => 0, 1 => 0];
+
+if (($conn ?? null) instanceof mysqli && $applicationId !== 0) {
+  $tableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
+  $hasEvaluationTable = $tableResult instanceof mysqli_result && $tableResult->num_rows > 0;
+  if ($tableResult instanceof mysqli_result) {
+    $tableResult->free();
+  }
+
+  if ($hasEvaluationTable) {
+    $evaluationStmt = $conn->prepare(
+      "SELECT
+        applicant_name,
+        semester,
+        school_year,
+        assigned_office,
+        head_name,
+        head_username,
+        evaluation_date,
+        ratings_json,
+        strengths,
+        recommendations,
+        signature_data,
+        (
+          SELECT TRIM(COALESCE(ho.lastname, ''))
+          FROM head_offices ho
+          WHERE ho.username = department_head_evaluations.head_username
+          LIMIT 1
+        ) AS head_account_lastname
+      FROM department_head_evaluations
+      WHERE application_id = ?
+      ORDER BY updated_at DESC, id DESC
+      LIMIT 1"
+    );
+
+    if ($evaluationStmt) {
+      $evaluationStmt->bind_param("i", $applicationId);
+      if ($evaluationStmt->execute()) {
+        $result = $evaluationStmt->get_result();
+        $row = $result ? $result->fetch_assoc() : null;
+
+        if (is_array($row)) {
+          $displayApplicantName = trim((string)($row["applicant_name"] ?? ""));
+          $semester = trim((string)($row["semester"] ?? ""));
+          $schoolYear = trim((string)($row["school_year"] ?? ""));
+          if ($semester !== "" && $schoolYear !== "") {
+            $displaySemesterSchoolYear = $semester . ", S.Y. " . $schoolYear;
+          } elseif ($semester !== "") {
+            $displaySemesterSchoolYear = $semester;
+          } elseif ($schoolYear !== "") {
+            $displaySemesterSchoolYear = $schoolYear;
+          }
+          $displayAreaOfAssignment = trim((string)($row["assigned_office"] ?? ""));
+          $displayHeadOfOffice = trim((string)($row["head_name"] ?? ""));
+          $displayHeadAccountLastName = trim((string)($row["head_account_lastname"] ?? ""));
+          $displayStrengths = trim((string)($row["strengths"] ?? ""));
+          $displayRecommendations = trim((string)($row["recommendations"] ?? ""));
+          $displaySignatureData = trim((string)($row["signature_data"] ?? ""));
+
+          $rawDate = trim((string)($row["evaluation_date"] ?? ""));
+          if ($rawDate !== "") {
+            $parsedDate = strtotime($rawDate);
+            $displayEvaluationDate = $parsedDate !== false ? date("F j, Y", $parsedDate) : $rawDate;
+          }
+
+          $decodedRatings = json_decode((string)($row["ratings_json"] ?? ""), true);
+          if (is_array($decodedRatings)) {
+            foreach ($ratings as $field => $unusedValue) {
+              $score = isset($decodedRatings[$field]) ? (int)$decodedRatings[$field] : 0;
+              if ($score >= 1 && $score <= 4) {
+                $ratings[$field] = $score;
+              }
+            }
+          }
+        }
+
+        if ($result instanceof mysqli_result) {
+          $result->free();
+        }
+      }
+      $evaluationStmt->close();
+    }
+  }
+
+  if ($applicationId > 0) {
+    $programStmt = $conn->prepare(
+      "SELECT
+        TRIM(COALESCE(program_course, '')) AS program_course,
+        TRIM(COALESCE(year_level, '')) AS year_level
+      FROM applications
+      WHERE id = ?
+      LIMIT 1"
+    );
+    if ($programStmt) {
+      $programStmt->bind_param("i", $applicationId);
+      if ($programStmt->execute()) {
+        $programResult = $programStmt->get_result();
+        $programRow = $programResult ? $programResult->fetch_assoc() : null;
+        if (is_array($programRow)) {
+          $programCourse = trim((string)($programRow["program_course"] ?? ""));
+          $yearLevel = trim((string)($programRow["year_level"] ?? ""));
+          if ($programCourse !== "" && $yearLevel !== "") {
+            $displayProgramYearLevel = $programCourse . " / " . $yearLevel;
+          } elseif ($programCourse !== "") {
+            $displayProgramYearLevel = $programCourse;
+          } else {
+            $displayProgramYearLevel = $yearLevel;
+          }
+        }
+        if ($programResult instanceof mysqli_result) {
+          $programResult->free();
+        }
+      }
+      $programStmt->close();
+    }
+  } else {
+    $scholarRecordId = abs($applicationId);
+    if ($scholarRecordId > 0) {
+      $programStmt = $conn->prepare(
+        "SELECT TRIM(COALESCE(program_year, '')) AS program_year
+        FROM institutional_scholar_records
+        WHERE id = ?
+        LIMIT 1"
+      );
+      if ($programStmt) {
+        $programStmt->bind_param("i", $scholarRecordId);
+        if ($programStmt->execute()) {
+          $programResult = $programStmt->get_result();
+          $programRow = $programResult ? $programResult->fetch_assoc() : null;
+          if (is_array($programRow)) {
+            $displayProgramYearLevel = trim((string)($programRow["program_year"] ?? ""));
+          }
+          if ($programResult instanceof mysqli_result) {
+            $programResult->free();
+          }
+        }
+        $programStmt->close();
+      }
+    }
+  }
+}
+
+foreach ($sectionFields as $sectionKey => $fields) {
+  foreach ($fields as $field) {
+    $score = (int)($ratings[$field] ?? 0);
+    if ($score >= 1 && $score <= 4) {
+      $sectionWeightedTotals[$sectionKey][$score] += $score;
+      $overallWeightedTotals[$score] += $score;
+    }
+  }
+}
+
+$checkMark = static function (array $ratingMap, string $field, int $scale): string {
+  return ((int)($ratingMap[$field] ?? 0) === $scale) ? "&#10003;" : "";
+};
+
+$weightedTotalText = static function (array $weightedTotals, int $scale): string {
+  $value = (int)($weightedTotals[$scale] ?? 0);
+  return $value > 0 ? (string)$value : "";
+};
+
+$sectionScoreTotals = ["a" => 0.0, "b" => 0.0, "c" => 0.0];
+$sectionRatedCounts = ["a" => 0, "b" => 0, "c" => 0];
+foreach ($sectionFields as $sectionKey => $fields) {
+  foreach ($fields as $field) {
+    $score = (int)($ratings[$field] ?? 0);
+    if ($score >= 1 && $score <= 4) {
+      $sectionScoreTotals[$sectionKey] += $score;
+      $sectionRatedCounts[$sectionKey]++;
+    }
+  }
+}
+
+$sectionAAvg = $sectionRatedCounts["a"] > 0 ? ($sectionScoreTotals["a"] / $sectionRatedCounts["a"]) : null;
+$sectionBAvg = $sectionRatedCounts["b"] > 0 ? ($sectionScoreTotals["b"] / $sectionRatedCounts["b"]) : null;
+$sectionCAvg = $sectionRatedCounts["c"] > 0 ? ($sectionScoreTotals["c"] / $sectionRatedCounts["c"]) : null;
+
+$overallAvg = null;
+if ($sectionAAvg !== null || $sectionBAvg !== null || $sectionCAvg !== null) {
+  $overallAvg = (((float)($sectionAAvg ?? 0)) + ((float)($sectionBAvg ?? 0)) + ((float)($sectionCAvg ?? 0))) / 3;
+}
+
+$formatAverage = static function (?float $value): string {
+  return $value === null ? "" : number_format($value, 2);
+};
+
+$verbalFromAverage = static function (?float $value): string {
+  if ($value === null || $value <= 0) {
+    return "";
+  }
+  if ($value >= 3.5) {
+    return "Excellent";
+  }
+  if ($value >= 2.5) {
+    return "Good";
+  }
+  if ($value >= 1.5) {
+    return "Fair";
+  }
+  return "Poor";
+};
+
+$extractLastName = static function (string $fullName): string {
+  $clean = trim(preg_replace('/\s+/', ' ', $fullName));
+  if ($clean === '') {
+    return '';
+  }
+
+  $parts = preg_split('/\s+/', $clean);
+  if (!is_array($parts) || empty($parts)) {
+    return '';
+  }
+
+  $suffixes = ["JR", "SR", "II", "III", "IV", "V", "PHD", "MD", "MAED", "RGC", "MMBM", "MACDDS"];
+  while (!empty($parts)) {
+    $candidate = strtoupper(trim((string)end($parts), "., "));
+    if ($candidate === "") {
+      array_pop($parts);
+      continue;
+    }
+    if (in_array($candidate, $suffixes, true)) {
+      array_pop($parts);
+      continue;
+    }
+    break;
+  }
+
+  if (empty($parts)) {
+    return '';
+  }
+
+  return trim((string)end($parts), ",. ");
+};
+
+$ccHeadLabel = "Mr.";
+$headLastName = $displayHeadAccountLastName !== ""
+  ? $displayHeadAccountLastName
+  : $extractLastName($displayHeadOfOffice);
+if ($headLastName !== "") {
+  $ccHeadLabel = "Mr. " . $headLastName;
+}
+
+$ccAssistantLabel = $extractLastName($displayApplicantName);
+?>
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -721,23 +1012,23 @@
                 <section class="info-block">
                   <div class="info-row">
                     <span class="info-label">Name of Student Assistant:</span>
-                    <span class="info-value">John Michael Santos</span>
+                    <span class="info-value"><?= htmlspecialchars($displayApplicantName) ?></span>
                   </div>
                   <div class="info-row">
                     <span class="info-label">Semester &amp; School Year:</span>
-                    <span class="info-value">2nd Semester, S.Y. 2024-2025</span>
+                    <span class="info-value"><?= htmlspecialchars($displaySemesterSchoolYear) ?></span>
                   </div>
                   <div class="info-row">
                     <span class="info-label">Area of Assignment:</span>
-                    <span class="info-value">Learning Resource Center</span>
+                    <span class="info-value"><?= htmlspecialchars($displayAreaOfAssignment) ?></span>
                   </div>
                   <div class="info-row">
                     <span class="info-label">Head of Office:</span>
-                    <span class="info-value">Mary Ann L. Rosales</span>
+                    <span class="info-value"><?= htmlspecialchars($displayHeadOfOffice) ?></span>
                   </div>
                   <div class="info-row">
                     <span class="info-label">Date of Evaluation:</span>
-                    <span class="info-value">March 15, 2025</span>
+                    <span class="info-value"><?= htmlspecialchars($displayEvaluationDate) ?></span>
                   </div>
                 </section>
 
@@ -802,27 +1093,45 @@
                       </tr>
                       <tr>
                         <td>A.1 Accurate at work assigned</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-a1", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-a1", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-a1", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-a1", 1) ?></td>
                       </tr>
                       <tr>
                         <td>A.2 Always completes tasks</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-a2", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-a2", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-a2", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-a2", 1) ?></td>
                       </tr>
                       <tr>
                         <td>A.3 Works in a timely manner</td>
-                        <td>&#10003;</td><td></td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-a3", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-a3", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-a3", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-a3", 1) ?></td>
                       </tr>
                       <tr>
                         <td>A.4 Asks for more work when assigned tasks are done</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-a4", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-a4", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-a4", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-a4", 1) ?></td>
                       </tr>
                       <tr>
                         <td>A.5 Easily accepts new responsibilities</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-a5", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-a5", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-a5", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-a5", 1) ?></td>
                       </tr>
                       <tr>
                         <td class="subtotal">Total</td>
-                        <td>4</td><td>12</td><td></td><td></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 4)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 3)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 2)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 1)) ?></td>
                       </tr>
 
                       <tr>
@@ -831,27 +1140,45 @@
                       </tr>
                       <tr>
                         <td>B.1 Answers patron's questions accurately</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-b1", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-b1", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-b1", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-b1", 1) ?></td>
                       </tr>
                       <tr>
                         <td>B.2 Deals with patrons well</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-b2", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-b2", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-b2", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-b2", 1) ?></td>
                       </tr>
                       <tr>
                         <td>B.3 Deals with personnel well</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-b3", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-b3", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-b3", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-b3", 1) ?></td>
                       </tr>
                       <tr>
                         <td>B.4 Knows how to effectively communicate with others</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-b4", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-b4", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-b4", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-b4", 1) ?></td>
                       </tr>
                       <tr>
                         <td>B.5 Has a good relationship with other student assistants</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-b5", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-b5", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-b5", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-b5", 1) ?></td>
                       </tr>
                       <tr>
                         <td class="subtotal">Total</td>
-                        <td></td><td>15</td><td></td><td></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 4)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 3)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 2)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 1)) ?></td>
                       </tr>
 
                       <tr>
@@ -860,32 +1187,53 @@
                       </tr>
                       <tr>
                         <td>C.1 Perfect attendance</td>
-                        <td>&#10003;</td><td></td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-c1", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-c1", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-c1", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-c1", 1) ?></td>
                       </tr>
                       <tr>
                         <td>C.2 Reports duty on time, rarely comes late</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-c2", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-c2", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-c2", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-c2", 1) ?></td>
                       </tr>
                       <tr>
                         <td>C.3 Following assigned schedule</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-c3", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-c3", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-c3", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-c3", 1) ?></td>
                       </tr>
                       <tr>
                         <td>C.4 Able to work without direct supervision</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-c4", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-c4", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-c4", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-c4", 1) ?></td>
                       </tr>
                       <tr>
                         <td>C.5 Carries out instructions successfully</td>
-                        <td></td><td>&#10003;</td><td></td><td></td>
+                        <td><?= $checkMark($ratings, "score-c5", 4) ?></td>
+                        <td><?= $checkMark($ratings, "score-c5", 3) ?></td>
+                        <td><?= $checkMark($ratings, "score-c5", 2) ?></td>
+                        <td><?= $checkMark($ratings, "score-c5", 1) ?></td>
                       </tr>
                       <tr>
                         <td class="subtotal">Total</td>
-                        <td>4</td><td>12</td><td></td><td></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 4)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 3)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 2)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 1)) ?></td>
                       </tr>
 
                       <tr>
                         <td class="subtotal">Over-all Total</td>
-                        <td>8</td><td>39</td><td></td><td></td>
+                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 4)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 3)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 2)) ?></td>
+                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 1)) ?></td>
                       </tr>
                     </tbody>
                   </table>
@@ -894,21 +1242,25 @@
                 <section class="pt-6 text-[12px]">
                   <p class="font-semibold">D. Strength(s)/Areas for Improvement:</p>
                   <div class="comment-box">
-                    Displays strong communication skills and consistently meets assigned deadlines. Encourage taking initiative on larger projects.
+                    <?= $displayStrengths !== "" ? nl2br(htmlspecialchars($displayStrengths)) : "&nbsp;" ?>
                   </div>
                 </section>
 
                 <section class="pt-4 text-[12px]">
                   <p class="font-semibold">E. Evaluator's Comment(s)/Recommendation:</p>
                   <div class="comment-box">
-                    Recommended for retention as Student Assistant. Provide additional training on the library cataloging system to support expanded duties.
+                    <?= $displayRecommendations !== "" ? nl2br(htmlspecialchars($displayRecommendations)) : "&nbsp;" ?>
                   </div>
                 </section>
 
                 <div class="signature-row">
                   <div class="signature-block">
                     <p>Evaluator's Signature</p>
-                    <div class="signature-line"></div>
+                    <div class="signature-line">
+                      <?php if ($displaySignatureData !== ""): ?>
+                        <img src="<?= htmlspecialchars($displaySignatureData) ?>" alt="Evaluator signature" class="mx-auto h-12 object-contain" />
+                      <?php endif; ?>
+                    </div>
                   </div>
                 </div>
 
@@ -984,29 +1336,29 @@
 
               <section class="text-center mb-6">
                 <h2 class="font-bold text-[13pt] tracking-wide m-0">STUDENT ASSISTANTS' EVALUATION RESULT</h2>
-                <p class="text-[11pt] mt-1 mb-0">1st Semester, S.Y. 2024-2025</p>
+                <p class="text-[11pt] mt-1 mb-0"><?= htmlspecialchars($displaySemesterSchoolYear) ?></p>
               </section>
 
               <div class="max-w-4xl mx-auto text-[12px] font-serif space-y-2 mb-6">
                 <div class="flex items-center max-w-3xl">
                   <span class="w-56">Name of Student Assistant</span>
                   <span>:</span>
-                  <span class="border-b border-black ml-2 h-5 inline-block w-80"></span>
+                  <span class="border-b border-black ml-2 h-5 inline-block w-80"><?= htmlspecialchars($displayApplicantName) ?></span>
                 </div>
                 <div class="flex items-center max-w-3xl">
                   <span class="w-56">Program/Year Level</span>
                   <span>:</span>
-                  <span class="border-b border-black ml-2 h-5 inline-block w-80"></span>
+                  <span class="border-b border-black ml-2 h-5 inline-block w-80"><?= htmlspecialchars($displayProgramYearLevel) ?></span>
                 </div>
                 <div class="flex items-center max-w-3xl">
                   <span class="w-56">Assigned Office</span>
                   <span>:</span>
-                  <span class="border-b border-black ml-2 h-5 inline-block w-80"></span>
+                  <span class="border-b border-black ml-2 h-5 inline-block w-80"><?= htmlspecialchars($displayAreaOfAssignment) ?></span>
                 </div>
                 <div class="flex items-center max-w-3xl">
                   <span class="w-56">Head of Office</span>
                   <span>:</span>
-                  <span class="border-b border-black ml-2 h-5 inline-block w-80"></span>
+                  <span class="border-b border-black ml-2 h-5 inline-block w-80"><?= htmlspecialchars($displayHeadOfOffice) ?></span>
                 </div>
               </div>
 
@@ -1022,31 +1374,31 @@
                   <tbody>
                     <tr>
                       <td>A. Quality and Quantity of Work</td>
-                      <td></td>
-                      <td></td>
+                      <td><?= htmlspecialchars($formatAverage($sectionAAvg)) ?></td>
+                      <td><?= htmlspecialchars($verbalFromAverage($sectionAAvg)) ?></td>
                     </tr>
                     <tr>
                       <td>B. Interpersonal Skills</td>
-                      <td></td>
-                      <td></td>
+                      <td><?= htmlspecialchars($formatAverage($sectionBAvg)) ?></td>
+                      <td><?= htmlspecialchars($verbalFromAverage($sectionBAvg)) ?></td>
                     </tr>
                     <tr>
                       <td>C. Attendance and Reliability</td>
-                      <td></td>
-                      <td></td>
+                      <td><?= htmlspecialchars($formatAverage($sectionCAvg)) ?></td>
+                      <td><?= htmlspecialchars($verbalFromAverage($sectionCAvg)) ?></td>
                     </tr>
                     <tr>
                       <td class="font-semibold">Overall Rating</td>
-                      <td></td>
-                      <td></td>
+                      <td><?= htmlspecialchars($formatAverage($overallAvg)) ?></td>
+                      <td><?= htmlspecialchars($verbalFromAverage($overallAvg)) ?></td>
                     </tr>
                     <tr>
                       <td>D. Strength(s)/Areas for Improvement</td>
-                      <td colspan="2"><div class="h-16"></div></td>
+                      <td colspan="2"><div class="h-16 whitespace-pre-wrap"><?= htmlspecialchars($displayStrengths) ?></div></td>
                     </tr>
                     <tr>
                       <td>E. Evaluator's Comment(s)/Recommendation</td>
-                      <td colspan="2"><div class="h-16"></div></td>
+                      <td colspan="2"><div class="h-16 whitespace-pre-wrap"><?= htmlspecialchars($displayRecommendations) ?></div></td>
                     </tr>
                   </tbody>
                 </table>
@@ -1074,7 +1426,7 @@
                 <p class="m-0">CC:</p>
                 <div class="flex items-center gap-6">
                   <div class="flex items-center gap-2">
-                    <span>Mr. Imam</span>
+                    <span><?= htmlspecialchars($ccHeadLabel) ?></span>
                     <span class="border-b border-black w-48 h-5 inline-block"></span>
                     <span class="ml-2">Date Received:</span>
                     <span class="border-b border-black w-32 h-5 inline-block"></span>
@@ -1082,7 +1434,7 @@
                 </div>
                 <div class="flex items-center gap-6">
                   <div class="flex items-center gap-2">
-                    <span>Mr. Tabanao</span>
+                    <span><?= htmlspecialchars($ccAssistantLabel) ?></span>
                     <span class="border-b border-black w-48 h-5 inline-block"></span>
                     <span class="ml-2">Date Received:</span>
                     <span class="border-b border-black w-32 h-5 inline-block"></span>
@@ -1188,12 +1540,6 @@
     </script>
   </body>
 </html>
-
-
-
-
-
-
 
 
 

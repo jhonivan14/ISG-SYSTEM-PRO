@@ -1203,7 +1203,9 @@ if (empty($_SESSION["from_index"])) {
       </div>
     </section>
 
+    
     <!-- GLOBAL CTA -->
+     <!--
     <section class="pt-4">
       <div class="final-cta px-4 sm:px-6 py-5 flex flex-col sm:flex-row items-center justify-between gap-4">
         <p class="text-[11px] sm:text-xs text-[#052c6a]/80 text-center sm:text-left">
@@ -1220,6 +1222,8 @@ if (empty($_SESSION["from_index"])) {
         </button>
       </div>
     </section>
+    -->
+    
   </main>
 
   <script>

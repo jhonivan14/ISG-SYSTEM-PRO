@@ -594,11 +594,35 @@ function isgExtractSpreadsheetRows(string $filePath, string $originalName, strin
   return [];
 }
 
+function isgScholarRowKey(array $row): string
+{
+  $sourceApplicationId = (int)($row["source_application_id"] ?? 0);
+  if ($sourceApplicationId > 0) {
+    return "app-" . $sourceApplicationId;
+  }
+
+  $scholarId = strtolower(trim((string)($row["scholar_id"] ?? "")));
+  if ($scholarId !== "") {
+    return "sid-" . $scholarId;
+  }
+
+  $fullName = strtolower(trim((string)($row["full_name"] ?? "")));
+  $semester = strtolower(trim((string)($row["semester"] ?? "")));
+  $academicYear = strtolower(trim((string)($row["academic_year"] ?? "")));
+  if ($fullName === "" && $semester === "" && $academicYear === "") {
+    return "";
+  }
+
+  return "name-" . sha1($fullName . "|" . $semester . "|" . $academicYear);
+}
+
 function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
 {
   $records = array_fill_keys($validCategories, []);
+  $dedupedRecords = [];
   $result = $conn->query("
     SELECT
+      id,
       source_application_id,
       category,
       scholar_id,
@@ -614,7 +638,7 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
       second_semester_renewed,
       contract_ended
     FROM institutional_scholar_records
-    ORDER BY full_name ASC
+    ORDER BY id DESC
   ");
   if (!($result instanceof mysqli_result)) {
     return $records;
@@ -625,7 +649,7 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
     if (!in_array($category, $validCategories, true)) {
       continue;
     }
-    $records[$category][] = [
+    $record = [
       "source_application_id" => (int)($row["source_application_id"] ?? 0),
       "scholar_id" => trim((string)($row["scholar_id"] ?? "")),
       "grant_applied" => trim((string)($row["grant_applied"] ?? "")),
@@ -639,9 +663,56 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
       "renewal_scope" => trim((string)($row["renewal_scope"] ?? "")),
       "second_semester_renewed" => (int)($row["second_semester_renewed"] ?? 0) === 1,
       "contract_ended" => (int)($row["contract_ended"] ?? 0) === 1,
+      "__category" => $category,
     ];
+
+    $rowKey = isgScholarRowKey($record);
+    if ($rowKey === "") {
+      continue;
+    }
+
+    if (!isset($dedupedRecords[$rowKey])) {
+      $dedupedRecords[$rowKey] = $record;
+      continue;
+    }
+
+    $existingCategory = strtolower(trim((string)($dedupedRecords[$rowKey]["__category"] ?? "")));
+    if ($existingCategory !== "official" && $category === "official") {
+      $dedupedRecords[$rowKey] = $record;
+    }
   }
   $result->free();
+
+  foreach ($dedupedRecords as $record) {
+    $baseRecord = $record;
+    unset($baseRecord["__category"]);
+    $records["official"][] = $baseRecord;
+
+    $targetCategory = strtolower(trim((string)($record["__category"] ?? "")));
+    if ($targetCategory === "" || $targetCategory === "official") {
+      $targetCategory = isgCategoryFromGrantValue((string)($record["grant_applied"] ?? ""));
+    }
+    if ($targetCategory !== "official" && in_array($targetCategory, $validCategories, true)) {
+      $records[$targetCategory][] = $baseRecord;
+    }
+  }
+
+  foreach ($records as $categoryKey => $categoryRecords) {
+    if (!is_array($categoryRecords)) {
+      continue;
+    }
+    usort($categoryRecords, static function (array $left, array $right): int {
+      $leftName = strtolower(trim((string)($left["full_name"] ?? "")));
+      $rightName = strtolower(trim((string)($right["full_name"] ?? "")));
+      if ($leftName !== $rightName) {
+        return $leftName <=> $rightName;
+      }
+      $leftId = strtolower(trim((string)($left["scholar_id"] ?? "")));
+      $rightId = strtolower(trim((string)($right["scholar_id"] ?? "")));
+      return $leftId <=> $rightId;
+    });
+    $records[$categoryKey] = $categoryRecords;
+  }
 
   return $records;
 }
@@ -698,7 +769,6 @@ if (($conn ?? null) instanceof mysqli) {
           "status" => "official_scholar",
         ];
         isgUpsertScholarRecord($conn, "official", $record);
-        isgUpsertScholarRecord($conn, "student_assistant", $record);
       }
       $result->free();
     }
@@ -739,7 +809,6 @@ if (($conn ?? null) instanceof mysqli) {
             $autoImportMessage = "Only approved applicants can be added to Institutional Scholars.";
           } else {
             $grantId = (int)($row["grant_id"] ?? 0);
-            $targetCategory = $grantToCategoryMap[$grantId] ?? "others";
             $grantLabel = $grantLabels[$grantId] ?? "Others";
             $record = [
               "source_application_id" => (int)($row["id"] ?? 0),
@@ -754,8 +823,7 @@ if (($conn ?? null) instanceof mysqli) {
             ];
 
             $okOfficial = isgUpsertScholarRecord($conn, "official", $record);
-            $okCategory = isgUpsertScholarRecord($conn, $targetCategory, $record);
-            if ($okOfficial || $okCategory) {
+            if ($okOfficial) {
               $autoImportType = "success";
               $autoImportMessage = ($record["full_name"] !== "")
                 ? ($record["full_name"] . " was added to Institutional Scholars.")
@@ -790,7 +858,6 @@ if (($conn ?? null) instanceof mysqli) {
       $manualGrantApplied = "Others";
     }
     $manualScholarId = isgGenerateManualScholarId($conn);
-    $manualCategory = isgCategoryFromGrantValue($manualGrantApplied);
 
     $manualSuccess = false;
     $manualMessage = "Unable to add scholar. Please provide required fields.";
@@ -807,9 +874,7 @@ if (($conn ?? null) instanceof mysqli) {
         "status" => "official_scholar",
       ];
 
-      $savedOfficial = isgUpsertScholarRecord($conn, "official", $record);
-      $savedCategory = $manualCategory === "official" ? true : isgUpsertScholarRecord($conn, $manualCategory, $record);
-      $manualSuccess = $savedOfficial && $savedCategory;
+      $manualSuccess = isgUpsertScholarRecord($conn, "official", $record);
       $manualMessage = $manualSuccess
         ? "Scholar record has been added."
         : "Failed to save scholar record in database.";
@@ -904,7 +969,6 @@ if (($conn ?? null) instanceof mysqli) {
               }
 
               $rowSemester = isgNormalizeSemesterValue($rowSemesterRaw, $displaySemester);
-              $rowCategory = isgCategoryFromGrantValue($rowGrant);
               $rowScholarIdSeed = strtolower($rowGrant . "|" . $rowFullName . "|" . $rowSemester . "|" . $rowAcademicYear);
               $rowScholarId = "CSV-" . strtoupper(substr(sha1($rowScholarIdSeed), 0, 16));
 
@@ -920,9 +984,7 @@ if (($conn ?? null) instanceof mysqli) {
                 "status" => "official_scholar",
               ];
 
-              $savedOfficial = isgUpsertScholarRecord($conn, "official", $record);
-              $savedCategory = $rowCategory === "official" ? true : isgUpsertScholarRecord($conn, $rowCategory, $record);
-              if ($savedOfficial && $savedCategory) {
+              if (isgUpsertScholarRecord($conn, "official", $record)) {
                 $importedCount++;
               } else {
                 $skippedCount++;
@@ -2465,7 +2527,6 @@ if (($conn ?? null) instanceof mysqli) {
     </script>
   </body>
 </html>
-
 
 
 
