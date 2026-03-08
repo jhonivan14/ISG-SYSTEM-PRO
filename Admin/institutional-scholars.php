@@ -45,6 +45,7 @@ $scholarCategoryLabels = [
 ];
 
 $serverScholarRecords = array_fill_keys($validScholarCategories, []);
+$assignedOfficeOptions = [];
 $noticeTypeParam = strtolower(trim((string)($_GET["scholar_notice"] ?? "")));
 if (($noticeTypeParam === "success" || $noticeTypeParam === "error") && isset($_GET["scholar_notice_message"])) {
   $actionNoticeType = $noticeTypeParam;
@@ -594,13 +595,22 @@ function isgExtractSpreadsheetRows(string $filePath, string $originalName, strin
   return [];
 }
 
-function isgScholarRowKey(array $row): string
+function isgBindParams(mysqli_stmt $stmt, string $types, array $values): bool
 {
-  $sourceApplicationId = (int)($row["source_application_id"] ?? 0);
-  if ($sourceApplicationId > 0) {
-    return "app-" . $sourceApplicationId;
+  if ($types === "" || empty($values)) {
+    return true;
   }
 
+  $bindArgs = [$types];
+  foreach ($values as $index => $value) {
+    $bindArgs[] = &$values[$index];
+  }
+
+  return call_user_func_array([$stmt, "bind_param"], $bindArgs);
+}
+
+function isgScholarRowKey(array $row): string
+{
   $scholarId = strtolower(trim((string)($row["scholar_id"] ?? "")));
   if ($scholarId !== "") {
     return "sid-" . $scholarId;
@@ -623,7 +633,6 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
   $result = $conn->query("
     SELECT
       id,
-      source_application_id,
       category,
       scholar_id,
       grant_applied,
@@ -650,7 +659,7 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
       continue;
     }
     $record = [
-      "source_application_id" => (int)($row["source_application_id"] ?? 0),
+      "id" => (int)($row["id"] ?? 0),
       "scholar_id" => trim((string)($row["scholar_id"] ?? "")),
       "grant_applied" => trim((string)($row["grant_applied"] ?? "")),
       "full_name" => trim((string)($row["full_name"] ?? "")),
@@ -718,6 +727,39 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
 }
 
 if (($conn ?? null) instanceof mysqli) {
+  $assignedOfficeMap = [];
+  $addAssignedOfficeOption = static function (array &$map, string $value): void {
+    $office = trim($value);
+    if ($office === "") {
+      return;
+    }
+    $officeKey = strtolower($office);
+    if (!isset($map[$officeKey])) {
+      $map[$officeKey] = $office;
+    }
+  };
+
+  $headOfficeTableResult = $conn->query("SHOW TABLES LIKE 'head_offices'");
+  $hasHeadOfficeTable = $headOfficeTableResult instanceof mysqli_result && $headOfficeTableResult->num_rows > 0;
+  if ($headOfficeTableResult instanceof mysqli_result) {
+    $headOfficeTableResult->free();
+  }
+  if ($hasHeadOfficeTable) {
+    $headOfficeOptionsResult = $conn->query("
+      SELECT DISTINCT TRIM(COALESCE(office, '')) AS office_name
+      FROM head_offices
+      WHERE TRIM(COALESCE(office, '')) <> ''
+        AND LOWER(TRIM(COALESCE(status, ''))) = 'active'
+      ORDER BY office_name ASC
+    ");
+    if ($headOfficeOptionsResult instanceof mysqli_result) {
+      while ($headOfficeRow = $headOfficeOptionsResult->fetch_assoc()) {
+        $addAssignedOfficeOption($assignedOfficeMap, (string)($headOfficeRow["office_name"] ?? ""));
+      }
+      $headOfficeOptionsResult->free();
+    }
+  }
+
   $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
   if ($assignedOfficeColumnResult instanceof mysqli_result) {
     $hasAssignedOfficeColumn = $assignedOfficeColumnResult->num_rows > 0;
@@ -731,6 +773,24 @@ if (($conn ?? null) instanceof mysqli) {
   }
 
   $hasScholarStorage = isgEnsureInstitutionalScholarTable($conn);
+  if ($hasScholarStorage) {
+    $existingOfficeResult = $conn->query("
+      SELECT DISTINCT TRIM(COALESCE(assigned_office, '')) AS office_name
+      FROM institutional_scholar_records
+      WHERE TRIM(COALESCE(assigned_office, '')) <> ''
+      ORDER BY office_name ASC
+    ");
+    if ($existingOfficeResult instanceof mysqli_result) {
+      while ($existingOfficeRow = $existingOfficeResult->fetch_assoc()) {
+        $addAssignedOfficeOption($assignedOfficeMap, (string)($existingOfficeRow["office_name"] ?? ""));
+      }
+      $existingOfficeResult->free();
+    }
+  }
+  if (!empty($assignedOfficeMap)) {
+    natcasesort($assignedOfficeMap);
+    $assignedOfficeOptions = array_values($assignedOfficeMap);
+  }
 
   $rankInputTableResult = $conn->query("SHOW TABLES LIKE 'applicant_rank_inputs'");
   if ($hasAssignedOfficeColumn && $hasScholarStorage && $rankInputTableResult instanceof mysqli_result && $rankInputTableResult->num_rows > 0) {
@@ -1026,145 +1086,287 @@ if (($conn ?? null) instanceof mysqli) {
   }
 
   $requestedAction = strtolower(trim((string)($_GET["scholar_action"] ?? "")));
-  if ($hasScholarStorage && ($requestedAction === "renew" || $requestedAction === "end_contract")) {
-    $targetSourceApplicationId = (int)($_GET["source_application_id"] ?? 0);
-    $targetScholarId = trim((string)($_GET["scholar_id"] ?? ""));
+  if ($hasScholarStorage && ($requestedAction === "renew" || $requestedAction === "end_contract" || $requestedAction === "change_office")) {
+    $targetScholarRecordId = (int)($_GET["id"] ?? ($_GET["scholar_record_id"] ?? 0));
     $renewalScope = trim((string)($_GET["renewal_scope"] ?? ""));
+    $targetAssignedOffice = trim((string)($_GET["new_assigned_office"] ?? ""));
 
     $actionSuccess = false;
     $actionMessage = "Unable to process scholar action.";
 
-    if ($targetSourceApplicationId <= 0 && $targetScholarId === "") {
+    if ($targetScholarRecordId <= 0) {
       $actionMessage = "Missing scholar reference.";
     } else {
-      $whereSql = "";
-      $whereTypes = "";
-      $whereValueInt = 0;
-      $whereValueString = "";
-
-      if ($targetSourceApplicationId > 0) {
-        $whereSql = "source_application_id = ?";
-        $whereTypes = "i";
-        $whereValueInt = $targetSourceApplicationId;
-      } else {
-        $whereSql = "scholar_id = ?";
-        $whereTypes = "s";
-        $whereValueString = $targetScholarId;
-      }
-
-      if ($requestedAction === "renew") {
-        if ($renewalScope !== "2nd_semester" && $renewalScope !== "school_year") {
-          $actionMessage = "Invalid renewal scope.";
-        } else {
-          if ($renewalScope === "2nd_semester") {
-            $renewSql = "
-              UPDATE institutional_scholar_records
-              SET
-                renewal_status = 'renew',
-                renewal_scope = '2nd_semester',
-                second_semester_renewed = 1,
-                semester = '2nd Semester',
-                status = 'renewed',
-                contract_ended = 0,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE $whereSql AND contract_ended = 0
-            ";
-            $renewStmt = $conn->prepare($renewSql);
-            if ($renewStmt) {
-              if ($whereTypes === "i") {
-                $renewStmt->bind_param($whereTypes, $whereValueInt);
-              } else {
-                $renewStmt->bind_param($whereTypes, $whereValueString);
-              }
-              $actionSuccess = $renewStmt->execute();
-              $renewStmt->close();
-              if ($actionSuccess) {
-                $actionMessage = "Scholar renewed for 2nd Semester.";
-              }
-            }
-          } else {
-            $currentYearSql = "SELECT academic_year FROM institutional_scholar_records WHERE $whereSql ORDER BY id ASC LIMIT 1";
-            $currentYearStmt = $conn->prepare($currentYearSql);
-            $baseAcademicYear = "";
-            if ($currentYearStmt) {
-              if ($whereTypes === "i") {
-                $currentYearStmt->bind_param($whereTypes, $whereValueInt);
-              } else {
-                $currentYearStmt->bind_param($whereTypes, $whereValueString);
-              }
-              if ($currentYearStmt->execute()) {
-                $result = $currentYearStmt->get_result();
-                $row = $result ? $result->fetch_assoc() : null;
-                $baseAcademicYear = trim((string)($row["academic_year"] ?? ""));
-                if ($result instanceof mysqli_result) {
-                  $result->free();
-                }
-              }
-              $currentYearStmt->close();
-            }
-            $renewalBaseYear = trim((string)($currentSchoolYear ?? ""));
-            if ($renewalBaseYear === "") {
-              $renewalBaseYear = trim((string)$displaySchoolYear);
-            }
-            if ($renewalBaseYear === "") {
-              $renewalBaseYear = $baseAcademicYear;
-            }
-
-            $nextAcademicYear = isgIncrementSchoolYear($renewalBaseYear, $displaySchoolYear);
-            $nextStartYear = isgSchoolYearStart($nextAcademicYear);
-            $baseStartYear = isgSchoolYearStart($baseAcademicYear);
-            if ($baseStartYear > 0 && $nextStartYear > 0 && $nextStartYear <= $baseStartYear) {
-              $nextAcademicYear = isgIncrementSchoolYear($baseAcademicYear, $renewalBaseYear);
-            }
-
-            $renewSql = "
-              UPDATE institutional_scholar_records
-              SET
-                renewal_status = 'renew',
-                renewal_scope = 'school_year',
-                second_semester_renewed = 0,
-                semester = '1st Semester',
-                academic_year = ?,
-                status = 'renewed',
-                contract_ended = 0,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE $whereSql AND contract_ended = 0
-            ";
-            $renewStmt = $conn->prepare($renewSql);
-            if ($renewStmt) {
-              if ($whereTypes === "i") {
-                $renewStmt->bind_param("s" . $whereTypes, $nextAcademicYear, $whereValueInt);
-              } else {
-                $renewStmt->bind_param("s" . $whereTypes, $nextAcademicYear, $whereValueString);
-              }
-              $actionSuccess = $renewStmt->execute();
-              $renewStmt->close();
-              if ($actionSuccess) {
-                $actionMessage = "Scholar renewed for next School Year.";
-              }
-            }
+      $whereSql = "id = ?";
+      $whereTypes = "i";
+      $whereParams = [$targetScholarRecordId];
+      $studentAssistantWhereSql = "(
+        LOWER(TRIM(COALESCE(category, ''))) = 'student_assistant'
+        OR LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+      )";
+      $targetRecordSql = "
+        SELECT
+          scholar_id,
+          full_name,
+          semester,
+          academic_year
+        FROM institutional_scholar_records
+        WHERE id = ?
+        LIMIT 1
+      ";
+      $targetRecordStmt = $conn->prepare($targetRecordSql);
+      $targetRecord = null;
+      if ($targetRecordStmt) {
+        $targetRecordStmt->bind_param("i", $targetScholarRecordId);
+        if ($targetRecordStmt->execute()) {
+          $targetRecordResult = $targetRecordStmt->get_result();
+          $targetRecord = $targetRecordResult ? $targetRecordResult->fetch_assoc() : null;
+          if ($targetRecordResult instanceof mysqli_result) {
+            $targetRecordResult->free();
           }
         }
-      } elseif ($requestedAction === "end_contract") {
-        $endSql = "
-          UPDATE institutional_scholar_records
-          SET
-            contract_ended = 1,
-            status = 'contract_ended',
-            updated_at = CURRENT_TIMESTAMP
-          WHERE $whereSql
-        ";
-        $endStmt = $conn->prepare($endSql);
-        if ($endStmt) {
-          if ($whereTypes === "i") {
-            $endStmt->bind_param($whereTypes, $whereValueInt);
+        $targetRecordStmt->close();
+      }
+
+      if (!is_array($targetRecord)) {
+        $actionMessage = "Scholar reference was not found.";
+      } else {
+        $targetScholarId = strtolower(trim((string)($targetRecord["scholar_id"] ?? "")));
+        $targetSemester = trim((string)($targetRecord["semester"] ?? ""));
+        $targetAcademicYear = trim((string)($targetRecord["academic_year"] ?? ""));
+        if ($targetScholarId !== "") {
+          $whereSql = "
+            LOWER(TRIM(COALESCE(scholar_id, ''))) = ?
+            AND TRIM(COALESCE(semester, '')) = ?
+            AND TRIM(COALESCE(academic_year, '')) = ?
+          ";
+          $whereTypes = "sss";
+          $whereParams = [$targetScholarId, $targetSemester, $targetAcademicYear];
+        }
+
+        if ($requestedAction === "renew") {
+          if ($renewalScope !== "2nd_semester" && $renewalScope !== "school_year") {
+            $actionMessage = "Invalid renewal scope.";
           } else {
-            $endStmt->bind_param($whereTypes, $whereValueString);
+            if ($renewalScope === "2nd_semester") {
+              $renewSql = "
+                UPDATE institutional_scholar_records
+                SET
+                  renewal_status = 'renew',
+                  renewal_scope = '2nd_semester',
+                  second_semester_renewed = 1,
+                  semester = '2nd Semester',
+                  status = 'renewed',
+                  contract_ended = 0,
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE $whereSql AND contract_ended = 0
+              ";
+              $renewStmt = $conn->prepare($renewSql);
+              if ($renewStmt) {
+                isgBindParams($renewStmt, $whereTypes, $whereParams);
+                $renewExecuted = $renewStmt->execute();
+                $renewAffectedRows = $renewStmt->affected_rows;
+                $renewStmt->close();
+                if ($renewExecuted && $renewAffectedRows > 0) {
+                  $actionSuccess = true;
+                  $actionMessage = "Scholar renewed for 2nd Semester.";
+                } elseif ($renewExecuted) {
+                  $actionMessage = "No renewal changes applied. Scholar may already be renewed or not active.";
+                }
+              }
+            } else {
+              $currentYearSql = "
+                SELECT academic_year
+                FROM institutional_scholar_records
+                WHERE $whereSql
+                ORDER BY
+                  CASE
+                    WHEN LOWER(TRIM(COALESCE(category, ''))) = 'official'
+                      AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+                    THEN 0
+                    ELSE 1
+                  END,
+                  id DESC
+                LIMIT 1
+              ";
+              $currentYearStmt = $conn->prepare($currentYearSql);
+              $baseAcademicYear = "";
+              if ($currentYearStmt) {
+                isgBindParams($currentYearStmt, $whereTypes, $whereParams);
+                if ($currentYearStmt->execute()) {
+                  $result = $currentYearStmt->get_result();
+                  $row = $result ? $result->fetch_assoc() : null;
+                  $baseAcademicYear = trim((string)($row["academic_year"] ?? ""));
+                  if ($result instanceof mysqli_result) {
+                    $result->free();
+                  }
+                }
+                $currentYearStmt->close();
+              }
+              $renewalBaseYear = trim((string)($currentSchoolYear ?? ""));
+              if ($renewalBaseYear === "") {
+                $renewalBaseYear = trim((string)$displaySchoolYear);
+              }
+              if ($renewalBaseYear === "") {
+                $renewalBaseYear = $baseAcademicYear;
+              }
+
+              $nextAcademicYear = isgIncrementSchoolYear($renewalBaseYear, $displaySchoolYear);
+              $nextStartYear = isgSchoolYearStart($nextAcademicYear);
+              $baseStartYear = isgSchoolYearStart($baseAcademicYear);
+              if ($baseStartYear > 0 && $nextStartYear > 0 && $nextStartYear <= $baseStartYear) {
+                $nextAcademicYear = isgIncrementSchoolYear($baseAcademicYear, $renewalBaseYear);
+              }
+
+              $renewSql = "
+                UPDATE institutional_scholar_records
+                SET
+                  renewal_status = 'renew',
+                  renewal_scope = 'school_year',
+                  second_semester_renewed = 0,
+                  semester = '1st Semester',
+                  academic_year = ?,
+                  status = 'renewed',
+                  contract_ended = 0,
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE $whereSql AND contract_ended = 0
+              ";
+              $renewStmt = $conn->prepare($renewSql);
+              if ($renewStmt) {
+                isgBindParams($renewStmt, "s" . $whereTypes, array_merge([$nextAcademicYear], $whereParams));
+                $renewExecuted = $renewStmt->execute();
+                $renewAffectedRows = $renewStmt->affected_rows;
+                $renewStmt->close();
+                if ($renewExecuted && $renewAffectedRows > 0) {
+                  $actionSuccess = true;
+                  $actionMessage = "Scholar renewed for next School Year.";
+                } elseif ($renewExecuted) {
+                  $actionMessage = "No renewal changes applied. Scholar may already be renewed or not active.";
+                }
+              }
+            }
           }
-          $actionSuccess = $endStmt->execute();
-          $endStmt->close();
-          if ($actionSuccess) {
-            $actionMessage = "Scholar contract ended.";
+        } elseif ($requestedAction === "end_contract") {
+          $endSql = "
+            UPDATE institutional_scholar_records
+            SET
+              contract_ended = 1,
+              status = 'contract_ended',
+              updated_at = CURRENT_TIMESTAMP
+            WHERE $whereSql
+          ";
+          $endStmt = $conn->prepare($endSql);
+          if ($endStmt) {
+            isgBindParams($endStmt, $whereTypes, $whereParams);
+            $actionSuccess = $endStmt->execute();
+            $endStmt->close();
+            if ($actionSuccess) {
+              $actionMessage = "Scholar contract ended.";
+            }
+          }
+        } elseif ($requestedAction === "change_office") {
+          if ($targetAssignedOffice === "") {
+            $actionMessage = "Assigned office is required.";
+          } else {
+            $sourceApplicationIds = [];
+            $sourceLookupSql = "
+              SELECT DISTINCT source_application_id
+              FROM institutional_scholar_records
+              WHERE $whereSql
+                AND COALESCE(contract_ended, 0) = 0
+            ";
+            $sourceLookupStmt = $conn->prepare($sourceLookupSql);
+            if ($sourceLookupStmt) {
+              isgBindParams($sourceLookupStmt, $whereTypes, $whereParams);
+              if ($sourceLookupStmt->execute()) {
+                $sourceLookupResult = $sourceLookupStmt->get_result();
+                while ($sourceLookupRow = $sourceLookupResult ? $sourceLookupResult->fetch_assoc() : null) {
+                  if (!is_array($sourceLookupRow)) {
+                    break;
+                  }
+                  $sourceId = (int)($sourceLookupRow["source_application_id"] ?? 0);
+                  if ($sourceId > 0) {
+                    $sourceApplicationIds[$sourceId] = true;
+                  }
+                }
+                if ($sourceLookupResult instanceof mysqli_result) {
+                  $sourceLookupResult->free();
+                }
+              }
+              $sourceLookupStmt->close();
+            }
+
+            $checkSql = "
+              SELECT COUNT(*) AS total
+              FROM institutional_scholar_records
+              WHERE $whereSql
+                AND COALESCE(contract_ended, 0) = 0
+                AND $studentAssistantWhereSql
+            ";
+            $checkStmt = $conn->prepare($checkSql);
+            $targetCount = 0;
+            if ($checkStmt) {
+              isgBindParams($checkStmt, $whereTypes, $whereParams);
+              if ($checkStmt->execute()) {
+                $checkResult = $checkStmt->get_result();
+                $checkRow = $checkResult ? $checkResult->fetch_assoc() : null;
+                if (is_array($checkRow)) {
+                  $targetCount = (int)($checkRow["total"] ?? 0);
+                }
+                if ($checkResult instanceof mysqli_result) {
+                  $checkResult->free();
+                }
+              }
+              $checkStmt->close();
+            }
+
+            if ($targetCount <= 0) {
+              $actionMessage = "Only active Student Assistant records can change assigned office.";
+            } else {
+              $updateSql = "
+                UPDATE institutional_scholar_records
+                SET
+                  assigned_office = ?,
+                  updated_at = CURRENT_TIMESTAMP
+                WHERE $whereSql
+                  AND COALESCE(contract_ended, 0) = 0
+              ";
+              $updateStmt = $conn->prepare($updateSql);
+              if ($updateStmt) {
+                isgBindParams($updateStmt, "s" . $whereTypes, array_merge([$targetAssignedOffice], $whereParams));
+                $actionSuccess = $updateStmt->execute();
+                if ($actionSuccess) {
+                  $affectedRows = $updateStmt->affected_rows;
+                  $applicationSyncOk = true;
+                  if (!empty($sourceApplicationIds) && ($hasAssignedOfficeColumn ?? false)) {
+                    foreach (array_keys($sourceApplicationIds) as $sourceId) {
+                      $appUpdateStmt = $conn->prepare("UPDATE applications SET assigned_office = ? WHERE id = ?");
+                      if (!$appUpdateStmt) {
+                        $applicationSyncOk = false;
+                        break;
+                      }
+                      $appUpdateStmt->bind_param("si", $targetAssignedOffice, $sourceId);
+                      if (!$appUpdateStmt->execute()) {
+                        $applicationSyncOk = false;
+                        $appUpdateStmt->close();
+                        break;
+                      }
+                      $appUpdateStmt->close();
+                    }
+                  }
+
+                  if (!$applicationSyncOk) {
+                    $actionSuccess = false;
+                    $actionMessage = "Assigned office updated in scholar records but failed to sync source application.";
+                  } else {
+                    $actionMessage = $affectedRows > 0
+                      ? "Assigned office updated successfully."
+                      : "Assigned office is already set to that value.";
+                  }
+                }
+                $updateStmt->close();
+              }
+            }
           }
         }
       }
@@ -1173,9 +1375,10 @@ if (($conn ?? null) instanceof mysqli) {
     $redirectParams = $_GET;
     unset(
       $redirectParams["scholar_action"],
-      $redirectParams["source_application_id"],
-      $redirectParams["scholar_id"],
+      $redirectParams["id"],
+      $redirectParams["scholar_record_id"],
       $redirectParams["renewal_scope"],
+      $redirectParams["new_assigned_office"],
       $redirectParams["scholar_notice"],
       $redirectParams["scholar_notice_message"]
     );
@@ -1733,6 +1936,7 @@ if (($conn ?? null) instanceof mysqli) {
       const activeFilterSemester = String(selectedSemester || displaySemester || "").trim();
       const initialActiveCategory = <?php echo json_encode($activeCategoryParam); ?>;
       const serverScholarRecords = <?php echo json_encode($serverScholarRecords, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const availableAssignedOffices = <?php echo json_encode($assignedOfficeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
       const categoryConfig = {
         official: {
@@ -1780,6 +1984,39 @@ if (($conn ?? null) instanceof mysqli) {
         return Array.isArray(records) ? records : [];
       }
 
+      function getAssignedOfficeChoices(currentOffice = "") {
+        const choices = [];
+        const seen = new Set();
+        const addChoice = (value) => {
+          const office = String(value || "").trim();
+          if (office === "") return;
+          const key = office.toLowerCase();
+          if (seen.has(key)) return;
+          seen.add(key);
+          choices.push(office);
+        };
+
+        if (Array.isArray(availableAssignedOffices)) {
+          availableAssignedOffices.forEach(addChoice);
+        }
+        addChoice(currentOffice);
+        return choices;
+      }
+
+      function getLogicalScholarMatchKey(record) {
+        if (!record || typeof record !== "object") return "";
+
+        const scholarId = String(record.scholar_id || "").trim().toLowerCase();
+        if (scholarId !== "") return "sid:" + scholarId;
+
+        const fullName = String(record.full_name || "").trim().toLowerCase();
+        const semester = String(record.semester || "").trim().toLowerCase();
+        const academicYear = String(record.academic_year || "").trim().toLowerCase();
+        if (fullName === "" && semester === "" && academicYear === "") return "";
+
+        return "name:" + fullName + "|" + semester + "|" + academicYear;
+      }
+
       function saveCategoryRecords(category, records) {
         const config = categoryConfig[category];
         if (!config) return;
@@ -1789,8 +2026,8 @@ if (($conn ?? null) instanceof mysqli) {
       }
 
       function inferGrantFromOtherCategories(record) {
-        const sourceId = String(record && typeof record === "object" ? (record.source_application_id ?? "") : "").trim();
-        const scholarId = String(record && typeof record === "object" ? (record.scholar_id ?? "") : "").trim();
+        const recordKey = getLogicalScholarMatchKey(record);
+        if (recordKey === "") return "";
         const lookupCategories = ["student_assistant", "kabayani", "academic", "others"];
 
         for (let i = 0; i < lookupCategories.length; i += 1) {
@@ -1798,11 +2035,7 @@ if (($conn ?? null) instanceof mysqli) {
           const records = getCategoryRecords(category);
           for (let j = 0; j < records.length; j += 1) {
             const item = records[j];
-            const itemSourceId = String(item && typeof item === "object" ? (item.source_application_id ?? "") : "").trim();
-            const itemScholarId = String(item && typeof item === "object" ? (item.scholar_id ?? "") : "").trim();
-            const sameSource = sourceId !== "" && itemSourceId === sourceId;
-            const sameScholar = scholarId !== "" && itemScholarId === scholarId;
-            if (!sameSource && !sameScholar) continue;
+            if (getLogicalScholarMatchKey(item) !== recordKey) continue;
 
             const explicitGrant = String(item && typeof item === "object" ? (item.grant_applied || item.grant || "") : "").trim();
             if (explicitGrant !== "") return explicitGrant;
@@ -1869,8 +2102,8 @@ if (($conn ?? null) instanceof mysqli) {
       }
 
       function getRecordKey(record, index) {
-        const sourceId = String(record && typeof record === "object" ? (record.source_application_id ?? "") : "").trim();
-        if (sourceId !== "") return "app-" + sourceId;
+        const recordId = Number(record && typeof record === "object" ? (record.id ?? 0) : 0);
+        if (recordId > 0) return "rid-" + recordId;
 
         const scholarId = String(record && typeof record === "object" ? (record.scholar_id ?? "") : "").trim();
         if (scholarId !== "") return "sid-" + scholarId;
@@ -1882,11 +2115,11 @@ if (($conn ?? null) instanceof mysqli) {
         const config = categoryConfig[category];
         if (!config || !record || typeof record !== "object") return;
 
-        const sourceId = String(record.source_application_id || "").trim();
-        if (sourceId === "") return;
+        const recordId = Number(record.id || 0);
+        if (recordId <= 0) return;
 
         const records = getCategoryRecords(category);
-        const existingIndex = records.findIndex((item) => String(item.source_application_id || "").trim() === sourceId);
+        const existingIndex = records.findIndex((item) => Number(item && item.id ? item.id : 0) === recordId);
 
         if (existingIndex >= 0) {
           records[existingIndex] = { ...records[existingIndex], ...record };
@@ -2055,7 +2288,7 @@ if (($conn ?? null) instanceof mysqli) {
             };
           }
           return {
-            statusKey: semesterPhase === "first" && secondSemesterRenewed ? "renewed" : "official_scholar",
+            statusKey: secondSemesterRenewed ? "renewed" : "official_scholar",
             nextScope: "",
             renewEnabled: false,
             reason: "Not yet in renewal window."
@@ -2117,7 +2350,7 @@ if (($conn ?? null) instanceof mysqli) {
         return '<span class="inline-flex items-center rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold">Official Scholar</span>';
       }
 
-      function submitScholarAction(action, record, renewalScope = "") {
+      function submitScholarAction(action, record, renewalScope = "", newAssignedOffice = "") {
         if (!record || typeof record !== "object") return;
 
         const url = new URL(window.location.href);
@@ -2125,25 +2358,28 @@ if (($conn ?? null) instanceof mysqli) {
         url.searchParams.delete("scholar_notice");
         url.searchParams.delete("scholar_notice_message");
 
-        const sourceApplicationId = Number(record.source_application_id || 0);
-        if (sourceApplicationId > 0) {
-          url.searchParams.set("source_application_id", String(sourceApplicationId));
+        const scholarRecordId = Number(record.id || 0);
+        if (scholarRecordId > 0) {
+          url.searchParams.set("id", String(scholarRecordId));
+          url.searchParams.delete("scholar_record_id");
         } else {
-          url.searchParams.delete("source_application_id");
+          url.searchParams.delete("id");
+          url.searchParams.delete("scholar_record_id");
         }
-
-        const scholarId = String(record.scholar_id || "").trim();
-        if (scholarId !== "") {
-          url.searchParams.set("scholar_id", scholarId);
-        } else {
-          url.searchParams.delete("scholar_id");
-        }
+        url.searchParams.delete("scholar_id");
 
         const normalizedScope = String(renewalScope || "").trim();
         if (normalizedScope !== "") {
           url.searchParams.set("renewal_scope", normalizedScope);
         } else {
           url.searchParams.delete("renewal_scope");
+        }
+
+        const normalizedAssignedOffice = String(newAssignedOffice || "").trim();
+        if (action === "change_office" && normalizedAssignedOffice !== "") {
+          url.searchParams.set("new_assigned_office", normalizedAssignedOffice);
+        } else {
+          url.searchParams.delete("new_assigned_office");
         }
 
         url.searchParams.set("active_category", activeCategory);
@@ -2256,6 +2492,67 @@ if (($conn ?? null) instanceof mysqli) {
         });
       }
 
+      function showChangeAssignedOfficePrompt(category, recordKey) {
+        const record = getRecordByKey(category, recordKey);
+        if (!record) return;
+
+        const currentOffice = String(record.assigned_office || "").trim();
+        const officeChoices = getAssignedOfficeChoices(currentOffice);
+        if (typeof Swal === "undefined") {
+          const nextOfficeRaw = window.prompt("Enter new assigned office:", currentOffice);
+          if (nextOfficeRaw === null) return;
+          const nextOffice = String(nextOfficeRaw || "").trim();
+          if (nextOffice === "") {
+            window.alert("Assigned office is required.");
+            return;
+          }
+          if (nextOffice === currentOffice) return;
+          submitScholarAction("change_office", record, "", nextOffice);
+          return;
+        }
+
+        if (officeChoices.length === 0) {
+          Swal.fire({
+            title: "Change Assigned Office",
+            text: "No office options available. Please add offices first.",
+            icon: "info",
+            confirmButtonColor: "#0d8ddb"
+          });
+          return;
+        }
+
+        const officeSelectOptions = {};
+        officeChoices.forEach((office) => {
+          officeSelectOptions[office] = office;
+        });
+        const hasCurrentOffice = officeChoices.some((office) => office.toLowerCase() === currentOffice.toLowerCase());
+        const selectedOfficeValue = hasCurrentOffice ? currentOffice : officeChoices[0];
+
+        Swal.fire({
+          title: "Change Assigned Office",
+          text: "This Student Assistant will move to the head office that matches the new assigned office.",
+          input: "select",
+          inputOptions: officeSelectOptions,
+          inputValue: selectedOfficeValue,
+          showCancelButton: true,
+          confirmButtonText: "Save",
+          cancelButtonText: "Cancel",
+          confirmButtonColor: "#0d8ddb",
+          inputValidator: (value) => {
+            const nextValue = String(value || "").trim();
+            if (nextValue === "") {
+              return "Assigned office is required.";
+            }
+            return undefined;
+          }
+        }).then((result) => {
+          if (!result.isConfirmed) return;
+          const nextOffice = String(result.value || "").trim();
+          if (nextOffice === "" || nextOffice === currentOffice) return;
+          submitScholarAction("change_office", record, "", nextOffice);
+        });
+      }
+
       function renderTable(category) {
         const config = categoryConfig[category];
         const tableBody = document.getElementById("scholarRows");
@@ -2294,6 +2591,8 @@ if (($conn ?? null) instanceof mysqli) {
 
         filteredRecords.forEach((record, index) => {
           const grantApplied = resolveGrantApplied(category, record);
+          const normalizedGrantApplied = String(grantApplied || "").trim().toLowerCase();
+          const isStudentAssistantGrant = normalizedGrantApplied.includes("assistant");
           const assignedOfficeRaw = String(record.assigned_office || "").trim();
           const assignedOfficeCell = showAssignedOffice
             ? ('<td class="px-3 py-2">' + escapeHtml(assignedOfficeRaw !== "" ? assignedOfficeRaw : "-") + "</td>")
@@ -2321,6 +2620,9 @@ if (($conn ?? null) instanceof mysqli) {
             ? ' disabled title="Contract already ended." aria-disabled="true" '
             : "";
           const endContractDisabledClasses = isContractEnded ? "opacity-60 cursor-not-allowed" : "";
+          const changeOfficeBtnHtml = (isStudentAssistantGrant && !isContractEnded)
+            ? ('<button type="button" data-status-action="change_office" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors bg-white text-[#0d8ddb] border-[#7cc5ee] hover:bg-[#ebf7ff]">Change Office</button>')
+            : "";
 
           const row = document.createElement("tr");
           row.innerHTML =
@@ -2336,6 +2638,7 @@ if (($conn ?? null) instanceof mysqli) {
               '<div class="flex flex-wrap gap-1 min-w-[200px]">' +
                 '<button type="button" data-status-action="renew" data-next-scope="' + escapeHtml(renewTargetScope) + '" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors ' + renewBtnClasses + ' ' + renewalDisabledClasses + '"' + renewalDisabledAttrs + '>' + escapeHtml(renewLabel) + '</button>' +
                 '<button type="button" data-status-action="end_contract" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors ' + endContractBtnClasses + ' ' + endContractDisabledClasses + '"' + endContractDisabledAttrs + '>End Contract</button>' +
+                changeOfficeBtnHtml +
               "</div>" +
             "</td>";
           tableBody.appendChild(row);
@@ -2356,7 +2659,7 @@ if (($conn ?? null) instanceof mysqli) {
 
           const recordKey = String(button.getAttribute("data-record-key") || "").trim();
           const action = String(button.getAttribute("data-status-action") || "").trim();
-          if (recordKey === "" || (action !== "renew" && action !== "end_contract")) return;
+          if (recordKey === "" || (action !== "renew" && action !== "end_contract" && action !== "change_office")) return;
 
           if (action === "renew") {
             const nextScope = String(button.getAttribute("data-next-scope") || "").trim();
@@ -2366,6 +2669,11 @@ if (($conn ?? null) instanceof mysqli) {
 
           if (action === "end_contract") {
             showEndContractConfirm(activeCategory, recordKey);
+            return;
+          }
+
+          if (action === "change_office") {
+            showChangeAssignedOfficePrompt(activeCategory, recordKey);
           }
 
         });
@@ -2527,7 +2835,3 @@ if (($conn ?? null) instanceof mysqli) {
     </script>
   </body>
 </html>
-
-
-
-

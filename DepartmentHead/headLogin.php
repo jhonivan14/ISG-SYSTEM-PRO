@@ -10,7 +10,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   if ($username === "" || $password === "") {
     $loginError = "Please enter your username and password.";
   } else {
-    $stmt = $conn->prepare("SELECT full_name, office, password_hash, status FROM head_offices WHERE username = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT name, office, password_hash, status FROM head_offices WHERE username = ? LIMIT 1");
     if ($stmt) {
       $stmt->bind_param("s", $username);
       $stmt->execute();

@@ -22,6 +22,10 @@ $grantLabel = "Student Assistant";
 $evaluatedApplicants = [];
 $loadError = "";
 $hasScholarTable = false;
+$selectedSchoolYear = trim((string)($_GET["school_year"] ?? ""));
+$selectedSemester = trim((string)($_GET["semester"] ?? ""));
+$schoolYearOptions = [];
+$semesterOptions = ["1st Semester", "2nd Semester"];
 
 if ($headOffice === "" && $headUsername !== "") {
   $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
@@ -57,68 +61,119 @@ if ($headOffice === "") {
     $headEvaluationTableResult->free();
   }
 
-  if (!$hasHeadEvaluationTable) {
+  if (!$hasScholarTable) {
+    $loadError = "Scholar records table is not available.";
+  } elseif (!$hasHeadEvaluationTable) {
     $loadError = "No evaluation entries yet.";
   } else {
     $headOfficeKey = strtolower(trim($headOffice));
-    if ($hasScholarTable) {
-      $evaluatedQuery = "SELECT * FROM (
-          SELECT
-            dhe.application_id AS reference_id,
-            a.applicant_name,
-            a.program_course,
-            dhe.evaluation_date,
-            dhe.updated_at
-          FROM department_head_evaluations dhe
-          INNER JOIN applications a ON a.id = dhe.application_id
-          WHERE dhe.head_username = ?
-            AND a.grant_id = ?
-            AND LOWER(TRIM(a.status)) = 'approved'
-            AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
-
-          UNION ALL
-
-          SELECT
-            dhe.application_id AS reference_id,
-            COALESCE(NULLIF(TRIM(dhe.applicant_name), ''), isr.full_name) AS applicant_name,
-            COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course,
-            dhe.evaluation_date,
-            dhe.updated_at
-          FROM department_head_evaluations dhe
-          INNER JOIN institutional_scholar_records isr ON isr.id = (0 - dhe.application_id)
-          WHERE dhe.head_username = ?
-            AND dhe.application_id < 0
-            AND isr.category = 'student_assistant'
-            AND isr.contract_ended = 0
-            AND LOWER(TRIM(COALESCE(isr.assigned_office, ''))) = ?
-        ) evaluated_rows
-        ORDER BY updated_at DESC";
-    } else {
-      $evaluatedQuery = "SELECT
-          dhe.application_id AS reference_id,
-          a.applicant_name,
-          a.program_course,
-          dhe.evaluation_date,
-          dhe.updated_at
-        FROM department_head_evaluations dhe
-        INNER JOIN applications a ON a.id = dhe.application_id
-        WHERE dhe.head_username = ?
-          AND a.grant_id = ?
-          AND LOWER(TRIM(a.status)) = 'approved'
-          AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
-        ORDER BY dhe.updated_at DESC";
+    $filterOptionStmt = $conn->prepare(
+      "SELECT DISTINCT
+        TRIM(COALESCE(school_year, '')) AS school_year,
+        TRIM(COALESCE(semester, '')) AS semester
+      FROM department_head_evaluations
+      WHERE head_username = ?
+        AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?"
+    );
+    if ($filterOptionStmt) {
+      $filterOptionStmt->bind_param("ss", $headUsername, $headOfficeKey);
+      if ($filterOptionStmt->execute()) {
+        $filterOptionResult = $filterOptionStmt->get_result();
+        while ($filterOptionRow = $filterOptionResult->fetch_assoc()) {
+          $optionSchoolYear = trim((string)($filterOptionRow["school_year"] ?? ""));
+          $optionSemester = trim((string)($filterOptionRow["semester"] ?? ""));
+          if ($optionSchoolYear !== "" && !in_array($optionSchoolYear, $schoolYearOptions, true)) {
+            $schoolYearOptions[] = $optionSchoolYear;
+          }
+          if ($optionSemester !== "" && !in_array($optionSemester, $semesterOptions, true)) {
+            $semesterOptions[] = $optionSemester;
+          }
+        }
+        if ($filterOptionResult instanceof mysqli_result) {
+          $filterOptionResult->free();
+        }
+      }
+      $filterOptionStmt->close();
     }
 
-    if ($stmt = $conn->prepare($evaluatedQuery)) {
-      if ($hasScholarTable) {
-        $stmt->bind_param("sisss", $headUsername, $grantId, $headOfficeKey, $headUsername, $headOfficeKey);
-      } else {
-        $stmt->bind_param("sis", $headUsername, $grantId, $headOfficeKey);
+    usort($schoolYearOptions, static function (string $left, string $right): int {
+      if (preg_match('/^(\d{4})/', $left, $leftMatch) && preg_match('/^(\d{4})/', $right, $rightMatch)) {
+        return ((int)$rightMatch[1]) <=> ((int)$leftMatch[1]);
       }
+      return strcmp($right, $left);
+    });
+    if ($selectedSchoolYear !== "" && !in_array($selectedSchoolYear, $schoolYearOptions, true)) {
+      array_unshift($schoolYearOptions, $selectedSchoolYear);
+    }
+    if ($selectedSemester !== "" && !in_array($selectedSemester, $semesterOptions, true)) {
+      array_unshift($semesterOptions, $selectedSemester);
+    }
+
+    $evaluatedQuery = "SELECT
+        CASE
+          WHEN isr.id IS NOT NULL THEN 0 - isr.id
+          ELSE dhe.application_id
+        END AS reference_id,
+        COALESCE(NULLIF(TRIM(dhe.applicant_name), ''), isr.full_name, a.applicant_name) AS applicant_name,
+        COALESCE(
+          NULLIF(TRIM(isr.program_year), ''),
+          NULLIF(TRIM(a.program_course), ''),
+          ''
+        ) AS program_course,
+        dhe.semester,
+        dhe.school_year,
+        dhe.evaluation_date,
+        dhe.updated_at
+      FROM department_head_evaluations dhe
+      LEFT JOIN applications a
+        ON dhe.application_id > 0
+        AND a.id = dhe.application_id
+      LEFT JOIN institutional_scholar_records isr
+        ON (
+          (dhe.application_id < 0 AND isr.id = (0 - dhe.application_id))
+          OR
+          (dhe.application_id > 0 AND isr.source_application_id = dhe.application_id)
+        )
+      WHERE dhe.head_username = ?
+        AND LOWER(TRIM(COALESCE(dhe.assigned_office, ''))) = ?
+        AND (
+          isr.id IS NULL
+          OR LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
+          OR (
+            LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
+            AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
+          )
+        )
+        AND (? = '' OR TRIM(COALESCE(dhe.school_year, '')) = ?)
+        AND (? = '' OR TRIM(COALESCE(dhe.semester, '')) = ?)
+      ORDER BY
+        dhe.updated_at DESC,
+        CASE
+          WHEN LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
+            AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
+          THEN 0
+          ELSE 1
+        END,
+        isr.id DESC";
+
+    if ($stmt = $conn->prepare($evaluatedQuery)) {
+      $stmt->bind_param(
+        "ssssss",
+        $headUsername,
+        $headOfficeKey,
+        $selectedSchoolYear,
+        $selectedSchoolYear,
+        $selectedSemester,
+        $selectedSemester
+      );
       if ($stmt->execute()) {
         $result = $stmt->get_result();
+        $evaluatedApplicantMap = [];
         while ($row = $result->fetch_assoc()) {
           $referenceId = isset($row["reference_id"]) ? (int)$row["reference_id"] : (int)($row["id"] ?? 0);
+          if ($referenceId === 0 || isset($evaluatedApplicantMap[(string)$referenceId])) {
+            continue;
+          }
           $updatedAtRaw = trim((string)($row["updated_at"] ?? ""));
           $evaluationDateRaw = trim((string)($row["evaluation_date"] ?? ""));
           $displayUpdatedAt = "";
@@ -127,13 +182,16 @@ if ($headOffice === "") {
           } elseif ($evaluationDateRaw !== "") {
             $displayUpdatedAt = date("Y-m-d", strtotime($evaluationDateRaw));
           }
-          $evaluatedApplicants[] = [
+          $evaluatedApplicantMap[(string)$referenceId] = [
             "id" => $referenceId,
             "name" => (string)($row["applicant_name"] ?? ""),
             "program_course" => (string)($row["program_course"] ?? ""),
+            "semester" => trim((string)($row["semester"] ?? "")),
+            "school_year" => trim((string)($row["school_year"] ?? "")),
             "updated_at" => $displayUpdatedAt,
           ];
         }
+        $evaluatedApplicants = array_values($evaluatedApplicantMap);
         $result->free();
       } else {
         $loadError = "Unable to load evaluation entries.";
@@ -316,6 +374,42 @@ $evaluatedCount = count($evaluatedApplicants);
               <p class="text-xs text-[#052c6a]">View evaluation entries for approved student assistants.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 text-xs">
+              <form method="get" action="show-evaluation.php" class="flex flex-wrap items-center gap-2">
+                <select
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  name="school_year"
+                  aria-label="Select school year"
+                  onchange="this.form.submit()"
+                >
+                  <option value="" <?= $selectedSchoolYear === "" ? "selected" : "" ?>>All School Years</option>
+                  <?php foreach ($schoolYearOptions as $option): ?>
+                    <option value="<?= htmlspecialchars($option) ?>" <?= $selectedSchoolYear === $option ? "selected" : "" ?>>
+                      <?= htmlspecialchars($option) ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <select
+                  class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
+                  name="semester"
+                  aria-label="Select semester"
+                  onchange="this.form.submit()"
+                >
+                  <option value="" <?= $selectedSemester === "" ? "selected" : "" ?>>All Semesters</option>
+                  <?php foreach ($semesterOptions as $option): ?>
+                    <option value="<?= htmlspecialchars($option) ?>" <?= $selectedSemester === $option ? "selected" : "" ?>>
+                      <?= htmlspecialchars($option) ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+                  <a
+                    href="show-evaluation.php"
+                    class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
+                  >
+                    Clear
+                  </a>
+                <?php endif; ?>
+              </form>
               <div class="flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-2 shadow-sm">
                 <i class="fas fa-search text-[#7c8191] text-xs"></i>
                 <input
@@ -343,6 +437,7 @@ $evaluatedCount = count($evaluatedApplicants);
                 <tr class="bg-gradient-to-r from-[#052c6a] to-[#0b3f8f] text-white">
                   <th class="border-r border-white/10 px-3 py-3">Applicant Name</th>
                   <th class="border-r border-white/10 px-3 py-3">Program / Course</th>
+                  <th class="border-r border-white/10 px-3 py-3">Semester / S.Y.</th>
                   <th class="border-r border-white/10 px-3 py-3">Last Updated</th>
                   <th class="border-r border-white/10 px-3 py-3">Grant</th>
                   <th class="px-3 py-3">Action</th>
@@ -351,16 +446,25 @@ $evaluatedCount = count($evaluatedApplicants);
               <tbody>
                 <?php if (empty($evaluatedApplicants)): ?>
                   <tr>
-                    <td colspan="5" class="px-3 py-4 text-center text-[#052c6a]">
+                    <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
                       No evaluation entries yet.
                     </td>
                   </tr>
                 <?php else: ?>
                   <?php foreach ($evaluatedApplicants as $applicant): ?>
                     <?php
+                      $termLabel = "";
+                      if (($applicant["semester"] ?? "") !== "" && ($applicant["school_year"] ?? "") !== "") {
+                        $termLabel = (string)$applicant["semester"] . ", S.Y. " . (string)$applicant["school_year"];
+                      } elseif (($applicant["semester"] ?? "") !== "") {
+                        $termLabel = (string)$applicant["semester"];
+                      } elseif (($applicant["school_year"] ?? "") !== "") {
+                        $termLabel = (string)$applicant["school_year"];
+                      }
                       $searchText = strtolower(
                         ($applicant["name"] ?? "") . " " .
                         ($applicant["program_course"] ?? "") . " " .
+                        $termLabel . " " .
                         ($applicant["updated_at"] ?? "")
                       );
                     ?>
@@ -370,6 +474,9 @@ $evaluatedCount = count($evaluatedApplicants);
                       </td>
                       <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
                         <?= htmlspecialchars($applicant["program_course"]) ?>
+                      </td>
+                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                        <?= htmlspecialchars($termLabel !== "" ? $termLabel : "N/A") ?>
                       </td>
                       <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
                         <?= htmlspecialchars($applicant["updated_at"]) ?>
@@ -389,7 +496,7 @@ $evaluatedCount = count($evaluatedApplicants);
                     </tr>
                   <?php endforeach; ?>
                   <tr data-show-eval-empty class="hidden">
-                    <td colspan="5" class="px-3 py-4 text-center text-[#052c6a]">
+                    <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
                       No matching evaluations.
                     </td>
                   </tr>

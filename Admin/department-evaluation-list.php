@@ -2,6 +2,9 @@
 require_once __DIR__ . "/includes/school-term-filter.php";
 
 $assistantEvaluationRecords = [];
+$isEvaluationWindowOpen = false;
+$evaluationWindowNotice = "";
+$evaluationWindowError = "";
 
 function isgSplitProgramYearForDepartmentList(string $programYear): array
 {
@@ -21,6 +24,45 @@ function isgSplitProgramYearForDepartmentList(string $programYear): array
 }
 
 if (($conn ?? null) instanceof mysqli) {
+  $createWindowTableSql = "CREATE TABLE IF NOT EXISTS department_evaluation_window (
+    id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+    is_open TINYINT(1) NOT NULL DEFAULT 0,
+    opened_at DATETIME DEFAULT NULL,
+    opened_by VARCHAR(100) DEFAULT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+  $windowTableReady = $conn->query($createWindowTableSql) === true;
+
+  if (!$windowTableReady) {
+    $evaluationWindowError = "Unable to access evaluation window settings.";
+  } else {
+    $openActionRequested = $_SERVER["REQUEST_METHOD"] === "POST"
+      && trim((string)($_POST["evaluation_window_action"] ?? "")) === "open";
+
+    if ($openActionRequested) {
+      $openWindowSql = "INSERT INTO department_evaluation_window (id, is_open, opened_at, opened_by)
+        VALUES (1, 1, NOW(), 'admin')
+        ON DUPLICATE KEY UPDATE
+          is_open = VALUES(is_open),
+          opened_at = VALUES(opened_at),
+          opened_by = VALUES(opened_by)";
+      if ($conn->query($openWindowSql) === true) {
+        $evaluationWindowNotice = "Evaluation window is now open.";
+      } else {
+        $evaluationWindowError = "Unable to open the evaluation window.";
+      }
+    }
+
+    $windowStateResult = $conn->query("SELECT is_open FROM department_evaluation_window WHERE id = 1 LIMIT 1");
+    if ($windowStateResult instanceof mysqli_result) {
+      $windowRow = $windowStateResult->fetch_assoc();
+      if (is_array($windowRow)) {
+        $isEvaluationWindowOpen = ((int)($windowRow["is_open"] ?? 0)) === 1;
+      }
+      $windowStateResult->free();
+    }
+  }
+
   $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
   if ($assignedOfficeColumnResult instanceof mysqli_result) {
     $hasAssignedOfficeColumn = $assignedOfficeColumnResult->num_rows > 0;
@@ -179,6 +221,39 @@ if (($conn ?? null) instanceof mysqli) {
   }
 
   if (!empty($assistantEvaluationRecords)) {
+    $evaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
+    $hasEvaluationTable = $evaluationTableResult instanceof mysqli_result && $evaluationTableResult->num_rows > 0;
+    if ($evaluationTableResult instanceof mysqli_result) {
+      $evaluationTableResult->free();
+    }
+
+    if ($hasEvaluationTable) {
+      $evaluationStatusByApplicationId = [];
+      $evaluationStatusSql = "
+        SELECT application_id, MAX(updated_at) AS evaluated_at
+        FROM department_head_evaluations
+        GROUP BY application_id
+      ";
+      $evaluationStatusResult = $conn->query($evaluationStatusSql);
+      if ($evaluationStatusResult instanceof mysqli_result) {
+        while ($evaluationRow = $evaluationStatusResult->fetch_assoc()) {
+          $applicationIdKey = (string)((int)($evaluationRow["application_id"] ?? 0));
+          $evaluationStatusByApplicationId[$applicationIdKey] = trim((string)($evaluationRow["evaluated_at"] ?? ""));
+        }
+        $evaluationStatusResult->free();
+      }
+
+      foreach ($assistantEvaluationRecords as $index => $record) {
+        $applicationIdKey = (string)((int)($record["applicantId"] ?? 0));
+        if (isset($evaluationStatusByApplicationId[$applicationIdKey])) {
+          $assistantEvaluationRecords[$index]["status"] = "evaluated";
+          $assistantEvaluationRecords[$index]["evaluatedAt"] = $evaluationStatusByApplicationId[$applicationIdKey];
+        }
+      }
+    }
+  }
+
+  if (!empty($assistantEvaluationRecords)) {
     usort($assistantEvaluationRecords, static function (array $left, array $right): int {
       $leftOffice = strtolower(trim((string)($left["office"] ?? "")));
       $rightOffice = strtolower(trim((string)($right["office"] ?? "")));
@@ -191,6 +266,18 @@ if (($conn ?? null) instanceof mysqli) {
       return $leftName <=> $rightName;
     });
   }
+}
+
+$evaluationWindowActionUrl = "department-evaluation-list.php";
+$evaluationWindowActionParams = [];
+if ($selectedSchoolYear !== "") {
+  $evaluationWindowActionParams["school_year"] = $selectedSchoolYear;
+}
+if ($selectedSemester !== "") {
+  $evaluationWindowActionParams["semester"] = $selectedSemester;
+}
+if (!empty($evaluationWindowActionParams)) {
+  $evaluationWindowActionUrl .= "?" . http_build_query($evaluationWindowActionParams);
 }
 ?>
 <html lang="en">
@@ -428,15 +515,35 @@ if (($conn ?? null) instanceof mysqli) {
                 <div>
                   <h2 class="text-lg font-semibold text-[#052c6a]">Student Assistants Evaluation List</h2>
                   <p class="text-sm text-gray-600">Open the window per semester to show status and actions.</p>
-                  <p class="text-xs text-gray-500 mt-1">Evaluation window: <span id="evalWindowLabel" class="font-semibold text-[#052c6a]">Closed</span></p>
+                  <p class="text-xs text-gray-500 mt-1">
+                    Evaluation window:
+                    <span
+                      id="evalWindowLabel"
+                      class="font-semibold <?php echo $isEvaluationWindowOpen ? "text-green-600" : "text-[#052c6a]"; ?>"
+                    >
+                      <?php echo $isEvaluationWindowOpen ? "Open" : "Closed"; ?>
+                    </span>
+                  </p>
                 </div>
-                <button
-                  id="openEvalBtn"
-                  class="bg-[#0d8ddb] hover:bg-[#0b7cc4] text-white text-sm font-semibold px-4 py-2 rounded shadow-sm transition"
-                >
-                  Open for evaluation
-                </button>
+                <form method="post" action="<?php echo htmlspecialchars($evaluationWindowActionUrl); ?>" class="m-0">
+                  <input type="hidden" name="evaluation_window_action" value="open" />
+                  <button
+                    id="openEvalBtn"
+                    type="submit"
+                    class="<?php echo $isEvaluationWindowOpen
+                      ? "bg-gray-400 cursor-not-allowed opacity-80"
+                      : "bg-[#0d8ddb] hover:bg-[#0b7cc4]"; ?> text-white text-sm font-semibold px-4 py-2 rounded shadow-sm transition"
+                    <?php echo $isEvaluationWindowOpen ? "disabled" : ""; ?>
+                  >
+                    <?php echo $isEvaluationWindowOpen ? "Evaluation is open" : "Open for evaluation"; ?>
+                  </button>
+                </form>
               </div>
+              <?php if ($evaluationWindowError !== ""): ?>
+                <p class="text-xs font-semibold text-red-600"><?php echo htmlspecialchars($evaluationWindowError); ?></p>
+              <?php elseif ($evaluationWindowNotice !== ""): ?>
+                <p class="text-xs font-semibold text-green-600"><?php echo htmlspecialchars($evaluationWindowNotice); ?></p>
+              <?php endif; ?>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label for="searchInput" class="text-xs text-gray-600">Search</label>
@@ -545,14 +652,12 @@ if (($conn ?? null) instanceof mysqli) {
         const assistantData = <?php echo json_encode($assistantEvaluationRecords, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 
         const tbody = document.getElementById("assistantRows");
-        const openBtn = document.getElementById("openEvalBtn");
-        const windowLabel = document.getElementById("evalWindowLabel");
         const searchInput = document.getElementById("searchInput");
         const yearFilter = document.getElementById("yearFilter");
         const semFilter = document.getElementById("semFilter");
         if (!tbody) return;
 
-        let evalOpen = false;
+        let evalOpen = <?php echo $isEvaluationWindowOpen ? "true" : "false"; ?>;
         let searchTerm = "";
         let yearSelection = yearFilter && yearFilter.value !== "" ? yearFilter.value : "all";
         let semSelection = semFilter && semFilter.value !== "" ? semFilter.value : "all";
@@ -634,18 +739,6 @@ if (($conn ?? null) instanceof mysqli) {
             tbody.appendChild(row);
           });
         };
-
-        if (openBtn && windowLabel) {
-          openBtn.addEventListener("click", () => {
-            evalOpen = true;
-            windowLabel.textContent = "Open";
-            openBtn.textContent = "Evaluation is open";
-            openBtn.disabled = true;
-            openBtn.classList.remove("hover:bg-[#0b7cc4]");
-            openBtn.classList.add("bg-gray-400", "cursor-not-allowed", "opacity-80");
-            renderRows();
-          });
-        }
 
         if (searchInput) {
           searchInput.addEventListener("input", (e) => {

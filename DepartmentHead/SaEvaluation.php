@@ -23,6 +23,7 @@ $applicationId = isset($_GET["application_id"])
 if ($applicationId <= 0 && isset($_GET["id"])) {
   $applicationId = (int)$_GET["id"];
 }
+$originalApplicationId = $applicationId;
 $isScholarRecord = $applicationId < 0;
 $scholarRecordId = $isScholarRecord ? abs($applicationId) : 0;
 
@@ -71,92 +72,92 @@ if ($headOffice === "" && $headUsername !== "") {
   }
 }
 
+function saLoadActiveScholarRecord(mysqli $conn, int $recordId, int $sourceApplicationId, string $officeKey): ?array
+{
+  $sql = "
+    SELECT
+      id,
+      full_name,
+      semester,
+      academic_year,
+      assigned_office
+    FROM institutional_scholar_records
+    WHERE (
+        (? > 0 AND id = ?)
+        OR
+        (? > 0 AND source_application_id = ?)
+      )
+      AND (
+        LOWER(TRIM(COALESCE(category, ''))) = 'student_assistant'
+        OR (
+          LOWER(TRIM(COALESCE(category, ''))) = 'official'
+          AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+        )
+      )
+      AND COALESCE(contract_ended, 0) = 0
+      AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
+    ORDER BY
+      CASE
+        WHEN LOWER(TRIM(COALESCE(category, ''))) = 'official'
+          AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+        THEN 0
+        ELSE 1
+      END,
+      id DESC
+    LIMIT 1
+  ";
+  $stmt = $conn->prepare($sql);
+  if (!$stmt) {
+    return null;
+  }
+
+  $stmt->bind_param("iiiis", $recordId, $recordId, $sourceApplicationId, $sourceApplicationId, $officeKey);
+  $row = null;
+  if ($stmt->execute()) {
+    $result = $stmt->get_result();
+    $row = $result ? $result->fetch_assoc() : null;
+    if ($result instanceof mysqli_result) {
+      $result->free();
+    }
+  }
+  $stmt->close();
+
+  return is_array($row) ? $row : null;
+}
+
 if ($applicationId === 0) {
   $loadError = "No applicant selected.";
 } elseif ($headOffice === "") {
   $loadError = "No office is assigned to this head account.";
 } else {
   $headOfficeKey = strtolower(trim($headOffice));
-  if ($isScholarRecord) {
-    $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
-    $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
-    if ($scholarTableResult instanceof mysqli_result) {
-      $scholarTableResult->free();
-    }
-    if (!$hasScholarTable) {
-      $loadError = "Scholar records table is not available.";
-    } else {
-      $scholarStmt = $conn->prepare(
-        "SELECT id, full_name, semester, academic_year, assigned_office
-         FROM institutional_scholar_records
-         WHERE id = ?
-           AND category = 'student_assistant'
-           AND contract_ended = 0
-           AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
-         LIMIT 1"
-      );
-      if ($scholarStmt) {
-        $scholarStmt->bind_param("is", $scholarRecordId, $headOfficeKey);
-        if ($scholarStmt->execute()) {
-          $scholarResult = $scholarStmt->get_result();
-          $scholarRow = $scholarResult ? $scholarResult->fetch_assoc() : null;
-          if (is_array($scholarRow)) {
-            $applicationProfile = [
-              "id" => 0 - (int)($scholarRow["id"] ?? 0),
-              "applicant_name" => trim((string)($scholarRow["full_name"] ?? "")),
-              "semester" => trim((string)($scholarRow["semester"] ?? "")),
-              "school_year" => trim((string)($scholarRow["academic_year"] ?? "")),
-              "assigned_office" => trim((string)($scholarRow["assigned_office"] ?? "")),
-            ];
-          } else {
-            $loadError = "Student assistant record not found for your office.";
-          }
-          if ($scholarResult instanceof mysqli_result) {
-            $scholarResult->free();
-          }
-        } else {
-          $loadError = "Unable to load student assistant details.";
-        }
-        $scholarStmt->close();
-      } else {
-        $loadError = "Unable to prepare student assistant lookup.";
-      }
-    }
+  $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
+  $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
+  if ($scholarTableResult instanceof mysqli_result) {
+    $scholarTableResult->free();
+  }
+  if (!$hasScholarTable) {
+    $loadError = "Scholar records table is not available.";
   } else {
-    $appStmt = $conn->prepare(
-      "SELECT id, applicant_name, semester, school_year, assigned_office
-       FROM applications
-       WHERE id = ?
-         AND grant_id = 1
-         AND LOWER(TRIM(status)) = 'approved'
-         AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
-       LIMIT 1"
+    $resolvedScholarRow = saLoadActiveScholarRecord(
+      $conn,
+      $isScholarRecord ? $scholarRecordId : 0,
+      $isScholarRecord ? 0 : $applicationId,
+      $headOfficeKey
     );
-    if ($appStmt) {
-      $appStmt->bind_param("is", $applicationId, $headOfficeKey);
-      if ($appStmt->execute()) {
-        $appResult = $appStmt->get_result();
-        $appRow = $appResult ? $appResult->fetch_assoc() : null;
-        if (is_array($appRow)) {
-          $applicationProfile = [
-            "id" => (int)($appRow["id"] ?? 0),
-            "applicant_name" => trim((string)($appRow["applicant_name"] ?? "")),
-            "semester" => trim((string)($appRow["semester"] ?? "")),
-            "school_year" => trim((string)($appRow["school_year"] ?? "")),
-            "assigned_office" => trim((string)($appRow["assigned_office"] ?? "")),
-          ];
-        } else {
-          $loadError = "Applicant not found for your office.";
-        }
-        if ($appResult instanceof mysqli_result) {
-          $appResult->free();
-        }
-      } else {
-        $loadError = "Unable to load applicant details.";
-      }
-      $appStmt->close();
+    if (is_array($resolvedScholarRow)) {
+      $scholarRecordId = (int)($resolvedScholarRow["id"] ?? 0);
+      $applicationId = 0 - $scholarRecordId;
+      $isScholarRecord = true;
+      $applicationProfile = [
+        "id" => $applicationId,
+        "applicant_name" => trim((string)($resolvedScholarRow["full_name"] ?? "")),
+        "semester" => trim((string)($resolvedScholarRow["semester"] ?? "")),
+        "school_year" => trim((string)($resolvedScholarRow["academic_year"] ?? "")),
+        "assigned_office" => trim((string)($resolvedScholarRow["assigned_office"] ?? "")),
+      ];
     } else {
-      $loadError = "Unable to prepare applicant details query.";
+      $loadError = "Student assistant record not found for your office.";
     }
   }
 }
@@ -191,6 +192,40 @@ if ($loadError === "" && ($conn ?? null) instanceof mysqli) {
 }
 
 if ($loadError === "" && $hasEvaluationTable) {
+  if ($originalApplicationId > 0 && $applicationId < 0 && $originalApplicationId !== $applicationId) {
+    $canonicalExistsStmt = $conn->prepare(
+      "SELECT id
+       FROM department_head_evaluations
+       WHERE application_id = ? AND head_username = ?
+       LIMIT 1"
+    );
+    $canonicalExists = false;
+    if ($canonicalExistsStmt) {
+      $canonicalExistsStmt->bind_param("is", $applicationId, $headUsername);
+      if ($canonicalExistsStmt->execute()) {
+        $canonicalExistsResult = $canonicalExistsStmt->get_result();
+        $canonicalExists = $canonicalExistsResult instanceof mysqli_result && $canonicalExistsResult->num_rows > 0;
+        if ($canonicalExistsResult instanceof mysqli_result) {
+          $canonicalExistsResult->free();
+        }
+      }
+      $canonicalExistsStmt->close();
+    }
+
+    if (!$canonicalExists) {
+      $normalizeStmt = $conn->prepare(
+        "UPDATE department_head_evaluations
+         SET application_id = ?
+         WHERE application_id = ? AND head_username = ?"
+      );
+      if ($normalizeStmt) {
+        $normalizeStmt->bind_param("iis", $applicationId, $originalApplicationId, $headUsername);
+        $normalizeStmt->execute();
+        $normalizeStmt->close();
+      }
+    }
+  }
+
   $existingStmt = $conn->prepare(
     "SELECT ratings_json, strengths, recommendations, signature_data, evaluation_date
      FROM department_head_evaluations

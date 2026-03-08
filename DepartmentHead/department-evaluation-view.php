@@ -46,6 +46,56 @@ $ratingGroups = [
   ],
 ];
 
+function departmentEvaluationLoadScholarRecord(mysqli $conn, int $recordId, int $sourceApplicationId, string $officeKey): ?array
+{
+  $sql = "
+    SELECT
+      id,
+      program_year
+    FROM institutional_scholar_records
+    WHERE (
+        (? > 0 AND id = ?)
+        OR
+        (? > 0 AND source_application_id = ?)
+      )
+      AND (
+        LOWER(TRIM(COALESCE(category, ''))) = 'student_assistant'
+        OR (
+          LOWER(TRIM(COALESCE(category, ''))) = 'official'
+          AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+        )
+      )
+      AND COALESCE(contract_ended, 0) = 0
+      AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
+    ORDER BY
+      CASE
+        WHEN LOWER(TRIM(COALESCE(category, ''))) = 'official'
+          AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+        THEN 0
+        ELSE 1
+      END,
+      id DESC
+    LIMIT 1
+  ";
+  $stmt = $conn->prepare($sql);
+  if (!$stmt) {
+    return null;
+  }
+
+  $stmt->bind_param("iiiis", $recordId, $recordId, $sourceApplicationId, $sourceApplicationId, $officeKey);
+  $row = null;
+  if ($stmt->execute()) {
+    $result = $stmt->get_result();
+    $row = $result ? $result->fetch_assoc() : null;
+    if ($result instanceof mysqli_result) {
+      $result->free();
+    }
+  }
+  $stmt->close();
+
+  return is_array($row) ? $row : null;
+}
+
 if ($headOffice === "" && $headUsername !== "") {
   $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
   if ($officeStmt) {
@@ -80,7 +130,19 @@ if ($applicationId === 0) {
     $loadError = "No saved evaluation found yet.";
   } else {
     $officeKey = strtolower(trim($headOffice));
-    if ($applicationId > 0) {
+    $originalApplicationId = $applicationId;
+    $canonicalApplicationId = $applicationId;
+    $resolvedScholarRow = departmentEvaluationLoadScholarRecord(
+      $conn,
+      $applicationId < 0 ? abs($applicationId) : 0,
+      $applicationId > 0 ? $applicationId : 0,
+      $officeKey
+    );
+    if (is_array($resolvedScholarRow) && (int)($resolvedScholarRow["id"] ?? 0) > 0) {
+      $canonicalApplicationId = 0 - (int)$resolvedScholarRow["id"];
+    }
+
+    if ($canonicalApplicationId < 0) {
       $stmt = $conn->prepare(
         "SELECT
           dhe.applicant_name,
@@ -93,16 +155,39 @@ if ($applicationId === 0) {
           dhe.strengths,
           dhe.recommendations,
           dhe.signature_data,
-          a.program_course
+          COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course
         FROM department_head_evaluations dhe
-        INNER JOIN applications a ON a.id = dhe.application_id
-        WHERE dhe.application_id = ?
+        INNER JOIN institutional_scholar_records isr
+          ON (
+            (dhe.application_id < 0 AND isr.id = (0 - dhe.application_id))
+            OR
+            (dhe.application_id > 0 AND isr.source_application_id = dhe.application_id)
+          )
+        WHERE dhe.application_id IN (?, ?)
           AND dhe.head_username = ?
-          AND LOWER(TRIM(COALESCE(a.assigned_office, ''))) = ?
+          AND (
+            LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
+            OR (
+              LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
+              AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
+            )
+          )
+          AND COALESCE(isr.contract_ended, 0) = 0
+          AND LOWER(TRIM(COALESCE(isr.assigned_office, ''))) = ?
+        ORDER BY
+          CASE WHEN dhe.application_id = ? THEN 0 ELSE 1 END,
+          CASE
+            WHEN LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
+              AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
+            THEN 0
+            ELSE 1
+          END,
+          dhe.updated_at DESC,
+          isr.id DESC
         LIMIT 1"
       );
       if ($stmt) {
-        $stmt->bind_param("iss", $applicationId, $headUsername, $officeKey);
+        $stmt->bind_param("iissi", $canonicalApplicationId, $originalApplicationId, $headUsername, $officeKey, $canonicalApplicationId);
         if ($stmt->execute()) {
           $result = $stmt->get_result();
           $row = $result ? $result->fetch_assoc() : null;
@@ -139,8 +224,8 @@ if ($applicationId === 0) {
         }
         $stmt->close();
       } else {
-        $loadError = "Unable to prepare evaluation query.";
-      }
+          $loadError = "Unable to prepare evaluation query.";
+        }
     } else {
       $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
       $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
@@ -168,7 +253,13 @@ if ($applicationId === 0) {
           WHERE dhe.application_id = ?
             AND dhe.head_username = ?
             AND dhe.application_id < 0
-            AND isr.category = 'student_assistant'
+            AND (
+              LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
+              OR (
+                LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
+                AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
+              )
+            )
             AND isr.contract_ended = 0
             AND LOWER(TRIM(COALESCE(isr.assigned_office, ''))) = ?
           LIMIT 1"

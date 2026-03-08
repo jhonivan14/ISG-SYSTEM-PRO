@@ -1,6 +1,119 @@
 <?php
 require_once __DIR__ . "/includes/school-term-filter.php";
-$headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : "1st Semester";
+
+$summaryRecords = [];
+$summaryLoadError = "";
+
+$verbalFromAverage = static function (?float $value): string {
+  if ($value === null || $value <= 0) {
+    return "";
+  }
+  if ($value >= 3.5) {
+    return "Excellent";
+  }
+  if ($value >= 2.5) {
+    return "Good";
+  }
+  if ($value >= 1.5) {
+    return "Fair";
+  }
+  return "Poor";
+};
+
+if (($conn ?? null) instanceof mysqli) {
+  $evaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
+  $hasEvaluationTable = $evaluationTableResult instanceof mysqli_result && $evaluationTableResult->num_rows > 0;
+  if ($evaluationTableResult instanceof mysqli_result) {
+    $evaluationTableResult->free();
+  }
+
+  if ($hasEvaluationTable) {
+    $whereClauses = ["1 = 1"];
+    $params = [];
+    $paramTypes = "";
+
+    if ($selectedSchoolYear !== "") {
+      $whereClauses[] = "TRIM(COALESCE(school_year, '')) = ?";
+      $params[] = $selectedSchoolYear;
+      $paramTypes .= "s";
+    }
+    if ($selectedSemester !== "") {
+      $whereClauses[] = "TRIM(COALESCE(semester, '')) = ?";
+      $params[] = $selectedSemester;
+      $paramTypes .= "s";
+    }
+
+    $sql = "
+      SELECT
+        id,
+        application_id,
+        applicant_name,
+        overall_total,
+        strengths,
+        recommendations,
+        updated_at
+      FROM department_head_evaluations
+      WHERE " . implode(" AND ", $whereClauses) . "
+      ORDER BY updated_at DESC, id DESC
+    ";
+
+    $stmt = $conn->prepare($sql);
+    if ($stmt) {
+      if (!empty($params)) {
+        $stmt->bind_param($paramTypes, ...$params);
+      }
+
+      if ($stmt->execute()) {
+        $result = $stmt->get_result();
+        $seenApplicationIds = [];
+
+        while ($row = $result->fetch_assoc()) {
+          $applicationId = (int)($row["application_id"] ?? 0);
+          $applicationKey = (string)$applicationId;
+          if (isset($seenApplicationIds[$applicationKey])) {
+            continue;
+          }
+          $seenApplicationIds[$applicationKey] = true;
+
+          $overallTotal = (int)($row["overall_total"] ?? 0);
+          $weightedMean = $overallTotal > 0 ? ($overallTotal / 15) : null;
+
+          $summaryRecords[] = [
+            "application_id" => $applicationId,
+            "name" => trim((string)($row["applicant_name"] ?? "")),
+            "weighted_mean" => $weightedMean,
+            "verbal_description" => $verbalFromAverage($weightedMean),
+            "strengths" => trim((string)($row["strengths"] ?? "")),
+            "recommendations" => trim((string)($row["recommendations"] ?? "")),
+          ];
+        }
+
+        if ($result instanceof mysqli_result) {
+          $result->free();
+        }
+      } else {
+        $summaryLoadError = "Unable to load summary report records.";
+      }
+
+      $stmt->close();
+    } else {
+      $summaryLoadError = "Unable to prepare summary report query.";
+    }
+  }
+}
+
+if (!empty($summaryRecords)) {
+  usort($summaryRecords, static function (array $left, array $right): int {
+    $leftName = strtolower(trim((string)($left["name"] ?? "")));
+    $rightName = strtolower(trim((string)($right["name"] ?? "")));
+    if ($leftName !== $rightName) {
+      return $leftName <=> $rightName;
+    }
+    return ((int)($left["application_id"] ?? 0)) <=> ((int)($right["application_id"] ?? 0));
+  });
+}
+
+$headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySemester;
 ?>
 <html lang="en">
   <head>
@@ -528,14 +641,35 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : "1st Semes
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td class="border border-black p-1 text-center">1</td>
-                    <td class="border border-black p-1"></td>
-                    <td class="border border-black p-1"></td>
-                    <td class="border border-black p-1"></td>
-                    <td class="border border-black p-1"></td>
-                    <td class="border border-black p-1"></td>
-                  </tr>
+                  <?php if ($summaryLoadError !== ""): ?>
+                    <tr>
+                      <td class="border border-black p-2 text-center" colspan="6"><?php echo htmlspecialchars($summaryLoadError); ?></td>
+                    </tr>
+                  <?php elseif (empty($summaryRecords)): ?>
+                    <tr>
+                      <td class="border border-black p-2 text-center" colspan="6">No department evaluation results found for the selected term.</td>
+                    </tr>
+                  <?php else: ?>
+                    <?php foreach ($summaryRecords as $index => $record): ?>
+                      <tr>
+                        <td class="border border-black p-1 text-center"><?php echo htmlspecialchars((string)($index + 1)); ?></td>
+                        <td class="border border-black p-1"><?php echo htmlspecialchars((string)($record["name"] !== "" ? $record["name"] : "N/A")); ?></td>
+                        <td class="border border-black p-1 text-center">
+                          <?php
+                            $weightedMean = $record["weighted_mean"];
+                            echo $weightedMean === null ? "" : htmlspecialchars(number_format((float)$weightedMean, 2));
+                          ?>
+                        </td>
+                        <td class="border border-black p-1 text-center"><?php echo htmlspecialchars((string)($record["verbal_description"] ?? "")); ?></td>
+                        <td class="border border-black p-1 whitespace-pre-wrap">
+                          <?php echo $record["strengths"] !== "" ? nl2br(htmlspecialchars((string)$record["strengths"])) : "&nbsp;"; ?>
+                        </td>
+                        <td class="border border-black p-1 whitespace-pre-wrap">
+                          <?php echo $record["recommendations"] !== "" ? nl2br(htmlspecialchars((string)$record["recommendations"])) : "&nbsp;"; ?>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                  <?php endif; ?>
                 </tbody>
               </table>
             </div>
