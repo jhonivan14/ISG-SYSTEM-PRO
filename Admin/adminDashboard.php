@@ -1,109 +1,135 @@
 <?php
 session_start();
 require_once '../db.php';
-$categoryDefinitions = [
-  [
-    "label" => "Student Assistant",
-    "slug" => "student-assistant",
-    "keywords" => ["student assistant"],
-  ],
-  [
-    "label" => "Kabayani Scholarship",
-    "slug" => "kabayani",
-    "keywords" => ["kabayani"],
-  ],
-  [
-    "label" => "Academic Scholar",
-    "slug" => "academic",
-    "keywords" => ["academic"],
-  ],
-  [
-    "label" => "Others",
-    "slug" => "others",
-    "keywords" => [],
-  ],
-];
-
-$grantLabels = [
-  1 => "Student Assistant",
-  2 => "Academic Scholarship Program",
-  3 => "Executive Student Government (ESG) President Scholarship Program",
-  4 => "Kabayani Scholarship Program",
-  5 => "Kabayani Loyalty Grant",
-  6 => "Discount for Persons with Disability (PWD)",
-  7 => "Discount for Children of Employees",
-  8 => "Discount for Sibling of Employees",
-  9 => "Sibling Discount",
-  10 => "DXSM-FM Grant",
-  11 => "Michaelinian Mirror Grant (Editor-in-Chief)",
-  12 => "Grant for the Dependents of a Lot Donor",
-  13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
-  14 => "SMCC Alumni Discount",
-];
-
-$pendingApplicants = [];
-$pendingQuery = "SELECT created_at, applicant_name, program_course, grant_id, status FROM applications ORDER BY created_at DESC";
-if ($result = $conn->query($pendingQuery)) {
-  while ($row = $result->fetch_assoc()) {
-    $grantId = (int)($row["grant_id"] ?? 0);
-    $grantLabel = $grantLabels[$grantId] ?? "Others";
-    $submittedAtRaw = $row["created_at"] ?? "";
-    $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
-    $status = isset($row["status"]) ? trim((string)$row["status"]) : "";
-    if ($status === "") {
-      $status = "Pending";
-    }
-
-    $pendingApplicants[] = [
-      "submitted_at" => $submittedAt,
-      "name" => $row["applicant_name"] ?? "",
-      "program_course" => $row["program_course"] ?? "",
-      "grant" => $grantLabel,
-      "status" => $status,
-    ];
-  }
-  $result->free();
-}
-
-$categories = [];
-foreach ($categoryDefinitions as $definition) {
-  $categories[$definition["slug"]] = [
-    "label" => $definition["label"],
-    "slug" => $definition["slug"],
-    "count" => 0,
-  ];
-}
-
-foreach ($pendingApplicants as &$applicant) {
-  $grant = strtolower($applicant["grant"]);
-  $matchedSlug = "others";
-
-  foreach ($categoryDefinitions as $definition) {
-    foreach ($definition["keywords"] as $keyword) {
-      if (stripos($grant, strtolower($keyword)) !== false) {
-        $matchedSlug = $definition["slug"];
-        break 2;
-      }
-    }
-  }
-
-  $applicant["category_slug"] = $matchedSlug;
-  if (isset($categories[$matchedSlug])) {
-    $categories[$matchedSlug]["count"]++;
-  }
-}
-unset($applicant);
-
-$pendingCount = count($pendingApplicants);
-
-$chartYears = [];
-$barData = [];
-$lineData = [];
 
 $currentYear = (int)date("Y");
 $currentMonth = (int)date("n");
 $currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
 $currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
+$requestedDashboardSchoolYear = trim((string)($_GET["school_year"] ?? ""));
+$dashboardSchoolYear = $requestedDashboardSchoolYear !== "" && strtolower($requestedDashboardSchoolYear) !== "all"
+  ? $requestedDashboardSchoolYear
+  : $currentSchoolYear;
+$totalScholarsCount = 0;
+$registeredPanelistsCount = 0;
+$registeredHeadOfficesCount = 0;
+$pendingCount = 0;
+
+function adminDashboardScholarCountKey(array $row): string
+{
+  $sourceApplicationId = (int)($row["source_application_id"] ?? 0);
+  if ($sourceApplicationId > 0) {
+    return "src-" . $sourceApplicationId;
+  }
+
+  $scholarId = strtolower(trim((string)($row["scholar_id"] ?? "")));
+  if ($scholarId !== "") {
+    return "sid-" . $scholarId;
+  }
+
+  $fullName = strtolower(trim((string)($row["full_name"] ?? "")));
+  $programYear = strtolower(trim((string)($row["program_year"] ?? "")));
+  $academicYear = strtolower(trim((string)($row["academic_year"] ?? "")));
+  if ($fullName === "" && $programYear === "" && $academicYear === "") {
+    return "";
+  }
+
+  return "name-" . sha1($fullName . "|" . $programYear . "|" . $academicYear);
+}
+
+$scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
+if ($scholarTableResult instanceof mysqli_result) {
+  $hasScholarTable = $scholarTableResult->num_rows > 0;
+  $scholarTableResult->free();
+  if ($hasScholarTable) {
+    $hasContractEndedColumn = false;
+    $contractEndedColumnResult = $conn->query("SHOW COLUMNS FROM institutional_scholar_records LIKE 'contract_ended'");
+    if ($contractEndedColumnResult instanceof mysqli_result) {
+      $hasContractEndedColumn = $contractEndedColumnResult->num_rows > 0;
+      $contractEndedColumnResult->free();
+    }
+
+    $scholarWhereClauses = ["TRIM(COALESCE(academic_year, '')) = ?"];
+    if ($hasContractEndedColumn) {
+      $scholarWhereClauses[] = "COALESCE(contract_ended, 0) = 0";
+    }
+
+    $scholarCountSql = "
+      SELECT
+        source_application_id,
+        scholar_id,
+        full_name,
+        program_year,
+        academic_year
+      FROM institutional_scholar_records
+      WHERE " . implode(" AND ", $scholarWhereClauses) . "
+      ORDER BY id DESC
+    ";
+    $scholarCountStmt = $conn->prepare($scholarCountSql);
+    if ($scholarCountStmt) {
+      $scholarCountStmt->bind_param("s", $dashboardSchoolYear);
+      if ($scholarCountStmt->execute()) {
+        $scholarCountResult = $scholarCountStmt->get_result();
+        $uniqueScholarKeys = [];
+        while ($scholarRow = $scholarCountResult->fetch_assoc()) {
+          $rowKey = adminDashboardScholarCountKey($scholarRow);
+          if ($rowKey !== "") {
+            $uniqueScholarKeys[$rowKey] = true;
+          }
+        }
+        $totalScholarsCount = count($uniqueScholarKeys);
+        if ($scholarCountResult instanceof mysqli_result) {
+          $scholarCountResult->free();
+        }
+      }
+      $scholarCountStmt->close();
+    }
+  }
+}
+
+$panelistCountResult = $conn->query("SELECT COUNT(*) AS total FROM panelists");
+if ($panelistCountResult instanceof mysqli_result) {
+  $panelistCountRow = $panelistCountResult->fetch_assoc();
+  $registeredPanelistsCount = (int)($panelistCountRow["total"] ?? 0);
+  $panelistCountResult->free();
+}
+
+$headOfficeCountResult = $conn->query("SELECT COUNT(*) AS total FROM head_offices");
+if ($headOfficeCountResult instanceof mysqli_result) {
+  $headOfficeCountRow = $headOfficeCountResult->fetch_assoc();
+  $registeredHeadOfficesCount = (int)($headOfficeCountRow["total"] ?? 0);
+  $headOfficeCountResult->free();
+}
+
+$pendingQuery = "
+  SELECT COUNT(*) AS total
+  FROM applications
+  WHERE (
+      status IS NULL
+      OR TRIM(status) = ''
+      OR LOWER(TRIM(status)) = 'pending'
+    )
+    AND TRIM(COALESCE(school_year, '')) = ?
+";
+$pendingStmt = $conn->prepare($pendingQuery);
+if ($pendingStmt) {
+  $pendingStmt->bind_param("s", $dashboardSchoolYear);
+  if ($pendingStmt->execute()) {
+    $pendingResult = $pendingStmt->get_result();
+    $pendingRow = $pendingResult ? $pendingResult->fetch_assoc() : null;
+    if (is_array($pendingRow)) {
+      $pendingCount = (int)($pendingRow["total"] ?? 0);
+    }
+    if ($pendingResult instanceof mysqli_result) {
+      $pendingResult->free();
+    }
+  }
+  $pendingStmt->close();
+}
+
+$chartYears = [];
+$barData = [];
+$lineData = [];
 
 $yearResult = $conn->query("SELECT DISTINCT school_year FROM applications WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''");
 if ($yearResult) {
@@ -449,9 +475,9 @@ foreach ($chartYears as $year) {
               <p class="text-xs text-[#fcdc2f] uppercase tracking-wide">
                 Total Scholars
               </p>
-              <p class="text-2xl font-bold mt-1">120</p>
+              <p class="text-2xl font-bold mt-1"><?php echo htmlspecialchars(number_format($totalScholarsCount)); ?></p>
               <p class="text-[11px] text-gray-200 mt-1">
-                Currently enrolled scholars
+                Institutional scholars for S.Y. <?php echo htmlspecialchars($dashboardSchoolYear); ?>
               </p>
             </div>
             <div class="text-3xl opacity-80">
@@ -467,9 +493,9 @@ foreach ($chartYears as $year) {
               <p class="text-xs text-[#0d8ddb] uppercase tracking-wide">
                 Applicants
               </p>
-              <p class="text-2xl font-bold mt-1">450</p>
+              <p class="text-2xl font-bold mt-1"><?php echo htmlspecialchars(number_format($pendingCount)); ?></p>
               <p class="text-[11px] text-gray-500 mt-1">
-                Total application submitted
+                Pending applicants for S.Y. <?php echo htmlspecialchars($dashboardSchoolYear); ?>
               </p>
             </div>
             <div class="text-3xl text-[#0d8ddb] opacity-90">
@@ -483,9 +509,9 @@ foreach ($chartYears as $year) {
           >
             <div>
               <p class="text-xs uppercase tracking-wide">Panelists</p>
-              <p class="text-2xl font-bold mt-1">18</p>
+              <p class="text-2xl font-bold mt-1"><?php echo htmlspecialchars(number_format($registeredPanelistsCount)); ?></p>
               <p class="text-[11px] text-[#052c6a] mt-1">
-                Waiting for interview schedule
+                Registered panelist accounts
               </p>
             </div>
             <div class="text-3xl opacity-90">
@@ -499,8 +525,8 @@ foreach ($chartYears as $year) {
           >
             <div>
               <p class="text-xs uppercase tracking-wide">Head of Offices</p>
-              <p class="text-2xl font-bold mt-1">20</p>
-              <p class="text-[11px] text-white mt-1">Active evaluators</p>
+              <p class="text-2xl font-bold mt-1"><?php echo htmlspecialchars(number_format($registeredHeadOfficesCount)); ?></p>
+              <p class="text-[11px] text-white mt-1">Registered evaluator accounts</p>
             </div>
             <div class="text-3xl opacity-90">
               <i class="fas fa-user-tie"></i>
@@ -531,122 +557,6 @@ foreach ($chartYears as $year) {
           </div>
         </section>
 
-        <!-- Table -->
-        <section class="px-4 sm:px-6 pb-6 mt-4">
-          <div class="rounded-lg border border-[#0d8ddb] bg-white p-4 shadow-sm">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p class="text-[#0d8ddb] text-sm font-semibold">Pending Applicants</p>
-                <p class="text-xs text-[#052c6a]">
-                  Showing <?= htmlspecialchars($pendingCount) ?> pending applicants across all grant categories.
-                </p>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <?php foreach ($categories as $category): ?>
-                <?php endforeach; ?>
-              </div>
-            </div>
-
-            <div class="mt-4 overflow-x-auto">
-              <table
-                class="min-w-full border border-[#0d8ddb] text-xs text-center"
-              >
-                <thead>
-                  <tr class="bg-white border-b border-[#0d8ddb]">
-                    <th
-                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                    >
-                      Timestamp
-                    </th>
-                    <th
-                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                    >
-                      Applicant Name
-                    </th>
-                    <th
-                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                    >
-                      Program / Course
-                    </th>
-                    <th
-                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                    >
-                      ISG Grant
-                    </th>
-                    <th
-                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
-                    >
-                      Application Status
-                    </th>
-                    <th class="py-2 px-2 font-semibold text-[#fcdc2f]">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <?php if (empty($pendingApplicants)): ?>
-                    <tr>
-                      <td colspan="5" class="py-3 text-center text-[#052c6a]">
-                        No pending applicants at the moment.
-                      </td>
-                    </tr>
-                  <?php else: ?>
-                    <?php foreach ($pendingApplicants as $applicant): ?>
-                      <tr
-                        class="border-b border-[#0d8ddb]"
-                        data-applicant-row="<?= htmlspecialchars($applicant["category_slug"]) ?>"
-                      >
-                        <td
-                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                        >
-                          <?= htmlspecialchars($applicant["submitted_at"]) ?>
-                        </td>
-                        <td
-                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                        >
-                          <?= htmlspecialchars($applicant["name"]) ?>
-                        </td>
-                        <td
-                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                        >
-                          <?= htmlspecialchars($applicant["program_course"]) ?>
-                        </td>
-                        <td
-                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
-                        >
-                          <?= htmlspecialchars($applicant["grant"]) ?>
-                        </td>
-                        <td class="border-r border-[#0d8ddb] py-2">
-                          <span
-                            class="bg-[#fcdc2f] text-[#052c6a] rounded px-2 py-0.5 inline-block"
-                          >
-                            <?= htmlspecialchars($applicant["status"]) ?>
-                          </span>
-                        </td>
-                        <td class="py-2">
-                          <div class="flex flex-wrap justify-center gap-2">
-                            <button
-                              class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                              type="button"
-                            >
-                              Review Application
-                            </button>
-                            <button
-                              class="border border-[#f44336] text-[#f44336] rounded px-3 py-1 text-xs hover:bg-[#f44336] hover:text-white"
-                              type="button"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    <?php endforeach; ?>
-                  <?php endif; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
       </main>
     </div>
 

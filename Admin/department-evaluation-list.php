@@ -23,6 +23,51 @@ function isgSplitProgramYearForDepartmentList(string $programYear): array
   return [$course, $yearLevel];
 }
 
+function isgDepartmentEvaluationAssistantCategorySql(string $categoryColumn = "category", string $grantColumn = "grant_applied"): string
+{
+  return "(
+    LOWER(TRIM(COALESCE({$categoryColumn}, ''))) = 'student_assistant'
+    OR (
+      LOWER(TRIM(COALESCE({$categoryColumn}, ''))) = 'official'
+      AND LOWER(TRIM(COALESCE({$grantColumn}, ''))) LIKE '%assistant%'
+    )
+  )";
+}
+
+function isgDepartmentEvaluationBuildProgramYear(string $program, string $yearLevel): string
+{
+  $programYear = trim($program);
+  $yearLevel = trim($yearLevel);
+  if ($yearLevel !== "") {
+    $programYear .= ($programYear !== "" ? " / " : "") . $yearLevel;
+  }
+  return $programYear;
+}
+
+function isgDepartmentEvaluationRecordKey(array $row): string
+{
+  $sourceApplicationId = (int)($row["source_application_id"] ?? 0);
+  if ($sourceApplicationId > 0) {
+    return "src-" . $sourceApplicationId;
+  }
+
+  $scholarId = strtolower(trim((string)($row["scholar_id"] ?? "")));
+  if ($scholarId !== "") {
+    return "sid-" . $scholarId;
+  }
+
+  $fullName = strtolower(trim((string)($row["full_name"] ?? "")));
+  $programYear = strtolower(trim((string)($row["program_year"] ?? "")));
+  $semester = strtolower(trim((string)($row["semester"] ?? "")));
+  $academicYear = strtolower(trim((string)($row["academic_year"] ?? "")));
+  $assignedOffice = strtolower(trim((string)($row["assigned_office"] ?? "")));
+  if ($fullName === "" && $programYear === "" && $semester === "" && $academicYear === "" && $assignedOffice === "") {
+    return "";
+  }
+
+  return "name-" . sha1($fullName . "|" . $programYear . "|" . $semester . "|" . $academicYear . "|" . $assignedOffice);
+}
+
 if (($conn ?? null) instanceof mysqli) {
   $createWindowTableSql = "CREATE TABLE IF NOT EXISTS department_evaluation_window (
     id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
@@ -63,92 +108,139 @@ if (($conn ?? null) instanceof mysqli) {
     }
   }
 
-  $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
-  if ($assignedOfficeColumnResult instanceof mysqli_result) {
-    $hasAssignedOfficeColumn = $assignedOfficeColumnResult->num_rows > 0;
-    $assignedOfficeColumnResult->free();
-    if (!$hasAssignedOfficeColumn) {
-      $conn->query("ALTER TABLE applications ADD COLUMN assigned_office VARCHAR(100) DEFAULT NULL AFTER year_level");
-      $hasAssignedOfficeColumn = true;
+  $hasInstitutionalTable = false;
+  $institutionalTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
+  if ($institutionalTableResult instanceof mysqli_result) {
+    $hasInstitutionalTable = $institutionalTableResult->num_rows > 0;
+    $institutionalTableResult->free();
+  }
+
+  if ($hasInstitutionalTable) {
+    $assistantSchoolYearResult = $conn->query("
+      SELECT DISTINCT TRIM(COALESCE(academic_year, '')) AS academic_year
+      FROM institutional_scholar_records
+      WHERE " . isgDepartmentEvaluationAssistantCategorySql() . "
+        AND TRIM(COALESCE(academic_year, '')) <> ''
+      ORDER BY academic_year ASC
+    ");
+    if ($assistantSchoolYearResult instanceof mysqli_result) {
+      while ($schoolYearRow = $assistantSchoolYearResult->fetch_assoc()) {
+        $academicYear = trim((string)($schoolYearRow["academic_year"] ?? ""));
+        if ($academicYear !== "" && !in_array($academicYear, $schoolYearOptions, true)) {
+          $schoolYearOptions[] = $academicYear;
+        }
+      }
+      $assistantSchoolYearResult->free();
+
+      usort($schoolYearOptions, function ($a, $b) {
+        $aYear = (int)substr((string)$a, 0, 4);
+        $bYear = (int)substr((string)$b, 0, 4);
+        if ($aYear === $bYear) {
+          return strcmp((string)$a, (string)$b);
+        }
+        return $aYear <=> $bYear;
+      });
     }
   } else {
     $hasAssignedOfficeColumn = false;
   }
 
-  $rankInputTableResult = $conn->query("SHOW TABLES LIKE 'applicant_rank_inputs'");
-  if ($hasAssignedOfficeColumn && $rankInputTableResult instanceof mysqli_result && $rankInputTableResult->num_rows > 0) {
-    $rankInputTableResult->free();
-
-    $whereClauses = [
-      "a.grant_id = 1",
-      "LOWER(TRIM(a.status)) = 'approved'",
-      "LOWER(TRIM(COALESCE(ari.remarks, ''))) = 'hired'",
-      "TRIM(COALESCE(a.assigned_office, '')) <> ''",
-    ];
-    $params = [];
-    $types = "";
-
-    if ($selectedSchoolYear !== "") {
-      $whereClauses[] = "a.school_year = ?";
-      $params[] = $selectedSchoolYear;
-      $types .= "s";
-    }
-    if ($selectedSemester !== "") {
-      $whereClauses[] = "a.semester = ?";
-      $params[] = $selectedSemester;
-      $types .= "s";
-    }
-
-    $sql = "
-      SELECT
-        a.id,
-        a.applicant_name,
-        a.program_course,
-        a.year_level,
-        a.assigned_office,
-        a.school_year,
-        a.semester
-      FROM applicant_rank_inputs ari
-      INNER JOIN applications a ON a.id = ari.application_id
-      WHERE " . implode(" AND ", $whereClauses) . "
-      ORDER BY a.assigned_office ASC, a.applicant_name ASC
-    ";
-
-    $stmt = $conn->prepare($sql);
-    if ($stmt) {
-      if (!empty($params)) {
-        $stmt->bind_param($types, ...$params);
+  if ($hasInstitutionalTable) {
+    $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
+    if ($assignedOfficeColumnResult instanceof mysqli_result) {
+      $hasAssignedOfficeColumn = $assignedOfficeColumnResult->num_rows > 0;
+      $assignedOfficeColumnResult->free();
+      if (!$hasAssignedOfficeColumn) {
+        $conn->query("ALTER TABLE applications ADD COLUMN assigned_office VARCHAR(100) DEFAULT NULL AFTER year_level");
+        $hasAssignedOfficeColumn = true;
       }
-      if ($stmt->execute()) {
-        $result = $stmt->get_result();
-        while ($row = $result->fetch_assoc()) {
-            $assistantEvaluationRecords[] = [
-              "applicantId" => (int)($row["id"] ?? 0),
-            "name" => trim((string)($row["applicant_name"] ?? "")),
-            "course" => trim((string)($row["program_course"] ?? "")),
-            "yearLevel" => trim((string)($row["year_level"] ?? "")),
-            "office" => trim((string)($row["assigned_office"] ?? "")),
-            "status" => "not yet evaluated",
-            "academicYear" => trim((string)($row["school_year"] ?? "")),
-            "semester" => trim((string)($row["semester"] ?? "")),
-            "evaluatedAt" => null,
-              "sourceType" => "application",
-            ];
+    } else {
+      $hasAssignedOfficeColumn = false;
+    }
+
+    $rankInputTableResult = $conn->query("SHOW TABLES LIKE 'applicant_rank_inputs'");
+    if ($hasAssignedOfficeColumn && $rankInputTableResult instanceof mysqli_result && $rankInputTableResult->num_rows > 0) {
+      $rankInputTableResult->free();
+
+      $syncSql = "
+        SELECT
+          a.id,
+          a.applicant_name,
+          a.program_course,
+          a.year_level,
+          a.assigned_office,
+          a.school_year,
+          a.semester
+        FROM applicant_rank_inputs ari
+        INNER JOIN applications a ON a.id = ari.application_id
+        WHERE
+          a.grant_id = 1
+          AND LOWER(TRIM(a.status)) = 'approved'
+          AND LOWER(TRIM(COALESCE(ari.remarks, ''))) = 'hired'
+          AND TRIM(COALESCE(a.assigned_office, '')) <> ''
+        ORDER BY a.applicant_name ASC
+      ";
+
+      $syncResult = $conn->query($syncSql);
+      if ($syncResult instanceof mysqli_result) {
+        $upsertSql = "
+          INSERT INTO institutional_scholar_records
+            (source_application_id, category, scholar_id, grant_applied, full_name, program_year, assigned_office, semester, academic_year, status)
+          VALUES (?, 'official', ?, 'Student Assistant', ?, ?, ?, ?, ?, 'official_scholar')
+          ON DUPLICATE KEY UPDATE
+            scholar_id = VALUES(scholar_id),
+            grant_applied = VALUES(grant_applied),
+            full_name = VALUES(full_name),
+            program_year = VALUES(program_year),
+            assigned_office = VALUES(assigned_office),
+            semester = VALUES(semester),
+            academic_year = VALUES(academic_year),
+            status = VALUES(status),
+            updated_at = CURRENT_TIMESTAMP
+        ";
+        $upsertStmt = $conn->prepare($upsertSql);
+        if ($upsertStmt) {
+          while ($row = $syncResult->fetch_assoc()) {
+            $sourceApplicationId = (int)($row["id"] ?? 0);
+            if ($sourceApplicationId <= 0) {
+              continue;
+            }
+
+            $scholarId = "APP-" . str_pad((string)$sourceApplicationId, 5, "0", STR_PAD_LEFT);
+            $fullName = trim((string)($row["applicant_name"] ?? ""));
+            $programYear = isgDepartmentEvaluationBuildProgramYear(
+              (string)($row["program_course"] ?? ""),
+              (string)($row["year_level"] ?? "")
+            );
+            $assignedOffice = trim((string)($row["assigned_office"] ?? ""));
+            $semester = trim((string)($row["semester"] ?? ""));
+            $academicYear = trim((string)($row["school_year"] ?? ""));
+
+            $upsertStmt->bind_param(
+              "issssss",
+              $sourceApplicationId,
+              $scholarId,
+              $fullName,
+              $programYear,
+              $assignedOffice,
+              $semester,
+              $academicYear
+            );
+            $upsertStmt->execute();
+          }
+          $upsertStmt->close();
+        } else {
+          while ($syncResult->fetch_assoc()) {
+          }
         }
-        $result->free();
+        $syncResult->free();
       }
-      $stmt->close();
+    } elseif ($rankInputTableResult instanceof mysqli_result) {
+      $rankInputTableResult->free();
     }
-  } elseif ($rankInputTableResult instanceof mysqli_result) {
-    $rankInputTableResult->free();
-  }
-
-  $institutionalTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
-  if ($institutionalTableResult instanceof mysqli_result) {
-    $hasInstitutionalTable = $institutionalTableResult->num_rows > 0;
-    $institutionalTableResult->free();
 
     if ($hasInstitutionalTable) {
+      $assistantRecordMap = [];
       $hasContractEndedColumn = false;
       $contractEndedColumnResult = $conn->query("SHOW COLUMNS FROM institutional_scholar_records LIKE 'contract_ended'");
       if ($contractEndedColumnResult instanceof mysqli_result) {
@@ -157,9 +249,8 @@ if (($conn ?? null) instanceof mysqli) {
       }
 
       $isrWhereClauses = [
-        "LOWER(TRIM(COALESCE(category, ''))) = 'student_assistant'",
+        isgDepartmentEvaluationAssistantCategorySql(),
         "TRIM(COALESCE(assigned_office, '')) <> ''",
-        "(scholar_id LIKE 'MAN-%' OR scholar_id LIKE 'CSV-%')",
       ];
       $isrParams = [];
       $isrTypes = "";
@@ -181,15 +272,26 @@ if (($conn ?? null) instanceof mysqli) {
       $isrSql = "
         SELECT
           id,
+          source_application_id,
           scholar_id,
           full_name,
           program_year,
           assigned_office,
           academic_year,
-          semester
+          semester,
+          category,
+          grant_applied
         FROM institutional_scholar_records
         WHERE " . implode(" AND ", $isrWhereClauses) . "
-        ORDER BY assigned_office ASC, full_name ASC
+        ORDER BY
+          CASE
+            WHEN LOWER(TRIM(COALESCE(category, ''))) = 'official'
+              AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+            THEN 0
+            ELSE 1
+          END,
+          updated_at DESC,
+          id DESC
       ";
       $isrStmt = $conn->prepare($isrSql);
       if ($isrStmt) {
@@ -199,9 +301,25 @@ if (($conn ?? null) instanceof mysqli) {
         if ($isrStmt->execute()) {
           $isrResult = $isrStmt->get_result();
           while ($row = $isrResult->fetch_assoc()) {
+            $recordKey = isgDepartmentEvaluationRecordKey($row);
+            if ($recordKey === "" || isset($assistantRecordMap[$recordKey])) {
+              continue;
+            }
+
+            $recordId = (int)($row["id"] ?? 0);
+            if ($recordId <= 0) {
+              continue;
+            }
+
+            $sourceApplicationId = (int)($row["source_application_id"] ?? 0);
             [$programCourse, $yearLevel] = isgSplitProgramYearForDepartmentList((string)($row["program_year"] ?? ""));
-            $assistantEvaluationRecords[] = [
-              "applicantId" => 0 - (int)($row["id"] ?? 0),
+            $evaluationLookupIds = [0 - $recordId];
+            if ($sourceApplicationId > 0) {
+              $evaluationLookupIds[] = $sourceApplicationId;
+            }
+
+            $assistantRecordMap[$recordKey] = [
+              "applicantId" => 0 - $recordId,
               "name" => trim((string)($row["full_name"] ?? "")),
               "course" => $programCourse,
               "yearLevel" => $yearLevel,
@@ -211,11 +329,16 @@ if (($conn ?? null) instanceof mysqli) {
               "semester" => trim((string)($row["semester"] ?? "")),
               "evaluatedAt" => null,
               "sourceType" => "institutional",
+              "_evaluationLookupIds" => $evaluationLookupIds,
             ];
           }
           $isrResult->free();
         }
         $isrStmt->close();
+      }
+
+      if (!empty($assistantRecordMap)) {
+        $assistantEvaluationRecords = array_values($assistantRecordMap);
       }
     }
   }
@@ -238,17 +361,41 @@ if (($conn ?? null) instanceof mysqli) {
       if ($evaluationStatusResult instanceof mysqli_result) {
         while ($evaluationRow = $evaluationStatusResult->fetch_assoc()) {
           $applicationIdKey = (string)((int)($evaluationRow["application_id"] ?? 0));
-          $evaluationStatusByApplicationId[$applicationIdKey] = trim((string)($evaluationRow["evaluated_at"] ?? ""));
+          $evaluatedAt = trim((string)($evaluationRow["evaluated_at"] ?? ""));
+          $evaluatedAtTs = $evaluatedAt !== "" ? strtotime($evaluatedAt) : false;
+          $evaluationStatusByApplicationId[$applicationIdKey] = [
+            "evaluatedAt" => $evaluatedAt,
+            "sortTs" => $evaluatedAtTs !== false ? (int)$evaluatedAtTs : 0,
+          ];
         }
         $evaluationStatusResult->free();
       }
 
       foreach ($assistantEvaluationRecords as $index => $record) {
-        $applicationIdKey = (string)((int)($record["applicantId"] ?? 0));
-        if (isset($evaluationStatusByApplicationId[$applicationIdKey])) {
-          $assistantEvaluationRecords[$index]["status"] = "evaluated";
-          $assistantEvaluationRecords[$index]["evaluatedAt"] = $evaluationStatusByApplicationId[$applicationIdKey];
+        $matchedEvaluation = null;
+        $lookupIds = is_array($record["_evaluationLookupIds"] ?? null) ? $record["_evaluationLookupIds"] : [(int)($record["applicantId"] ?? 0)];
+        foreach ($lookupIds as $lookupId) {
+          $applicationIdKey = (string)((int)$lookupId);
+          if (!isset($evaluationStatusByApplicationId[$applicationIdKey])) {
+            continue;
+          }
+          $candidateEvaluation = $evaluationStatusByApplicationId[$applicationIdKey];
+          if (!is_array($candidateEvaluation)) {
+            continue;
+          }
+          if (
+            $matchedEvaluation === null
+            || (int)($candidateEvaluation["sortTs"] ?? 0) > (int)($matchedEvaluation["sortTs"] ?? 0)
+          ) {
+            $matchedEvaluation = $candidateEvaluation;
+          }
         }
+
+        if ($matchedEvaluation !== null) {
+          $assistantEvaluationRecords[$index]["status"] = "evaluated";
+          $assistantEvaluationRecords[$index]["evaluatedAt"] = (string)($matchedEvaluation["evaluatedAt"] ?? "");
+        }
+        unset($assistantEvaluationRecords[$index]["_evaluationLookupIds"]);
       }
     }
   }

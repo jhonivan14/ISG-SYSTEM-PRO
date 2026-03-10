@@ -4,17 +4,34 @@ require_once __DIR__ . "/includes/school-term-filter.php";
 $summaryRecords = [];
 $summaryLoadError = "";
 
+$truncateAverage = static function (?float $value): ?float {
+  if ($value === null) {
+    return null;
+  }
+
+  if ($value >= 0) {
+    return floor($value * 100) / 100;
+  }
+
+  return ceil($value * 100) / 100;
+};
+
+$formatAverage = static function (?float $value) use ($truncateAverage): string {
+  $truncatedValue = $truncateAverage($value);
+  return $truncatedValue === null ? "" : number_format($truncatedValue, 2, ".", "");
+};
+
 $verbalFromAverage = static function (?float $value): string {
   if ($value === null || $value <= 0) {
     return "";
   }
-  if ($value >= 3.5) {
+  if ($value >= 4.0) {
     return "Excellent";
   }
-  if ($value >= 2.5) {
+  if ($value >= 3.0) {
     return "Good";
   }
-  if ($value >= 1.5) {
+  if ($value >= 2.0) {
     return "Fair";
   }
   return "Poor";
@@ -212,7 +229,7 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
 
       .summary-table {
         width: 100%;
-        table-layout: fixed;
+        table-layout: auto;
       }
 
       .summary-table col.col-seq {
@@ -220,19 +237,19 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
       }
 
       .summary-table col.col-name {
-        width: 26%;
+        width: 24%;
       }
 
       .summary-table col.col-weighted {
-        width: 11%;
+        width: 10%;
       }
 
       .summary-table col.col-verbal {
-        width: 14%;
+        width: 13%;
       }
 
       .summary-table col.col-strength {
-        width: 20%;
+        width: 24%;
       }
 
       .summary-table col.col-comment {
@@ -242,7 +259,16 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
       .summary-table th,
       .summary-table td {
         vertical-align: middle;
-        overflow-wrap: break-word;
+        word-break: normal;
+        overflow-wrap: normal;
+      }
+
+      .summary-table .summary-text-cell {
+        vertical-align: top;
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: normal;
+        line-height: 1.3;
       }
 
       @media print {
@@ -291,7 +317,7 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
 
         .summary-table {
           width: 100% !important;
-          table-layout: fixed !important;
+          table-layout: auto !important;
           font-size: 10px !important;
         }
 
@@ -300,29 +326,36 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
         }
 
         .summary-table col.col-name {
-          width: 30% !important;
+          width: 24% !important;
         }
 
         .summary-table col.col-weighted {
-          width: 11% !important;
+          width: 10% !important;
         }
 
         .summary-table col.col-verbal {
-          width: 14% !important;
+          width: 13% !important;
         }
 
         .summary-table col.col-strength {
-          width: 18% !important;
+          width: 24% !important;
         }
 
         .summary-table col.col-comment {
-          width: 23% !important;
+          width: 25% !important;
         }
 
         .summary-table th,
         .summary-table td {
           padding: 3px 4px !important;
           line-height: 1.2 !important;
+        }
+
+        .summary-table .summary-text-cell {
+          white-space: normal !important;
+          word-break: normal !important;
+          overflow-wrap: normal !important;
+          line-height: 1.25 !important;
         }
       }
           #sidebar nav ul {
@@ -657,14 +690,14 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
                         <td class="border border-black p-1 text-center">
                           <?php
                             $weightedMean = $record["weighted_mean"];
-                            echo $weightedMean === null ? "" : htmlspecialchars(number_format((float)$weightedMean, 2));
+                            echo htmlspecialchars($formatAverage(is_numeric($weightedMean) ? (float)$weightedMean : null));
                           ?>
                         </td>
                         <td class="border border-black p-1 text-center"><?php echo htmlspecialchars((string)($record["verbal_description"] ?? "")); ?></td>
-                        <td class="border border-black p-1 whitespace-pre-wrap">
+                        <td class="border border-black p-1 summary-text-cell">
                           <?php echo $record["strengths"] !== "" ? nl2br(htmlspecialchars((string)$record["strengths"])) : "&nbsp;"; ?>
                         </td>
-                        <td class="border border-black p-1 whitespace-pre-wrap">
+                        <td class="border border-black p-1 summary-text-cell">
                           <?php echo $record["recommendations"] !== "" ? nl2br(htmlspecialchars((string)$record["recommendations"])) : "&nbsp;"; ?>
                         </td>
                       </tr>

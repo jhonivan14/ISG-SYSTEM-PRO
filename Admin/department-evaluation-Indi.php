@@ -46,15 +46,82 @@ $sectionWeightedTotals = [
   "c" => [4 => 0, 3 => 0, 2 => 0, 1 => 0],
 ];
 $overallWeightedTotals = [4 => 0, 3 => 0, 2 => 0, 1 => 0];
+$resolvedScholarRow = null;
+
+function adminDepartmentEvaluationLoadScholarRecord(mysqli $conn, int $recordId, int $sourceApplicationId): ?array
+{
+  $sql = "
+    SELECT
+      id,
+      source_application_id,
+      program_year
+    FROM institutional_scholar_records
+    WHERE (
+        (? > 0 AND id = ?)
+        OR
+        (? > 0 AND source_application_id = ?)
+      )
+      AND (
+        LOWER(TRIM(COALESCE(category, ''))) = 'student_assistant'
+        OR (
+          LOWER(TRIM(COALESCE(category, ''))) = 'official'
+          AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+        )
+      )
+    ORDER BY
+      CASE
+        WHEN LOWER(TRIM(COALESCE(category, ''))) = 'official'
+          AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+        THEN 0
+        ELSE 1
+      END,
+      id DESC
+    LIMIT 1
+  ";
+  $stmt = $conn->prepare($sql);
+  if (!$stmt) {
+    return null;
+  }
+
+  $stmt->bind_param("iiii", $recordId, $recordId, $sourceApplicationId, $sourceApplicationId);
+  $row = null;
+  if ($stmt->execute()) {
+    $result = $stmt->get_result();
+    $row = $result ? $result->fetch_assoc() : null;
+    if ($result instanceof mysqli_result) {
+      $result->free();
+    }
+  }
+  $stmt->close();
+
+  return is_array($row) ? $row : null;
+}
 
 if (($conn ?? null) instanceof mysqli && $applicationId !== 0) {
+  $resolvedScholarRow = adminDepartmentEvaluationLoadScholarRecord(
+    $conn,
+    $applicationId < 0 ? abs($applicationId) : 0,
+    $applicationId > 0 ? $applicationId : 0
+  );
+  $resolvedScholarRecordId = is_array($resolvedScholarRow) ? (int)($resolvedScholarRow["id"] ?? 0) : 0;
+  $resolvedSourceApplicationId = is_array($resolvedScholarRow) ? (int)($resolvedScholarRow["source_application_id"] ?? 0) : 0;
+  $canonicalApplicationId = $resolvedScholarRecordId > 0 ? (0 - $resolvedScholarRecordId) : $applicationId;
+  $candidateApplicationIds = [];
+  foreach ([$canonicalApplicationId, $applicationId, $resolvedSourceApplicationId] as $candidateId) {
+    $candidateId = (int)$candidateId;
+    if ($candidateId !== 0 && !in_array($candidateId, $candidateApplicationIds, true)) {
+      $candidateApplicationIds[] = $candidateId;
+    }
+  }
+
   $tableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
   $hasEvaluationTable = $tableResult instanceof mysqli_result && $tableResult->num_rows > 0;
   if ($tableResult instanceof mysqli_result) {
     $tableResult->free();
   }
 
-  if ($hasEvaluationTable) {
+  if ($hasEvaluationTable && !empty($candidateApplicationIds)) {
+    $evaluationIdPlaceholders = implode(", ", array_fill(0, count($candidateApplicationIds), "?"));
     $evaluationStmt = $conn->prepare(
       "SELECT
         applicant_name,
@@ -69,19 +136,43 @@ if (($conn ?? null) instanceof mysqli && $applicationId !== 0) {
         recommendations,
         signature_data,
         (
+          SELECT TRIM(
+            CONCAT(
+              TRIM(COALESCE(ho.name, '')),
+              CASE
+                WHEN TRIM(COALESCE(ho.name, '')) <> '' AND TRIM(COALESCE(ho.lastname, '')) <> '' THEN ' '
+                ELSE ''
+              END,
+              TRIM(COALESCE(ho.lastname, ''))
+            )
+          )
+          FROM head_offices ho
+          WHERE ho.username = department_head_evaluations.head_username
+          LIMIT 1
+        ) AS head_account_full_name,
+        (
           SELECT TRIM(COALESCE(ho.lastname, ''))
           FROM head_offices ho
           WHERE ho.username = department_head_evaluations.head_username
           LIMIT 1
         ) AS head_account_lastname
       FROM department_head_evaluations
-      WHERE application_id = ?
-      ORDER BY updated_at DESC, id DESC
+      WHERE application_id IN ($evaluationIdPlaceholders)
+      ORDER BY
+        CASE
+          WHEN application_id = ? THEN 0
+          WHEN application_id = ? THEN 1
+          ELSE 2
+        END,
+        updated_at DESC,
+        id DESC
       LIMIT 1"
     );
 
     if ($evaluationStmt) {
-      $evaluationStmt->bind_param("i", $applicationId);
+      $bindValues = array_merge($candidateApplicationIds, [$canonicalApplicationId, $applicationId]);
+      $bindTypes = str_repeat("i", count($bindValues));
+      $evaluationStmt->bind_param($bindTypes, ...$bindValues);
       if ($evaluationStmt->execute()) {
         $result = $evaluationStmt->get_result();
         $row = $result ? $result->fetch_assoc() : null;
@@ -98,7 +189,13 @@ if (($conn ?? null) instanceof mysqli && $applicationId !== 0) {
             $displaySemesterSchoolYear = $schoolYear;
           }
           $displayAreaOfAssignment = trim((string)($row["assigned_office"] ?? ""));
-          $displayHeadOfOffice = trim((string)($row["head_name"] ?? ""));
+          $resolvedHeadFullName = trim((string)($row["head_account_full_name"] ?? ""));
+          $displayHeadOfOffice = $resolvedHeadFullName !== ""
+            ? $resolvedHeadFullName
+            : trim((string)($row["head_name"] ?? ""));
+          if ($displayHeadOfOffice === "") {
+            $displayHeadOfOffice = trim((string)($row["head_username"] ?? ""));
+          }
           $displayHeadAccountLastName = trim((string)($row["head_account_lastname"] ?? ""));
           $displayStrengths = trim((string)($row["strengths"] ?? ""));
           $displayRecommendations = trim((string)($row["recommendations"] ?? ""));
@@ -129,7 +226,10 @@ if (($conn ?? null) instanceof mysqli && $applicationId !== 0) {
     }
   }
 
-  if ($applicationId > 0) {
+  $resolvedProgramYear = is_array($resolvedScholarRow) ? trim((string)($resolvedScholarRow["program_year"] ?? "")) : "";
+  if ($resolvedProgramYear !== "") {
+    $displayProgramYearLevel = $resolvedProgramYear;
+  } elseif ($applicationId > 0) {
     $programStmt = $conn->prepare(
       "SELECT
         TRIM(COALESCE(program_course, '')) AS program_course,
@@ -160,7 +260,7 @@ if (($conn ?? null) instanceof mysqli && $applicationId !== 0) {
       }
       $programStmt->close();
     }
-  } else {
+  } elseif ($applicationId < 0) {
     $scholarRecordId = abs($applicationId);
     if ($scholarRecordId > 0) {
       $programStmt = $conn->prepare(
@@ -223,25 +323,39 @@ $sectionBAvg = $sectionRatedCounts["b"] > 0 ? ($sectionScoreTotals["b"] / $secti
 $sectionCAvg = $sectionRatedCounts["c"] > 0 ? ($sectionScoreTotals["c"] / $sectionRatedCounts["c"]) : null;
 
 $overallAvg = null;
-if ($sectionAAvg !== null || $sectionBAvg !== null || $sectionCAvg !== null) {
-  $overallAvg = (((float)($sectionAAvg ?? 0)) + ((float)($sectionBAvg ?? 0)) + ((float)($sectionCAvg ?? 0))) / 3;
+if (array_sum($sectionRatedCounts) > 0) {
+  $overallAvg = array_sum($sectionScoreTotals) / array_sum($sectionRatedCounts);
 }
 
-$formatAverage = static function (?float $value): string {
-  return $value === null ? "" : number_format($value, 2);
+$truncateAverage = static function (?float $value): ?float {
+  if ($value === null) {
+    return null;
+  }
+
+  if ($value >= 0) {
+    return floor($value * 100) / 100;
+  }
+
+  return ceil($value * 100) / 100;
+};
+
+$formatAverage = static function (?float $value) use ($truncateAverage): string {
+  $truncatedValue = $truncateAverage($value);
+  return $truncatedValue === null ? "" : number_format($truncatedValue, 2, ".", "");
 };
 
 $verbalFromAverage = static function (?float $value): string {
   if ($value === null || $value <= 0) {
     return "";
   }
-  if ($value >= 3.5) {
+
+  if ($value >= 4.0) {
     return "Excellent";
   }
-  if ($value >= 2.5) {
+  if ($value >= 3.0) {
     return "Good";
   }
-  if ($value >= 1.5) {
+  if ($value >= 2.0) {
     return "Fair";
   }
   return "Poor";
@@ -279,15 +393,19 @@ $extractLastName = static function (string $fullName): string {
   return trim((string)end($parts), ",. ");
 };
 
-$ccHeadLabel = "Mr.";
+$ccHeadLabel = "Sir/maam.";
 $headLastName = $displayHeadAccountLastName !== ""
   ? $displayHeadAccountLastName
   : $extractLastName($displayHeadOfOffice);
 if ($headLastName !== "") {
-  $ccHeadLabel = "Mr. " . $headLastName;
+  $ccHeadLabel = "Sir/Maam. " . $headLastName;
 }
 
-$ccAssistantLabel = $extractLastName($displayApplicantName);
+$ccAssistantLabel = "Mr./Ms.";
+$assistantFullName = trim($displayApplicantName);
+if ($assistantFullName !== "") {
+  $ccAssistantLabel .= " " . $assistantFullName;
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1255,11 +1373,12 @@ $ccAssistantLabel = $extractLastName($displayApplicantName);
 
                 <div class="signature-row">
                   <div class="signature-block">
-                    <p>Evaluator's Signature</p>
-                    <div class="signature-line">
-                      <?php if ($displaySignatureData !== ""): ?>
+                    <?php if ($displaySignatureData !== ""): ?>
                         <img src="<?= htmlspecialchars($displaySignatureData) ?>" alt="Evaluator signature" class="mx-auto h-12 object-contain" />
                       <?php endif; ?>
+                    <div class="signature-line">
+                     <p>Evaluator's Signature</p>
+
                     </div>
                   </div>
                 </div>

@@ -53,22 +53,50 @@ $saveError = "";
 $evaluationDateValue = date("Y-m-d");
 $hasEvaluationTable = false;
 
-if ($headOffice === "" && $headUsername !== "") {
-  $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
-  if ($officeStmt) {
-    $officeStmt->bind_param("s", $headUsername);
-    if ($officeStmt->execute()) {
-      $officeResult = $officeStmt->get_result();
-      $officeRow = $officeResult ? $officeResult->fetch_assoc() : null;
-      if (is_array($officeRow)) {
-        $headOffice = trim((string)($officeRow["office"] ?? ""));
-        $_SESSION["head_office"] = $headOffice;
+function saBuildHeadDisplayName(string $firstName, string $lastName, string $fallback = ""): string
+{
+  $parts = [];
+  $firstName = trim($firstName);
+  $lastName = trim($lastName);
+  if ($firstName !== "") {
+    $parts[] = $firstName;
+  }
+  if ($lastName !== "") {
+    $parts[] = $lastName;
+  }
+  $fullName = trim(implode(" ", $parts));
+  return $fullName !== "" ? $fullName : trim($fallback);
+}
+
+if ($headUsername !== "") {
+  $headAccountStmt = $conn->prepare("SELECT name, lastname, office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
+  if ($headAccountStmt) {
+    $headAccountStmt->bind_param("s", $headUsername);
+    if ($headAccountStmt->execute()) {
+      $headAccountResult = $headAccountStmt->get_result();
+      $headAccountRow = $headAccountResult ? $headAccountResult->fetch_assoc() : null;
+      if (is_array($headAccountRow)) {
+        $resolvedHeadName = saBuildHeadDisplayName(
+          (string)($headAccountRow["name"] ?? ""),
+          (string)($headAccountRow["lastname"] ?? ""),
+          $headName !== "" ? $headName : $headUsername
+        );
+        if ($resolvedHeadName !== "") {
+          $headName = $resolvedHeadName;
+          $_SESSION["head_name"] = $headName;
+        }
+
+        $resolvedHeadOffice = trim((string)($headAccountRow["office"] ?? ""));
+        if ($resolvedHeadOffice !== "") {
+          $headOffice = $resolvedHeadOffice;
+          $_SESSION["head_office"] = $headOffice;
+        }
       }
-      if ($officeResult instanceof mysqli_result) {
-        $officeResult->free();
+      if ($headAccountResult instanceof mysqli_result) {
+        $headAccountResult->free();
       }
     }
-    $officeStmt->close();
+    $headAccountStmt->close();
   }
 }
 

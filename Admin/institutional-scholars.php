@@ -2621,7 +2621,7 @@ if (($conn ?? null) instanceof mysqli) {
             : "";
           const endContractDisabledClasses = isContractEnded ? "opacity-60 cursor-not-allowed" : "";
           const changeOfficeBtnHtml = (isStudentAssistantGrant && !isContractEnded)
-            ? ('<button type="button" data-status-action="change_office" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors bg-white text-[#0d8ddb] border-[#7cc5ee] hover:bg-[#ebf7ff]">Change Office</button>')
+            ? ('<button type="button" data-status-action="change_office" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors bg-white text-[#0d8ddb] border-[#7cc5ee] hover:bg-[#ebf7ff]">Edit</button>')
             : "";
 
           const row = document.createElement("tr");
@@ -2637,7 +2637,7 @@ if (($conn ?? null) instanceof mysqli) {
             '<td class="px-3 py-2">' +
               '<div class="flex flex-wrap gap-1 min-w-[200px]">' +
                 '<button type="button" data-status-action="renew" data-next-scope="' + escapeHtml(renewTargetScope) + '" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors ' + renewBtnClasses + ' ' + renewalDisabledClasses + '"' + renewalDisabledAttrs + '>' + escapeHtml(renewLabel) + '</button>' +
-                '<button type="button" data-status-action="end_contract" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors ' + endContractBtnClasses + ' ' + endContractDisabledClasses + '"' + endContractDisabledAttrs + '>End Contract</button>' +
+                '<button type="button" data-status-action="end_contract" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] bg-red-600 text-white font-semibold transition-colors ' + endContractBtnClasses + ' ' + endContractDisabledClasses + '"' + endContractDisabledAttrs + '>End Contract</button>' +
                 changeOfficeBtnHtml +
               "</div>" +
             "</td>";

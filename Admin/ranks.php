@@ -311,6 +311,19 @@ $rankRows = array_map(static function (array $item) use ($interviewScoresByAppli
     "remarks" => $savedRemarks,
   ];
 }, $panelistSentApplicants);
+
+if (!empty($rankRows)) {
+  usort($rankRows, static function (array $left, array $right): int {
+    $leftName = trim((string)($left["name"] ?? ""));
+    $rightName = trim((string)($right["name"] ?? ""));
+    $nameComparison = strnatcasecmp($leftName, $rightName);
+    if ($nameComparison !== 0) {
+      return $nameComparison;
+    }
+
+    return ((int)($left["id"] ?? 0)) <=> ((int)($right["id"] ?? 0));
+  });
+}
 ?>
 <html lang="en">
   <head>

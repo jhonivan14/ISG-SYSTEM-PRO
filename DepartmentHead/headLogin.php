@@ -10,7 +10,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   if ($username === "" || $password === "") {
     $loginError = "Please enter your username and password.";
   } else {
-    $stmt = $conn->prepare("SELECT name, office, password_hash, status FROM head_offices WHERE username = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT name, lastname, office, password_hash, status FROM head_offices WHERE username = ? LIMIT 1");
     if ($stmt) {
       $stmt->bind_param("s", $username);
       $stmt->execute();
@@ -32,7 +32,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         }
 
         if ($verified) {
-          $displayName = trim((string)($row["full_name"] ?? ""));
+          $displayNameParts = [];
+          $headFirstName = trim((string)($row["name"] ?? ""));
+          $headLastName = trim((string)($row["lastname"] ?? ""));
+          if ($headFirstName !== "") {
+            $displayNameParts[] = $headFirstName;
+          }
+          if ($headLastName !== "") {
+            $displayNameParts[] = $headLastName;
+          }
+          $displayName = trim(implode(" ", $displayNameParts));
           if ($displayName === "") {
             $displayName = $username;
           }
