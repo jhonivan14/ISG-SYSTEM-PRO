@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . "/includes/admin-auth.php";
+adminRequireLogin();
 $defaultBatchLabel = "All Batches";
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/panelist-sent-applicants.php";
@@ -329,7 +331,8 @@ if (!empty($rankRows)) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">   
-    <title>Student Assistant Scholarship - Applicants' Rank</title>
+    <title>Applicants Rank</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" />

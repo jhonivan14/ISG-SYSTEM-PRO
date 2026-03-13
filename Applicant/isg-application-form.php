@@ -182,6 +182,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ISG Application Form • Step 2</title>
+  <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link
     rel="stylesheet"

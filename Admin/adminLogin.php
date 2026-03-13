@@ -1,9 +1,40 @@
+<?php
+require_once __DIR__ . "/includes/admin-auth.php";
+require_once "../db.php";
+
+$loginError = "";
+if (adminIsAuthenticated()) {
+  header("Location: " . adminPath("adminDashboard.php"));
+  exit();
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  $username = trim((string)($_POST["admin_username"] ?? ""));
+  $password = trim((string)($_POST["admin_password"] ?? ""));
+ 
+ if ($username === "" || $password === "") {
+    $loginError = "Please enter your username and password.";
+  } else {
+    // For demonstration, we will just check against hardcoded credentials.
+    // In a real application, you would query the database here.
+    if ($username === "admin" && $password === "admin123") {
+      $_SESSION["admin_username"] = $username;
+      $_SESSION["admin_name"] = $username;
+      header("Location: " . adminConsumeRedirectTarget("adminDashboard.php"));
+      exit();
+    } else {
+      $loginError = "Invalid username or password.";
+    }
+  }
+}
+?>
+
 <html lang="en">
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>Admin Login</title>
-
+  <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>
@@ -103,6 +134,12 @@
       </h1>
 
       <form method="POST" class="space-y-6">
+        
+        <?php if ($loginError !== ""): ?>
+          <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <?= htmlspecialchars($loginError) ?>
+          </div>
+        <?php endif; ?>
 
         <!-- username -->
         <div>
@@ -113,6 +150,7 @@
             </span>
             <input 
               id="username" 
+              name="admin_username"
               type="text"
               placeholder="Enter username"
               class="w-full pl-10 pr-4 py-3 rounded-lg border border-yellow-300/70 bg-white text-gray-900
@@ -132,6 +170,7 @@
 
             <input 
               id="password"
+              name="admin_password"
               type="password"
               placeholder="Enter password"
               class="w-full pl-10 pr-10 py-3 rounded-lg border border-yellow-300/70 bg-white text-gray-900
@@ -152,8 +191,7 @@
         <!-- login button -->
         <button
           class="w-full bg-yellow-400 hover:bg-yellow-300 text-blue-900 font-bold py-3 rounded-lg shadow-md transition"
-          type="button"
-          onclick="window.location.href='adminDashboard.php'"
+          type="submit"
         >
           Log In
         </button>
@@ -191,3 +229,4 @@
 
 </body>
 </html>
+

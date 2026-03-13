@@ -1,8 +1,12 @@
 <?php
-session_start();
+require_once __DIR__ . "/panelist-auth.php";
 require_once "../db.php";
-// If already logged in, redirect to dashboard
+
 $loginError = "";
+if (panelistIsAuthenticated()) {
+  header("Location: " . panelistPath("panelistDashboard.php"));
+  exit();
+}
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $panelistName = trim((string)($_POST["panelist_name"] ?? ""));
   $panelistPassword = trim((string)($_POST["panelist_password"] ?? ""));
@@ -39,7 +43,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $_SESSION["panelist_username"] = $panelistName;
         $_SESSION["panelist_name"] = $displayName;
         $_SESSION["panelist_login_success"] = true;
-        header("Location: panelistDashboard.php");
+        header("Location: " . panelistConsumeRedirectTarget("panelistDashboard.php"));
         exit();
         }
         $loginError = "Invalid username or password.";
@@ -57,7 +61,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>Panel Login</title>
-
+  <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>

@@ -146,6 +146,7 @@ $hasRequirements = $selected && !empty($selected["requirements"]);
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Upload Requirements • Step 3</title>
+  <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
   <style>

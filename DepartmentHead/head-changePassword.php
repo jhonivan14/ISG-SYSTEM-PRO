@@ -1,5 +1,9 @@
 <?php
-session_start();
+require_once __DIR__ . "/head-auth.php";
+headRequireLogin();
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Pragma: no-cache");
+header("Expires: 0");
 require_once "../db.php";
 
 $headName = trim((string)($_SESSION["head_name"] ?? ""));
@@ -74,6 +78,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>Change Password</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
@@ -193,7 +198,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='headDashboard.php?tab=my-sas'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='my-sas.php'">
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>

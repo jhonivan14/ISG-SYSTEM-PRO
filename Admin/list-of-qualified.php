@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . "/includes/admin-auth.php";
+adminRequireLogin();
 $defaultBatchLabel = "All Batches";
 require_once __DIR__ . "/includes/school-term-filter.php";
 
@@ -10,8 +12,8 @@ $officeSaveStatus = isset($_GET["office_save"]) ? strtolower(trim((string)$_GET[
 $officeSaveMessage = "";
 $officeSaveMessageType = "";
 $hasBatchColumn = false;
-$hasAssignedOfficeColumn = false;
 $hasRankInputTable = false;
+$hasInstitutionalScholarTable = false;
 
 $buildQualifiedUrl = static function (string $schoolYear, string $semester, string $batch, string $saveStatus = ""): string {
   $query = [];
@@ -32,22 +34,103 @@ $buildQualifiedUrl = static function (string $schoolYear, string $semester, stri
   return "list-of-qualified.php" . ($queryString !== "" ? "?" . $queryString : "");
 };
 
+function qualifiedBuildProgramYear(string $program, string $yearLevel): string
+{
+  $programYear = trim($program);
+  $yearLevel = trim($yearLevel);
+  if ($yearLevel !== "") {
+    $programYear .= ($programYear !== "" ? " / " : "") . $yearLevel;
+  }
+  return $programYear;
+}
+
+function qualifiedEnsureInstitutionalScholarTable(mysqli $conn): bool
+{
+  $createSql = "
+    CREATE TABLE IF NOT EXISTS institutional_scholar_records (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      source_application_id INT DEFAULT NULL,
+      category VARCHAR(40) NOT NULL,
+      scholar_id VARCHAR(60) NOT NULL,
+      grant_applied VARCHAR(255) NOT NULL,
+      full_name VARCHAR(255) NOT NULL,
+      program_year VARCHAR(255) DEFAULT NULL,
+      assigned_office VARCHAR(255) DEFAULT NULL,
+      semester VARCHAR(50) DEFAULT NULL,
+      academic_year VARCHAR(20) DEFAULT NULL,
+      status VARCHAR(40) NOT NULL DEFAULT 'official_scholar',
+      renewal_status VARCHAR(40) NOT NULL DEFAULT '',
+      renewal_scope VARCHAR(40) NOT NULL DEFAULT '',
+      second_semester_renewed TINYINT(1) NOT NULL DEFAULT 0,
+      contract_ended TINYINT(1) NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_isr_category_source (category, source_application_id),
+      UNIQUE KEY uniq_isr_category_scholar (category, scholar_id),
+      KEY idx_isr_source (source_application_id),
+      KEY idx_isr_category (category)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  ";
+  if (!$conn->query($createSql)) {
+    return false;
+  }
+
+  $columnDefinitions = [
+    "source_application_id" => "INT DEFAULT NULL AFTER id",
+    "category" => "VARCHAR(40) NOT NULL AFTER source_application_id",
+    "scholar_id" => "VARCHAR(60) NOT NULL AFTER category",
+    "grant_applied" => "VARCHAR(255) NOT NULL AFTER scholar_id",
+    "full_name" => "VARCHAR(255) NOT NULL AFTER grant_applied",
+    "program_year" => "VARCHAR(255) DEFAULT NULL AFTER full_name",
+    "assigned_office" => "VARCHAR(255) DEFAULT NULL AFTER program_year",
+    "semester" => "VARCHAR(50) DEFAULT NULL AFTER assigned_office",
+    "academic_year" => "VARCHAR(20) DEFAULT NULL AFTER semester",
+    "status" => "VARCHAR(40) NOT NULL DEFAULT 'official_scholar' AFTER academic_year",
+    "renewal_status" => "VARCHAR(40) NOT NULL DEFAULT '' AFTER status",
+    "renewal_scope" => "VARCHAR(40) NOT NULL DEFAULT '' AFTER renewal_status",
+    "second_semester_renewed" => "TINYINT(1) NOT NULL DEFAULT 0 AFTER renewal_scope",
+    "contract_ended" => "TINYINT(1) NOT NULL DEFAULT 0 AFTER second_semester_renewed",
+    "created_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER contract_ended",
+    "updated_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at",
+  ];
+  foreach ($columnDefinitions as $column => $definition) {
+    $columnResult = $conn->query("SHOW COLUMNS FROM institutional_scholar_records LIKE '" . $conn->real_escape_string($column) . "'");
+    $exists = $columnResult instanceof mysqli_result && $columnResult->num_rows > 0;
+    if ($columnResult instanceof mysqli_result) {
+      $columnResult->free();
+    }
+    if (!$exists) {
+      $conn->query("ALTER TABLE institutional_scholar_records ADD COLUMN $column $definition");
+    }
+  }
+
+  $indexChecks = [
+    "uniq_isr_category_source" => "CREATE UNIQUE INDEX uniq_isr_category_source ON institutional_scholar_records (category, source_application_id)",
+    "uniq_isr_category_scholar" => "CREATE UNIQUE INDEX uniq_isr_category_scholar ON institutional_scholar_records (category, scholar_id)",
+    "idx_isr_source" => "CREATE INDEX idx_isr_source ON institutional_scholar_records (source_application_id)",
+    "idx_isr_category" => "CREATE INDEX idx_isr_category ON institutional_scholar_records (category)",
+  ];
+  foreach ($indexChecks as $indexName => $indexSql) {
+    $indexResult = $conn->query("SHOW INDEX FROM institutional_scholar_records WHERE Key_name = '" . $conn->real_escape_string($indexName) . "'");
+    $exists = $indexResult instanceof mysqli_result && $indexResult->num_rows > 0;
+    if ($indexResult instanceof mysqli_result) {
+      $indexResult->free();
+    }
+    if (!$exists) {
+      $conn->query($indexSql);
+    }
+  }
+
+  return true;
+}
+
 if (($conn ?? null) instanceof mysqli) {
   $batchColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'batch'");
   if ($batchColumnResult instanceof mysqli_result) {
     $hasBatchColumn = $batchColumnResult->num_rows > 0;
     $batchColumnResult->free();
   }
-
-  $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
-  if ($assignedOfficeColumnResult instanceof mysqli_result) {
-    $hasAssignedOfficeColumn = $assignedOfficeColumnResult->num_rows > 0;
-    $assignedOfficeColumnResult->free();
-    if (!$hasAssignedOfficeColumn) {
-      $conn->query("ALTER TABLE applications ADD COLUMN assigned_office VARCHAR(100) DEFAULT NULL AFTER year_level");
-      $hasAssignedOfficeColumn = true;
-    }
-  }
+  $hasInstitutionalScholarTable = qualifiedEnsureInstitutionalScholarTable($conn);
 
   $headOfficeTableResult = $conn->query("SHOW TABLES LIKE 'head_offices'");
   if ($headOfficeTableResult instanceof mysqli_result && $headOfficeTableResult->num_rows > 0) {
@@ -99,12 +182,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
     ? $_POST["assigned_office"]
     : [];
 
-  if (!$hasAssignedOfficeColumn || !$hasRankInputTable) {
+  if (!$hasRankInputTable || !$hasInstitutionalScholarTable) {
     header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "error"));
     exit;
   }
 
-  $allowedApplicantIds = [];
+  $allowedApplicants = [];
   $whereClauses = [
     "a.grant_id = 1",
     "LOWER(TRIM(a.status)) = 'approved'",
@@ -130,29 +213,81 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
   }
 
   $allowedSql = "
-    SELECT a.id
+    SELECT
+      a.id,
+      a.applicant_name,
+      a.program_course,
+      a.year_level,
+      a.school_year,
+      a.semester
     FROM applicant_rank_inputs ari
     INNER JOIN applications a ON a.id = ari.application_id
     WHERE " . implode(" AND ", $whereClauses);
+  $allowedLookupReady = false;
   $allowedStmt = $conn->prepare($allowedSql);
   if ($allowedStmt) {
     if (!empty($params)) {
       $allowedStmt->bind_param($types, ...$params);
     }
     if ($allowedStmt->execute()) {
+      $allowedLookupReady = true;
       $allowedResult = $allowedStmt->get_result();
       while ($allowedRow = $allowedResult->fetch_assoc()) {
-        $allowedApplicantIds[(int)($allowedRow["id"] ?? 0)] = true;
+        $allowedApplicantId = (int)($allowedRow["id"] ?? 0);
+        if ($allowedApplicantId <= 0) {
+          continue;
+        }
+        $allowedApplicants[$allowedApplicantId] = [
+          "id" => $allowedApplicantId,
+          "name" => trim((string)($allowedRow["applicant_name"] ?? "")),
+          "program_course" => trim((string)($allowedRow["program_course"] ?? "")),
+          "year_level" => trim((string)($allowedRow["year_level"] ?? "")),
+          "school_year" => trim((string)($allowedRow["school_year"] ?? "")),
+          "semester" => trim((string)($allowedRow["semester"] ?? "")),
+        ];
       }
       $allowedResult->free();
     }
     $allowedStmt->close();
   }
 
-  $saveStmt = $conn->prepare("UPDATE applications SET assigned_office = ? WHERE id = ? LIMIT 1");
-  if ($saveStmt) {
+  if (!$allowedLookupReady) {
+    header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "error"));
+    exit;
+  }
+
+  $upsertScholarStmt = $conn->prepare(
+    "INSERT INTO institutional_scholar_records
+      (source_application_id, category, scholar_id, grant_applied, full_name, program_year, assigned_office, semester, academic_year, status)
+    VALUES (?, 'official', ?, 'Student Assistant', ?, ?, ?, ?, ?, 'official_scholar')
+    ON DUPLICATE KEY UPDATE
+      scholar_id = VALUES(scholar_id),
+      grant_applied = VALUES(grant_applied),
+      full_name = VALUES(full_name),
+      program_year = VALUES(program_year),
+      assigned_office = VALUES(assigned_office),
+      semester = VALUES(semester),
+      academic_year = VALUES(academic_year),
+      status = VALUES(status),
+      updated_at = CURRENT_TIMESTAMP"
+  );
+  $clearScholarStmt = $conn->prepare(
+    "UPDATE institutional_scholar_records
+     SET assigned_office = '', updated_at = CURRENT_TIMESTAMP
+     WHERE source_application_id = ?
+       AND (
+         LOWER(TRIM(COALESCE(category, ''))) = 'student_assistant'
+         OR (
+           LOWER(TRIM(COALESCE(category, ''))) = 'official'
+           AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
+         )
+       )"
+  );
+  if ($upsertScholarStmt && $clearScholarStmt) {
+    $saveSucceeded = true;
+    $conn->begin_transaction();
     foreach ($postedApplicantIds as $applicantId) {
-      if ($applicantId <= 0 || !isset($allowedApplicantIds[$applicantId])) {
+      if ($applicantId <= 0 || !isset($allowedApplicants[$applicantId])) {
         continue;
       }
 
@@ -163,13 +298,56 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
         $selectedOffice = "";
       }
 
-      $saveStmt->bind_param("si", $selectedOffice, $applicantId);
-      $saveStmt->execute();
-    }
-    $saveStmt->close();
+      if ($selectedOffice !== "") {
+        $applicationRow = $allowedApplicants[$applicantId];
+        $scholarId = "APP-" . str_pad((string)$applicantId, 5, "0", STR_PAD_LEFT);
+        $fullName = trim((string)($applicationRow["name"] ?? ""));
+        $programYear = qualifiedBuildProgramYear(
+          (string)($applicationRow["program_course"] ?? ""),
+          (string)($applicationRow["year_level"] ?? "")
+        );
+        $semester = trim((string)($applicationRow["semester"] ?? ""));
+        $academicYear = trim((string)($applicationRow["school_year"] ?? ""));
 
-    header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "success"));
-    exit;
+        $upsertScholarStmt->bind_param(
+          "issssss",
+          $applicantId,
+          $scholarId,
+          $fullName,
+          $programYear,
+          $selectedOffice,
+          $semester,
+          $academicYear
+        );
+        if (!$upsertScholarStmt->execute()) {
+          $saveSucceeded = false;
+          break;
+        }
+      } else {
+        $clearScholarStmt->bind_param("i", $applicantId);
+        if (!$clearScholarStmt->execute()) {
+          $saveSucceeded = false;
+          break;
+        }
+      }
+    }
+    $upsertScholarStmt->close();
+    $clearScholarStmt->close();
+
+    if ($saveSucceeded) {
+      $conn->commit();
+      header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "success"));
+      exit;
+    }
+
+    $conn->rollback();
+  } else {
+    if ($upsertScholarStmt) {
+      $upsertScholarStmt->close();
+    }
+    if ($clearScholarStmt) {
+      $clearScholarStmt->close();
+    }
   }
 
   header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "error"));
@@ -209,9 +387,28 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
     $types .= "s";
   }
 
-  $assignedOfficeSelect = $hasAssignedOfficeColumn
-    ? "COALESCE(NULLIF(TRIM(a.assigned_office), ''), '') AS assigned_office"
+  $assignedOfficeSelect = $hasInstitutionalScholarTable
+    ? "COALESCE(NULLIF(TRIM(isr.assigned_office), ''), '') AS assigned_office"
     : "'' AS assigned_office";
+  $institutionalJoin = $hasInstitutionalScholarTable
+    ? "
+    LEFT JOIN institutional_scholar_records isr
+      ON isr.id = (
+        SELECT sub.id
+        FROM institutional_scholar_records sub
+        WHERE sub.source_application_id = a.id
+          AND (
+            LOWER(TRIM(COALESCE(sub.category, ''))) = 'student_assistant'
+            OR (
+              LOWER(TRIM(COALESCE(sub.category, ''))) = 'official'
+              AND LOWER(TRIM(COALESCE(sub.grant_applied, ''))) LIKE '%assistant%'
+            )
+          )
+          AND COALESCE(sub.contract_ended, 0) = 0
+        ORDER BY sub.id DESC
+        LIMIT 1
+      )"
+    : "";
 
   $qualifiedSql = "
     SELECT
@@ -224,6 +421,7 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
       {$assignedOfficeSelect}
     FROM applicant_rank_inputs ari
     INNER JOIN applications a ON a.id = ari.application_id
+    {$institutionalJoin}
     WHERE " . implode(" AND ", $whereClauses) . "
     ORDER BY a.applicant_name ASC
   ";
@@ -263,6 +461,7 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>List of Qualified</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"

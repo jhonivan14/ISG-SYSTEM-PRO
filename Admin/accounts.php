@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . "/includes/admin-auth.php";
+adminRequireLogin();
 require_once "../db.php";
 
 $resetMessage = "";
@@ -215,7 +216,8 @@ if ($headOfficeResult) {
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
-    <title>Admin Dashboard</title>
+    <title>Accounts</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"

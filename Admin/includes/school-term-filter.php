@@ -1,4 +1,7 @@
 <?php
+require_once __DIR__ . "/admin-auth.php";
+adminRequireLogin();
+
 if (!(($conn ?? null) instanceof mysqli)) {
   require_once dirname(__DIR__) . "/../db.php";
 }

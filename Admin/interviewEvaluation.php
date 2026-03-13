@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . "/includes/admin-auth.php";
+adminRequireLogin();
 $defaultBatchLabel = "All Batches";
 $hasSemesterFilter = array_key_exists("semester", $_GET);
 require_once __DIR__ . "/includes/school-term-filter.php";
@@ -156,7 +158,8 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
-    <title>Admin Dashboard</title>
+    <title>Interview Evaluation</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
@@ -325,6 +328,9 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
         .plain-table table {
           min-width: 0 !important;
         }
+        .plain-table .remarks-content {
+          display: none !important;
+        }
         .paper .header-top {
           flex-wrap: nowrap !important;
           align-items: center !important;
@@ -357,6 +363,15 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
       #sidebar li[data-nav]:hover {
         transform: translateX(2px);
         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+      }
+      .panelist-eval-modal[hidden] {
+        display: none !important;
+      }
+      .panelist-eval-frame {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
       }
     </style>
   </head>
@@ -692,13 +707,30 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
                     <?php if (!empty($panelistSentApplicants)): ?>
                       <?php foreach ($panelistSentApplicants as $index => $sentApplicant): ?>
                         <?php $summary = $interviewSummariesByApplicantId[(int)($sentApplicant["id"] ?? 0)] ?? []; ?>
+                        <?php $ratedPanelCount = (int)($summary["rated_panel_count"] ?? 0); ?>
+                        <?php $applicantId = (int)($sentApplicant["id"] ?? 0); ?>
                         <tr>
                           <td><?= htmlspecialchars((string)($index + 1)) ?></td>
                           <td><?= htmlspecialchars((string)($sentApplicant["name"] ?? "")) ?></td>
                           <td><?= htmlspecialchars((string)($summary["weighted_mean_display"] ?? "")) ?></td>
                           <td><?= htmlspecialchars((string)($summary["verbal_description"] ?? "")) ?></td>
                           <td><?= htmlspecialchars((string)($summary["verbal_interpretation"] ?? "")) ?></td>
-                          <td></td>
+                          <td class="remarks-cell">
+                            <?php if ($applicantId > 0 && $ratedPanelCount > 0): ?>
+                              <button
+                                type="button"
+                                data-open-panelist-eval
+                                data-applicant-id="<?= htmlspecialchars((string)$applicantId) ?>"
+                                data-applicant-name="<?= htmlspecialchars((string)($sentApplicant["name"] ?? "")) ?>"
+                                class="remarks-content inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#0d8ddb] shadow-sm hover:bg-[#0d8ddb] hover:text-white"
+                              >
+                                <i class="fas fa-eye"></i>
+                                <span>View</span>
+                              </button>
+                            <?php else: ?>
+                              <span class="remarks-content text-[11px] text-slate-400">No evaluation yet</span>
+                            <?php endif; ?>
+                          </td>
                         </tr>
                       <?php endforeach; ?>
                     <?php else: ?>
@@ -737,6 +769,53 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
             </div>
           </div>
         </section>
+
+        <div
+          id="panelistEvalModal"
+          class="panelist-eval-modal fixed inset-0 z-50 bg-slate-950/60 px-3 py-4 sm:px-6 sm:py-6"
+          hidden
+        >
+          <div class="mx-auto flex h-full max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div class="flex flex-col gap-3 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+              <div>
+                <p class="text-sm font-semibold text-slate-800">Panelist Evaluation</p>
+                <p id="panelistEvalModalLabel" class="text-xs text-slate-500">Loading evaluation...</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  id="panelistEvalPrintBtn"
+                  type="button"
+                  class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a6fac]"
+                >
+                  <i class="fas fa-print"></i>
+                  <span>Print</span>
+                </button>
+                <button
+                  id="panelistEvalCloseBtn"
+                  type="button"
+                  class="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-100"
+                >
+                  <i class="fas fa-times"></i>
+                  <span>Close</span>
+                </button>
+              </div>
+            </div>
+            <div class="relative flex-1 bg-slate-100">
+              <div
+                id="panelistEvalLoading"
+                class="absolute inset-0 flex items-center justify-center bg-slate-100 text-sm font-semibold text-slate-500"
+              >
+                Loading evaluation...
+              </div>
+              <iframe
+                id="panelistEvalFrame"
+                class="panelist-eval-frame"
+                src="about:blank"
+                title="Panelist Evaluation Preview"
+              ></iframe>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
 
@@ -785,6 +864,81 @@ document.addEventListener("DOMContentLoaded", () => {
     item.classList.toggle("bg-opacity-90", isActive);
     item.classList.toggle("text-[#052c6a]", isActive);
     item.classList.toggle("hover:bg-white/15", !isActive);
+  });
+});
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const modal = document.getElementById("panelistEvalModal");
+  const frame = document.getElementById("panelistEvalFrame");
+  const loading = document.getElementById("panelistEvalLoading");
+  const closeBtn = document.getElementById("panelistEvalCloseBtn");
+  const printBtn = document.getElementById("panelistEvalPrintBtn");
+  const label = document.getElementById("panelistEvalModalLabel");
+  const openButtons = document.querySelectorAll("[data-open-panelist-eval]");
+
+  if (!modal || !frame || !loading || !closeBtn || !printBtn || !label || openButtons.length === 0) {
+    return;
+  }
+
+  const previewBaseUrl = "../Panelist/panelist_eval_view.php";
+  let lastFocusedElement = null;
+
+  const closeModal = () => {
+    modal.hidden = true;
+    document.body.classList.remove("overflow-hidden");
+    frame.src = "about:blank";
+    loading.classList.add("hidden");
+    label.textContent = "Loading evaluation...";
+    if (lastFocusedElement instanceof HTMLElement) {
+      lastFocusedElement.focus();
+    }
+  };
+
+  const openModal = (button) => {
+    const applicantId = parseInt(button.dataset.applicantId || "0", 10);
+    const applicantName = (button.dataset.applicantName || "").trim();
+    if (!applicantId) {
+      return;
+    }
+
+    lastFocusedElement = button;
+    label.textContent = applicantName !== "" ? applicantName : "Loading evaluation...";
+    loading.classList.remove("hidden");
+    frame.src = `${previewBaseUrl}?applicant_id=${encodeURIComponent(String(applicantId))}&admin_preview=1`;
+    modal.hidden = false;
+    document.body.classList.add("overflow-hidden");
+  };
+
+  openButtons.forEach((button) => {
+    button.addEventListener("click", () => openModal(button));
+  });
+
+  frame.addEventListener("load", () => {
+    loading.classList.add("hidden");
+  });
+
+  closeBtn.addEventListener("click", closeModal);
+
+  printBtn.addEventListener("click", () => {
+    if (!frame.contentWindow) {
+      return;
+    }
+
+    frame.contentWindow.focus();
+    frame.contentWindow.print();
+  });
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) {
+      closeModal();
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !modal.hidden) {
+      closeModal();
+    }
   });
 });
 </script>

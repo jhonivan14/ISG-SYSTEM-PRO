@@ -1,9 +1,6 @@
 <?php
-session_start();
-if (empty($_SESSION["head_username"])) {
-  header("Location: headLogin.php");
-  exit;
-}
+require_once __DIR__ . "/head-auth.php";
+headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
@@ -110,39 +107,31 @@ if ($headOffice === "") {
     }
 
     $evaluatedQuery = "SELECT
-        CASE
-          WHEN isr.id IS NOT NULL THEN 0 - isr.id
-          ELSE dhe.application_id
-        END AS reference_id,
-        COALESCE(NULLIF(TRIM(dhe.applicant_name), ''), isr.full_name, a.applicant_name) AS applicant_name,
-        COALESCE(
-          NULLIF(TRIM(isr.program_year), ''),
-          NULLIF(TRIM(a.program_course), ''),
-          ''
-        ) AS program_course,
+        dhe.id AS evaluation_id,
+        0 - ABS(dhe.application_id) AS reference_id,
+        COALESCE(NULLIF(TRIM(dhe.applicant_name), ''), isr.full_name) AS applicant_name,
+        COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course,
         dhe.semester,
         dhe.school_year,
         dhe.evaluation_date,
         dhe.updated_at
       FROM department_head_evaluations dhe
-      LEFT JOIN applications a
-        ON dhe.application_id > 0
-        AND a.id = dhe.application_id
-      LEFT JOIN institutional_scholar_records isr
-        ON (
-          (dhe.application_id < 0 AND isr.id = (0 - dhe.application_id))
-          OR
-          (dhe.application_id > 0 AND isr.source_application_id = dhe.application_id)
-        )
+      INNER JOIN institutional_scholar_records isr
+        ON isr.id = ABS(dhe.application_id)
       WHERE dhe.head_username = ?
+        AND dhe.application_id <> 0
         AND LOWER(TRIM(COALESCE(dhe.assigned_office, ''))) = ?
         AND (
-          isr.id IS NULL
-          OR LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
+          LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
           OR (
             LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
             AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
           )
+        )
+        AND (
+          COALESCE(isr.contract_ended, 0) = 0
+          OR TRIM(COALESCE(isr.academic_year, '')) <> TRIM(COALESCE(dhe.school_year, ''))
+          OR TRIM(COALESCE(isr.semester, '')) <> TRIM(COALESCE(dhe.semester, ''))
         )
         AND (? = '' OR TRIM(COALESCE(dhe.school_year, '')) = ?)
         AND (? = '' OR TRIM(COALESCE(dhe.semester, '')) = ?)
@@ -168,10 +157,10 @@ if ($headOffice === "") {
       );
       if ($stmt->execute()) {
         $result = $stmt->get_result();
-        $evaluatedApplicantMap = [];
         while ($row = $result->fetch_assoc()) {
-          $referenceId = isset($row["reference_id"]) ? (int)$row["reference_id"] : (int)($row["id"] ?? 0);
-          if ($referenceId === 0 || isset($evaluatedApplicantMap[(string)$referenceId])) {
+          $evaluationId = (int)($row["evaluation_id"] ?? 0);
+          $referenceId = (int)($row["reference_id"] ?? 0);
+          if ($evaluationId <= 0 || $referenceId === 0) {
             continue;
           }
           $updatedAtRaw = trim((string)($row["updated_at"] ?? ""));
@@ -182,7 +171,8 @@ if ($headOffice === "") {
           } elseif ($evaluationDateRaw !== "") {
             $displayUpdatedAt = date("Y-m-d", strtotime($evaluationDateRaw));
           }
-          $evaluatedApplicantMap[(string)$referenceId] = [
+          $evaluatedApplicants[] = [
+            "evaluation_id" => $evaluationId,
             "id" => $referenceId,
             "name" => (string)($row["applicant_name"] ?? ""),
             "program_course" => (string)($row["program_course"] ?? ""),
@@ -191,7 +181,6 @@ if ($headOffice === "") {
             "updated_at" => $displayUpdatedAt,
           ];
         }
-        $evaluatedApplicants = array_values($evaluatedApplicantMap);
         $result->free();
       } else {
         $loadError = "Unable to load evaluation entries.";
@@ -211,6 +200,7 @@ $evaluatedCount = count($evaluatedApplicants);
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>Show Evaluation</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
@@ -305,7 +295,7 @@ $evaluatedCount = count($evaluatedApplicants);
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='headDashboard.php?tab=my-sas'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='my-sas.php'">
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
@@ -488,7 +478,7 @@ $evaluatedCount = count($evaluatedApplicants);
                         <button
                           class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] font-semibold text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
                           type="button"
-                          onclick="window.location.href='department-evaluation-view.php?application_id=<?= urlencode((string)($applicant['id'] ?? 0)) ?>'"
+                          onclick="window.location.href='department-evaluation-view.php?evaluation_id=<?= urlencode((string)($applicant['evaluation_id'] ?? 0)) ?>'"
                         >
                           View Evaluation
                         </button>

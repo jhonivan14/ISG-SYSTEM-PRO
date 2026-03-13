@@ -1,5 +1,6 @@
 <?php
-session_start();
+require_once __DIR__ . "/includes/admin-auth.php";
+adminRequireLogin();
 require_once "../db.php";
 
 $errorMessage = "";

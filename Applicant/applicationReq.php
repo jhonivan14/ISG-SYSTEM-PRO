@@ -11,6 +11,7 @@ if (empty($_SESSION["from_index"])) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>ISG List and Requirements • Step 1</title>
+  <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

@@ -1,9 +1,6 @@
 <?php
-session_start();
-if (empty($_SESSION["panelist_username"])) {
-    header("Location: panelLogin.php");
-    exit;
-}
+require_once __DIR__ . "/panelist-auth.php";
+panelistRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
@@ -141,6 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Panelist Evaluation Sheet</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
         href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"

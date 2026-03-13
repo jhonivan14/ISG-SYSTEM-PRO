@@ -1,8 +1,13 @@
 <?php
-session_start();
+require_once __DIR__ . "/head-auth.php";
 require_once "../db.php";
 
 $loginError = "";
+if (headIsAuthenticated()) {
+  header("Location: " . headPath("headDashboard.php"));
+  exit();
+}
+
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $username = trim((string)($_POST["head_username"] ?? ""));
   $password = trim((string)($_POST["head_password"] ?? ""));
@@ -49,7 +54,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           $_SESSION["head_username"] = $username;
           $_SESSION["head_name"] = $displayName;
           $_SESSION["head_office"] = $headOffice;
-          header("Location: headDashboard.php");
+          header("Location: " . headConsumeRedirectTarget("headDashboard.php"));
           exit();
         }
         $loginError = "Invalid username or password.";
@@ -67,7 +72,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   <meta charset="utf-8"/>
   <meta content="width=device-width, initial-scale=1" name="viewport"/>
   <title>Head Login • SMCC ISG</title>
-
+  <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet"/>

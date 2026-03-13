@@ -1,5 +1,16 @@
 <?php
+require_once __DIR__ . "/includes/admin-auth.php";
+adminRequireLogin();
 require_once __DIR__ . "/includes/school-term-filter.php";
+
+$rawSelectedSchoolYear = array_key_exists("school_year", $_GET)
+  ? trim((string)$_GET["school_year"])
+  : null;
+$rawSelectedSemester = array_key_exists("semester", $_GET)
+  ? trim((string)$_GET["semester"])
+  : null;
+$activeSchoolYearFilter = $rawSelectedSchoolYear === null ? $currentSchoolYear : $selectedSchoolYear;
+$activeSemesterFilter = $rawSelectedSemester === null ? $currentSemester : $selectedSemester;
 
 $assistantEvaluationRecords = [];
 $isEvaluationWindowOpen = false;
@@ -34,38 +45,24 @@ function isgDepartmentEvaluationAssistantCategorySql(string $categoryColumn = "c
   )";
 }
 
-function isgDepartmentEvaluationBuildProgramYear(string $program, string $yearLevel): string
+function isgDepartmentEvaluationRecordKey(int $applicationId, string $schoolYear, string $semester): string
 {
-  $programYear = trim($program);
-  $yearLevel = trim($yearLevel);
-  if ($yearLevel !== "") {
-    $programYear .= ($programYear !== "" ? " / " : "") . $yearLevel;
-  }
-  return $programYear;
+  return strtolower(trim((string)$applicationId)) . "|" . strtolower(trim($schoolYear)) . "|" . strtolower(trim($semester));
 }
 
-function isgDepartmentEvaluationRecordKey(array $row): string
+function isgDepartmentEvaluationSemesterSortRank(string $semester): int
 {
-  $sourceApplicationId = (int)($row["source_application_id"] ?? 0);
-  if ($sourceApplicationId > 0) {
-    return "src-" . $sourceApplicationId;
+  $value = strtolower(trim($semester));
+  if ($value === "1st semester") {
+    return 1;
   }
-
-  $scholarId = strtolower(trim((string)($row["scholar_id"] ?? "")));
-  if ($scholarId !== "") {
-    return "sid-" . $scholarId;
+  if ($value === "2nd semester") {
+    return 2;
   }
-
-  $fullName = strtolower(trim((string)($row["full_name"] ?? "")));
-  $programYear = strtolower(trim((string)($row["program_year"] ?? "")));
-  $semester = strtolower(trim((string)($row["semester"] ?? "")));
-  $academicYear = strtolower(trim((string)($row["academic_year"] ?? "")));
-  $assignedOffice = strtolower(trim((string)($row["assigned_office"] ?? "")));
-  if ($fullName === "" && $programYear === "" && $semester === "" && $academicYear === "" && $assignedOffice === "") {
-    return "";
+  if ($value === "summer") {
+    return 3;
   }
-
-  return "name-" . sha1($fullName . "|" . $programYear . "|" . $semester . "|" . $academicYear . "|" . $assignedOffice);
+  return 9;
 }
 
 if (($conn ?? null) instanceof mysqli) {
@@ -81,20 +78,35 @@ if (($conn ?? null) instanceof mysqli) {
   if (!$windowTableReady) {
     $evaluationWindowError = "Unable to access evaluation window settings.";
   } else {
-    $openActionRequested = $_SERVER["REQUEST_METHOD"] === "POST"
-      && trim((string)($_POST["evaluation_window_action"] ?? "")) === "open";
+    $windowAction = $_SERVER["REQUEST_METHOD"] === "POST"
+      ? trim((string)($_POST["evaluation_window_action"] ?? ""))
+      : "";
 
-    if ($openActionRequested) {
-      $openWindowSql = "INSERT INTO department_evaluation_window (id, is_open, opened_at, opened_by)
-        VALUES (1, 1, NOW(), 'admin')
-        ON DUPLICATE KEY UPDATE
-          is_open = VALUES(is_open),
-          opened_at = VALUES(opened_at),
-          opened_by = VALUES(opened_by)";
-      if ($conn->query($openWindowSql) === true) {
-        $evaluationWindowNotice = "Evaluation window is now open.";
+    if ($windowAction === "open" || $windowAction === "close") {
+      if ($windowAction === "open") {
+        $windowSql = "INSERT INTO department_evaluation_window (id, is_open, opened_at, opened_by)
+          VALUES (1, 1, NOW(), 'admin')
+          ON DUPLICATE KEY UPDATE
+            is_open = VALUES(is_open),
+            opened_at = VALUES(opened_at),
+            opened_by = VALUES(opened_by)";
       } else {
-        $evaluationWindowError = "Unable to open the evaluation window.";
+        $windowSql = "INSERT INTO department_evaluation_window (id, is_open, opened_at, opened_by)
+          VALUES (1, 0, NULL, 'admin')
+          ON DUPLICATE KEY UPDATE
+            is_open = VALUES(is_open),
+            opened_at = VALUES(opened_at),
+            opened_by = VALUES(opened_by)";
+      }
+
+      if ($conn->query($windowSql) === true) {
+        $evaluationWindowNotice = $windowAction === "open"
+          ? "Evaluation window is now open."
+          : "Evaluation window is now closed.";
+      } else {
+        $evaluationWindowError = $windowAction === "open"
+          ? "Unable to open the evaluation window."
+          : "Unable to close the evaluation window.";
       }
     }
 
@@ -116,21 +128,29 @@ if (($conn ?? null) instanceof mysqli) {
   }
 
   if ($hasInstitutionalTable) {
-    $assistantSchoolYearResult = $conn->query("
-      SELECT DISTINCT TRIM(COALESCE(academic_year, '')) AS academic_year
+    $schoolYearOptions = [];
+    $semesterOptions = [];
+    $assistantTermResult = $conn->query("
+      SELECT DISTINCT
+        TRIM(COALESCE(academic_year, '')) AS academic_year,
+        TRIM(COALESCE(semester, '')) AS semester
       FROM institutional_scholar_records
       WHERE " . isgDepartmentEvaluationAssistantCategorySql() . "
-        AND TRIM(COALESCE(academic_year, '')) <> ''
-      ORDER BY academic_year ASC
+        AND TRIM(COALESCE(assigned_office, '')) <> ''
+      ORDER BY academic_year ASC, semester ASC
     ");
-    if ($assistantSchoolYearResult instanceof mysqli_result) {
-      while ($schoolYearRow = $assistantSchoolYearResult->fetch_assoc()) {
-        $academicYear = trim((string)($schoolYearRow["academic_year"] ?? ""));
+    if ($assistantTermResult instanceof mysqli_result) {
+      while ($termRow = $assistantTermResult->fetch_assoc()) {
+        $academicYear = trim((string)($termRow["academic_year"] ?? ""));
+        $semester = trim((string)($termRow["semester"] ?? ""));
         if ($academicYear !== "" && !in_array($academicYear, $schoolYearOptions, true)) {
           $schoolYearOptions[] = $academicYear;
         }
+        if ($semester !== "" && !in_array($semester, $semesterOptions, true)) {
+          $semesterOptions[] = $semester;
+        }
       }
-      $assistantSchoolYearResult->free();
+      $assistantTermResult->free();
 
       usort($schoolYearOptions, function ($a, $b) {
         $aYear = (int)substr((string)$a, 0, 4);
@@ -140,113 +160,35 @@ if (($conn ?? null) instanceof mysqli) {
         }
         return $aYear <=> $bYear;
       });
+
+      usort($semesterOptions, function ($a, $b) {
+        $rankCompare = isgDepartmentEvaluationSemesterSortRank((string)$a) <=> isgDepartmentEvaluationSemesterSortRank((string)$b);
+        if ($rankCompare !== 0) {
+          return $rankCompare;
+        }
+        return strcmp((string)$a, (string)$b);
+      });
     }
-  } else {
-    $hasAssignedOfficeColumn = false;
+
+    if ($activeSchoolYearFilter !== "" && !in_array($activeSchoolYearFilter, $schoolYearOptions, true)) {
+      array_unshift($schoolYearOptions, $activeSchoolYearFilter);
+    }
+    if ($activeSemesterFilter !== "" && !in_array($activeSemesterFilter, $semesterOptions, true)) {
+      array_unshift($semesterOptions, $activeSemesterFilter);
+    }
+    if (empty($semesterOptions)) {
+      $semesterOptions = ["1st Semester", "2nd Semester"];
+    }
   }
 
   if ($hasInstitutionalTable) {
-    $assignedOfficeColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'assigned_office'");
-    if ($assignedOfficeColumnResult instanceof mysqli_result) {
-      $hasAssignedOfficeColumn = $assignedOfficeColumnResult->num_rows > 0;
-      $assignedOfficeColumnResult->free();
-      if (!$hasAssignedOfficeColumn) {
-        $conn->query("ALTER TABLE applications ADD COLUMN assigned_office VARCHAR(100) DEFAULT NULL AFTER year_level");
-        $hasAssignedOfficeColumn = true;
-      }
-    } else {
-      $hasAssignedOfficeColumn = false;
+    $assistantRecordsByKey = [];
+    $hasContractEndedColumn = false;
+    $contractEndedColumnResult = $conn->query("SHOW COLUMNS FROM institutional_scholar_records LIKE 'contract_ended'");
+    if ($contractEndedColumnResult instanceof mysqli_result) {
+      $hasContractEndedColumn = $contractEndedColumnResult->num_rows > 0;
+      $contractEndedColumnResult->free();
     }
-
-    $rankInputTableResult = $conn->query("SHOW TABLES LIKE 'applicant_rank_inputs'");
-    if ($hasAssignedOfficeColumn && $rankInputTableResult instanceof mysqli_result && $rankInputTableResult->num_rows > 0) {
-      $rankInputTableResult->free();
-
-      $syncSql = "
-        SELECT
-          a.id,
-          a.applicant_name,
-          a.program_course,
-          a.year_level,
-          a.assigned_office,
-          a.school_year,
-          a.semester
-        FROM applicant_rank_inputs ari
-        INNER JOIN applications a ON a.id = ari.application_id
-        WHERE
-          a.grant_id = 1
-          AND LOWER(TRIM(a.status)) = 'approved'
-          AND LOWER(TRIM(COALESCE(ari.remarks, ''))) = 'hired'
-          AND TRIM(COALESCE(a.assigned_office, '')) <> ''
-        ORDER BY a.applicant_name ASC
-      ";
-
-      $syncResult = $conn->query($syncSql);
-      if ($syncResult instanceof mysqli_result) {
-        $upsertSql = "
-          INSERT INTO institutional_scholar_records
-            (source_application_id, category, scholar_id, grant_applied, full_name, program_year, assigned_office, semester, academic_year, status)
-          VALUES (?, 'official', ?, 'Student Assistant', ?, ?, ?, ?, ?, 'official_scholar')
-          ON DUPLICATE KEY UPDATE
-            scholar_id = VALUES(scholar_id),
-            grant_applied = VALUES(grant_applied),
-            full_name = VALUES(full_name),
-            program_year = VALUES(program_year),
-            assigned_office = VALUES(assigned_office),
-            semester = VALUES(semester),
-            academic_year = VALUES(academic_year),
-            status = VALUES(status),
-            updated_at = CURRENT_TIMESTAMP
-        ";
-        $upsertStmt = $conn->prepare($upsertSql);
-        if ($upsertStmt) {
-          while ($row = $syncResult->fetch_assoc()) {
-            $sourceApplicationId = (int)($row["id"] ?? 0);
-            if ($sourceApplicationId <= 0) {
-              continue;
-            }
-
-            $scholarId = "APP-" . str_pad((string)$sourceApplicationId, 5, "0", STR_PAD_LEFT);
-            $fullName = trim((string)($row["applicant_name"] ?? ""));
-            $programYear = isgDepartmentEvaluationBuildProgramYear(
-              (string)($row["program_course"] ?? ""),
-              (string)($row["year_level"] ?? "")
-            );
-            $assignedOffice = trim((string)($row["assigned_office"] ?? ""));
-            $semester = trim((string)($row["semester"] ?? ""));
-            $academicYear = trim((string)($row["school_year"] ?? ""));
-
-            $upsertStmt->bind_param(
-              "issssss",
-              $sourceApplicationId,
-              $scholarId,
-              $fullName,
-              $programYear,
-              $assignedOffice,
-              $semester,
-              $academicYear
-            );
-            $upsertStmt->execute();
-          }
-          $upsertStmt->close();
-        } else {
-          while ($syncResult->fetch_assoc()) {
-          }
-        }
-        $syncResult->free();
-      }
-    } elseif ($rankInputTableResult instanceof mysqli_result) {
-      $rankInputTableResult->free();
-    }
-
-    if ($hasInstitutionalTable) {
-      $assistantRecordMap = [];
-      $hasContractEndedColumn = false;
-      $contractEndedColumnResult = $conn->query("SHOW COLUMNS FROM institutional_scholar_records LIKE 'contract_ended'");
-      if ($contractEndedColumnResult instanceof mysqli_result) {
-        $hasContractEndedColumn = $contractEndedColumnResult->num_rows > 0;
-        $contractEndedColumnResult->free();
-      }
 
       $isrWhereClauses = [
         isgDepartmentEvaluationAssistantCategorySql(),
@@ -258,21 +200,20 @@ if (($conn ?? null) instanceof mysqli) {
       if ($hasContractEndedColumn) {
         $isrWhereClauses[] = "COALESCE(contract_ended, 0) = 0";
       }
-      if ($selectedSchoolYear !== "") {
+      if ($activeSchoolYearFilter !== "") {
         $isrWhereClauses[] = "academic_year = ?";
-        $isrParams[] = $selectedSchoolYear;
+        $isrParams[] = $activeSchoolYearFilter;
         $isrTypes .= "s";
       }
-      if ($selectedSemester !== "") {
+      if ($activeSemesterFilter !== "") {
         $isrWhereClauses[] = "semester = ?";
-        $isrParams[] = $selectedSemester;
+        $isrParams[] = $activeSemesterFilter;
         $isrTypes .= "s";
       }
 
-      $isrSql = "
-        SELECT
+    $isrSql = "
+      SELECT
           id,
-          source_application_id,
           scholar_id,
           full_name,
           program_year,
@@ -293,57 +234,44 @@ if (($conn ?? null) instanceof mysqli) {
           updated_at DESC,
           id DESC
       ";
-      $isrStmt = $conn->prepare($isrSql);
-      if ($isrStmt) {
-        if (!empty($isrParams)) {
-          $isrStmt->bind_param($isrTypes, ...$isrParams);
-        }
-        if ($isrStmt->execute()) {
-          $isrResult = $isrStmt->get_result();
-          while ($row = $isrResult->fetch_assoc()) {
-            $recordKey = isgDepartmentEvaluationRecordKey($row);
-            if ($recordKey === "" || isset($assistantRecordMap[$recordKey])) {
-              continue;
-            }
-
-            $recordId = (int)($row["id"] ?? 0);
-            if ($recordId <= 0) {
-              continue;
-            }
-
-            $sourceApplicationId = (int)($row["source_application_id"] ?? 0);
-            [$programCourse, $yearLevel] = isgSplitProgramYearForDepartmentList((string)($row["program_year"] ?? ""));
-            $evaluationLookupIds = [0 - $recordId];
-            if ($sourceApplicationId > 0) {
-              $evaluationLookupIds[] = $sourceApplicationId;
-            }
-
-            $assistantRecordMap[$recordKey] = [
-              "applicantId" => 0 - $recordId,
-              "name" => trim((string)($row["full_name"] ?? "")),
-              "course" => $programCourse,
-              "yearLevel" => $yearLevel,
-              "office" => trim((string)($row["assigned_office"] ?? "")),
-              "status" => "not yet evaluated",
-              "academicYear" => trim((string)($row["academic_year"] ?? "")),
-              "semester" => trim((string)($row["semester"] ?? "")),
-              "evaluatedAt" => null,
-              "sourceType" => "institutional",
-              "_evaluationLookupIds" => $evaluationLookupIds,
-            ];
+    $isrStmt = $conn->prepare($isrSql);
+    if ($isrStmt) {
+      if (!empty($isrParams)) {
+        $isrStmt->bind_param($isrTypes, ...$isrParams);
+      }
+      if ($isrStmt->execute()) {
+        $isrResult = $isrStmt->get_result();
+        while ($row = $isrResult->fetch_assoc()) {
+          $recordId = (int)($row["id"] ?? 0);
+          if ($recordId <= 0) {
+            continue;
           }
-          $isrResult->free();
+
+          $applicantId = 0 - $recordId;
+          $academicYear = trim((string)($row["academic_year"] ?? ""));
+          $semester = trim((string)($row["semester"] ?? ""));
+          $recordKey = isgDepartmentEvaluationRecordKey($applicantId, $academicYear, $semester);
+          [$programCourse, $yearLevel] = isgSplitProgramYearForDepartmentList((string)($row["program_year"] ?? ""));
+
+          $assistantRecordsByKey[$recordKey] = [
+            "applicantId" => $applicantId,
+            "name" => trim((string)($row["full_name"] ?? "")),
+            "course" => $programCourse,
+            "yearLevel" => $yearLevel,
+            "office" => trim((string)($row["assigned_office"] ?? "")),
+            "status" => "not yet evaluated",
+            "academicYear" => $academicYear,
+            "semester" => $semester,
+            "evaluationId" => 0,
+            "evaluatedAt" => null,
+            "sourceType" => "institutional",
+          ];
         }
-        $isrStmt->close();
+        $isrResult->free();
       }
-
-      if (!empty($assistantRecordMap)) {
-        $assistantEvaluationRecords = array_values($assistantRecordMap);
-      }
+      $isrStmt->close();
     }
-  }
 
-  if (!empty($assistantEvaluationRecords)) {
     $evaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
     $hasEvaluationTable = $evaluationTableResult instanceof mysqli_result && $evaluationTableResult->num_rows > 0;
     if ($evaluationTableResult instanceof mysqli_result) {
@@ -351,52 +279,162 @@ if (($conn ?? null) instanceof mysqli) {
     }
 
     if ($hasEvaluationTable) {
-      $evaluationStatusByApplicationId = [];
-      $evaluationStatusSql = "
-        SELECT application_id, MAX(updated_at) AS evaluated_at
+      $historicalTermResult = $conn->query("
+        SELECT DISTINCT
+          TRIM(COALESCE(school_year, '')) AS school_year,
+          TRIM(COALESCE(semester, '')) AS semester
         FROM department_head_evaluations
-        GROUP BY application_id
-      ";
-      $evaluationStatusResult = $conn->query($evaluationStatusSql);
-      if ($evaluationStatusResult instanceof mysqli_result) {
-        while ($evaluationRow = $evaluationStatusResult->fetch_assoc()) {
-          $applicationIdKey = (string)((int)($evaluationRow["application_id"] ?? 0));
-          $evaluatedAt = trim((string)($evaluationRow["evaluated_at"] ?? ""));
-          $evaluatedAtTs = $evaluatedAt !== "" ? strtotime($evaluatedAt) : false;
-          $evaluationStatusByApplicationId[$applicationIdKey] = [
-            "evaluatedAt" => $evaluatedAt,
-            "sortTs" => $evaluatedAtTs !== false ? (int)$evaluatedAtTs : 0,
-          ];
+        WHERE application_id <> 0
+      ");
+      if ($historicalTermResult instanceof mysqli_result) {
+        while ($historicalTermRow = $historicalTermResult->fetch_assoc()) {
+          $schoolYear = trim((string)($historicalTermRow["school_year"] ?? ""));
+          $semester = trim((string)($historicalTermRow["semester"] ?? ""));
+          if ($schoolYear !== "" && !in_array($schoolYear, $schoolYearOptions, true)) {
+            $schoolYearOptions[] = $schoolYear;
+          }
+          if ($semester !== "" && !in_array($semester, $semesterOptions, true)) {
+            $semesterOptions[] = $semester;
+          }
         }
-        $evaluationStatusResult->free();
+        $historicalTermResult->free();
       }
 
-      foreach ($assistantEvaluationRecords as $index => $record) {
-        $matchedEvaluation = null;
-        $lookupIds = is_array($record["_evaluationLookupIds"] ?? null) ? $record["_evaluationLookupIds"] : [(int)($record["applicantId"] ?? 0)];
-        foreach ($lookupIds as $lookupId) {
-          $applicationIdKey = (string)((int)$lookupId);
-          if (!isset($evaluationStatusByApplicationId[$applicationIdKey])) {
-            continue;
-          }
-          $candidateEvaluation = $evaluationStatusByApplicationId[$applicationIdKey];
-          if (!is_array($candidateEvaluation)) {
-            continue;
-          }
-          if (
-            $matchedEvaluation === null
-            || (int)($candidateEvaluation["sortTs"] ?? 0) > (int)($matchedEvaluation["sortTs"] ?? 0)
-          ) {
-            $matchedEvaluation = $candidateEvaluation;
-          }
+      $evaluationStatusByRecordKey = [];
+      $evaluationStatusSql = "
+        SELECT
+          dhe.id,
+          dhe.application_id,
+          TRIM(COALESCE(dhe.applicant_name, '')) AS applicant_name,
+          TRIM(COALESCE(dhe.assigned_office, '')) AS assigned_office,
+          TRIM(COALESCE(dhe.school_year, '')) AS school_year,
+          TRIM(COALESCE(dhe.semester, '')) AS semester,
+          dhe.updated_at,
+          TRIM(COALESCE(isr.program_year, '')) AS program_year
+        FROM department_head_evaluations dhe
+        LEFT JOIN institutional_scholar_records isr
+          ON isr.id = ABS(dhe.application_id)
+        WHERE dhe.application_id <> 0
+          AND (
+            isr.id IS NULL
+            OR COALESCE(isr.contract_ended, 0) = 0
+            OR TRIM(COALESCE(isr.academic_year, '')) <> TRIM(COALESCE(dhe.school_year, ''))
+            OR TRIM(COALESCE(isr.semester, '')) <> TRIM(COALESCE(dhe.semester, ''))
+          )
+          AND (
+            " . ($activeSchoolYearFilter !== "" ? "TRIM(COALESCE(dhe.school_year, '')) = ?" : "1 = 1") . "
+          )
+          AND (
+            " . ($activeSemesterFilter !== "" ? "TRIM(COALESCE(dhe.semester, '')) = ?" : "1 = 1") . "
+          )
+        ORDER BY dhe.updated_at DESC, dhe.id DESC
+      ";
+      $evaluationStatusStmt = $conn->prepare($evaluationStatusSql);
+      if ($evaluationStatusStmt) {
+        $evaluationParams = [];
+        $evaluationTypes = "";
+        if ($activeSchoolYearFilter !== "") {
+          $evaluationParams[] = $activeSchoolYearFilter;
+          $evaluationTypes .= "s";
         }
+        if ($activeSemesterFilter !== "") {
+          $evaluationParams[] = $activeSemesterFilter;
+          $evaluationTypes .= "s";
+        }
+        if (!empty($evaluationParams)) {
+          $evaluationStatusStmt->bind_param($evaluationTypes, ...$evaluationParams);
+        }
+        if ($evaluationStatusStmt->execute()) {
+          $evaluationStatusResult = $evaluationStatusStmt->get_result();
+          while ($evaluationRow = $evaluationStatusResult->fetch_assoc()) {
+            $applicationId = (int)($evaluationRow["application_id"] ?? 0);
+            $schoolYear = trim((string)($evaluationRow["school_year"] ?? ""));
+            $semester = trim((string)($evaluationRow["semester"] ?? ""));
+            $recordKey = isgDepartmentEvaluationRecordKey($applicationId, $schoolYear, $semester);
+            if (isset($evaluationStatusByRecordKey[$recordKey])) {
+              continue;
+            }
+
+            $programYear = trim((string)($evaluationRow["program_year"] ?? ""));
+            [$programCourse, $yearLevel] = isgSplitProgramYearForDepartmentList($programYear);
+            if (!isset($assistantRecordsByKey[$recordKey])) {
+              $assistantRecordsByKey[$recordKey] = [
+                "applicantId" => $applicationId,
+                "name" => trim((string)($evaluationRow["applicant_name"] ?? "")),
+                "course" => $programCourse,
+                "yearLevel" => $yearLevel,
+                "office" => trim((string)($evaluationRow["assigned_office"] ?? "")),
+                "status" => "not yet evaluated",
+                "academicYear" => $schoolYear,
+                "semester" => $semester,
+                "evaluationId" => 0,
+                "evaluatedAt" => null,
+                "sourceType" => "evaluation_history",
+              ];
+            }
+
+            $evaluatedAt = trim((string)($evaluationRow["updated_at"] ?? ""));
+            $evaluatedAtTs = $evaluatedAt !== "" ? strtotime($evaluatedAt) : false;
+            $evaluationStatusByRecordKey[$recordKey] = [
+              "evaluationId" => (int)($evaluationRow["id"] ?? 0),
+              "evaluatedAt" => $evaluatedAt,
+              "sortTs" => $evaluatedAtTs !== false ? (int)$evaluatedAtTs : 0,
+            ];
+          }
+          $evaluationStatusResult->free();
+        }
+        $evaluationStatusStmt->close();
+      }
+
+      foreach ($assistantRecordsByKey as $recordKey => $record) {
+        $recordKey = isgDepartmentEvaluationRecordKey(
+          (int)($record["applicantId"] ?? 0),
+          (string)($record["academicYear"] ?? ""),
+          (string)($record["semester"] ?? "")
+        );
+        $matchedEvaluation = $evaluationStatusByRecordKey[$recordKey] ?? null;
 
         if ($matchedEvaluation !== null) {
-          $assistantEvaluationRecords[$index]["status"] = "evaluated";
-          $assistantEvaluationRecords[$index]["evaluatedAt"] = (string)($matchedEvaluation["evaluatedAt"] ?? "");
+          $assistantRecordsByKey[$recordKey]["status"] = "evaluated";
+          $assistantRecordsByKey[$recordKey]["evaluatedAt"] = (string)($matchedEvaluation["evaluatedAt"] ?? "");
+          $assistantRecordsByKey[$recordKey]["evaluationId"] = (int)($matchedEvaluation["evaluationId"] ?? 0);
         }
-        unset($assistantEvaluationRecords[$index]["_evaluationLookupIds"]);
       }
+    }
+
+    if (!empty($schoolYearOptions)) {
+      $schoolYearOptions = array_values(array_unique($schoolYearOptions));
+      usort($schoolYearOptions, function ($a, $b) {
+        $aYear = (int)substr((string)$a, 0, 4);
+        $bYear = (int)substr((string)$b, 0, 4);
+        if ($aYear === $bYear) {
+          return strcmp((string)$a, (string)$b);
+        }
+        return $aYear <=> $bYear;
+      });
+    }
+    if (!empty($semesterOptions)) {
+      $semesterOptions = array_values(array_unique($semesterOptions));
+      usort($semesterOptions, function ($a, $b) {
+        $rankCompare = isgDepartmentEvaluationSemesterSortRank((string)$a) <=> isgDepartmentEvaluationSemesterSortRank((string)$b);
+        if ($rankCompare !== 0) {
+          return $rankCompare;
+        }
+        return strcmp((string)$a, (string)$b);
+      });
+    }
+    if ($activeSchoolYearFilter !== "" && !in_array($activeSchoolYearFilter, $schoolYearOptions, true)) {
+      array_unshift($schoolYearOptions, $activeSchoolYearFilter);
+    }
+    if ($activeSemesterFilter !== "" && !in_array($activeSemesterFilter, $semesterOptions, true)) {
+      array_unshift($semesterOptions, $activeSemesterFilter);
+    }
+    if (empty($semesterOptions)) {
+      $semesterOptions = ["1st Semester", "2nd Semester"];
+    }
+
+    if (!empty($assistantRecordsByKey)) {
+      $assistantEvaluationRecords = array_values($assistantRecordsByKey);
     }
   }
 
@@ -417,11 +455,11 @@ if (($conn ?? null) instanceof mysqli) {
 
 $evaluationWindowActionUrl = "department-evaluation-list.php";
 $evaluationWindowActionParams = [];
-if ($selectedSchoolYear !== "") {
-  $evaluationWindowActionParams["school_year"] = $selectedSchoolYear;
+if ($rawSelectedSchoolYear !== null) {
+  $evaluationWindowActionParams["school_year"] = $rawSelectedSchoolYear;
 }
-if ($selectedSemester !== "") {
-  $evaluationWindowActionParams["semester"] = $selectedSemester;
+if ($rawSelectedSemester !== null) {
+  $evaluationWindowActionParams["semester"] = $rawSelectedSemester;
 }
 if (!empty($evaluationWindowActionParams)) {
   $evaluationWindowActionUrl .= "?" . http_build_query($evaluationWindowActionParams);
@@ -432,6 +470,7 @@ if (!empty($evaluationWindowActionParams)) {
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>Student Assistants Evaluation List</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
@@ -661,7 +700,8 @@ if (!empty($evaluationWindowActionParams)) {
               <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <h2 class="text-lg font-semibold text-[#052c6a]">Student Assistants Evaluation List</h2>
-                  <p class="text-sm text-gray-600">Open the window per semester to show status and actions.</p>
+                  <p class="text-sm text-gray-600">Open or close the evaluation window to control when heads can submit forms for the current term.</p>
+                  <p class="text-xs text-gray-500 mt-1">Current assignment rows come from `institutional_scholar_records`, while previous-term filters are preserved from saved evaluation records.</p>
                   <p class="text-xs text-gray-500 mt-1">
                     Evaluation window:
                     <span
@@ -673,16 +713,15 @@ if (!empty($evaluationWindowActionParams)) {
                   </p>
                 </div>
                 <form method="post" action="<?php echo htmlspecialchars($evaluationWindowActionUrl); ?>" class="m-0">
-                  <input type="hidden" name="evaluation_window_action" value="open" />
+                  <input type="hidden" name="evaluation_window_action" value="<?php echo $isEvaluationWindowOpen ? "close" : "open"; ?>" />
                   <button
                     id="openEvalBtn"
                     type="submit"
                     class="<?php echo $isEvaluationWindowOpen
-                      ? "bg-gray-400 cursor-not-allowed opacity-80"
+                      ? "bg-red-500 hover:bg-red-600"
                       : "bg-[#0d8ddb] hover:bg-[#0b7cc4]"; ?> text-white text-sm font-semibold px-4 py-2 rounded shadow-sm transition"
-                    <?php echo $isEvaluationWindowOpen ? "disabled" : ""; ?>
                   >
-                    <?php echo $isEvaluationWindowOpen ? "Evaluation is open" : "Open for evaluation"; ?>
+                    <?php echo $isEvaluationWindowOpen ? "Close Evaluation" : "Open for Evaluation"; ?>
                   </button>
                 </form>
               </div>
@@ -711,9 +750,9 @@ if (!empty($evaluationWindowActionParams)) {
                       aria-label="Select academic year"
                       onchange="this.form.submit()"
                     >
-                      <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All Academic Years</option>
+                      <option value="" <?php echo $rawSelectedSchoolYear !== null && $activeSchoolYearFilter === "" ? "selected" : ""; ?>>All Academic Years</option>
                       <?php foreach ($schoolYearOptions as $option): ?>
-                        <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                        <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSchoolYearFilter === $option ? "selected" : ""; ?>>
                           <?php echo htmlspecialchars($option); ?>
                         </option>
                       <?php endforeach; ?>
@@ -728,19 +767,19 @@ if (!empty($evaluationWindowActionParams)) {
                       aria-label="Select semester"
                       onchange="this.form.submit()"
                     >
-                      <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                      <option value="" <?php echo $rawSelectedSemester !== null && $activeSemesterFilter === "" ? "selected" : ""; ?>>All Semesters</option>
                       <?php foreach ($semesterOptions as $option): ?>
-                        <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                        <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSemesterFilter === $option ? "selected" : ""; ?>>
                           <?php echo htmlspecialchars($option); ?>
                         </option>
                       <?php endforeach; ?>
                     </select>
-                    <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+                    <?php if ($rawSelectedSchoolYear !== null || $rawSelectedSemester !== null): ?>
                       <a
                         href="department-evaluation-list.php"
                         class="inline-flex items-center mt-2 rounded border border-[#e5e7eb] bg-white px-3 py-1.5 text-xs font-semibold text-[#052c6a]"
                       >
-                        Clear
+                        Reset to Current
                       </a>
                     <?php endif; ?>
                   </div>
@@ -761,6 +800,8 @@ if (!empty($evaluationWindowActionParams)) {
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#e5e7eb]">Course</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#e5e7eb]">Year Level</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#e5e7eb]">Assigned Office</th>
+                      <th class="text-left font-semibold px-3 py-2 border-b border-[#e5e7eb]">Academic Year</th>
+                      <th class="text-left font-semibold px-3 py-2 border-b border-[#e5e7eb]">Semester</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#e5e7eb]">Status</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#e5e7eb]">Action</th>
                     </tr>
@@ -794,7 +835,7 @@ if (!empty($evaluationWindowActionParams)) {
         }
       });
 
-      // Populate student assistants list; hide status/action until opened
+      // Populate student assistants list and keep term-specific evaluation state.
       document.addEventListener("DOMContentLoaded", () => {
         const assistantData = <?php echo json_encode($assistantEvaluationRecords, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 
@@ -816,7 +857,9 @@ if (!empty($evaluationWindowActionParams)) {
               !searchTerm ||
               item.name.toLowerCase().includes(searchTerm) ||
               item.course.toLowerCase().includes(searchTerm) ||
-              item.office.toLowerCase().includes(searchTerm);
+              item.office.toLowerCase().includes(searchTerm) ||
+              item.academicYear.toLowerCase().includes(searchTerm) ||
+              item.semester.toLowerCase().includes(searchTerm);
             const matchesYear = yearSelection === "all" || item.academicYear === yearSelection;
             const matchesSem = semSelection === "all" || item.semester === semSelection;
             return matchesSearch && matchesYear && matchesSem;
@@ -825,8 +868,8 @@ if (!empty($evaluationWindowActionParams)) {
           if (filtered.length === 0) {
             tbody.innerHTML = `
               <tr>
-                <td colspan="7" class="px-3 py-6 text-center text-gray-500 italic">
-                  No student assistants with assigned office found.
+                <td colspan="9" class="px-3 py-6 text-center text-gray-500 italic">
+                  No student assistants found.
                 </td>
               </tr>
             `;
@@ -837,7 +880,7 @@ if (!empty($evaluationWindowActionParams)) {
             const row = document.createElement("tr");
 
             const timestamp =
-              evalOpen && item.status === "evaluated" && item.evaluatedAt
+              item.status === "evaluated" && item.evaluatedAt
                 ? new Date(item.evaluatedAt).toLocaleString()
                 : "--";
 
@@ -846,9 +889,10 @@ if (!empty($evaluationWindowActionParams)) {
                 ? "bg-green-100 text-green-800"
                 : "bg-yellow-100 text-yellow-800";
 
-            const disabled = !evalOpen;
-            const actionLabel = item.status === "evaluated" ? "View Evaluation" : "Open Evaluation";
-            const actionHref = `department-evaluation-indi.php?application_id=${encodeURIComponent(String(item.applicantId || ""))}#evaluation-details`;
+            const actionHref =
+              item.status === "evaluated"
+                ? `department-evaluation-indi.php?evaluation_id=${encodeURIComponent(String(item.evaluationId || ""))}#evaluation-details`
+                : "";
 
             row.innerHTML = `
               <td class="px-3 py-2 text-[#052c6a]">${timestamp}</td>
@@ -856,29 +900,26 @@ if (!empty($evaluationWindowActionParams)) {
               <td class="px-3 py-2 text-[#052c6a]">${item.course}</td>
               <td class="px-3 py-2 text-[#052c6a]">${item.yearLevel}</td>
               <td class="px-3 py-2 text-[#052c6a]">${item.office}</td>
+              <td class="px-3 py-2 text-[#052c6a]">${item.academicYear || "N/A"}</td>
+              <td class="px-3 py-2 text-[#052c6a]">${item.semester || "N/A"}</td>
               <td class="px-3 py-2">
-                ${
-                  evalOpen
-                    ? `<span class="px-2 py-1 rounded-full text-[11px] ${statusClasses}">
-                        ${item.status === "evaluated" ? "Evaluated" : "Not yet evaluated"}
-                      </span>`
-                    : `<span class="text-[11px] text-red-600 italic">Not yet opened</span>`
-                }
+                <span class="px-2 py-1 rounded-full text-[11px] ${statusClasses}">
+                  ${item.status === "evaluated" ? "Evaluated" : "Not yet evaluated"}
+                </span>
               </td>
               <td class="px-3 py-2">
                 ${
-                  evalOpen
+                  item.status === "evaluated"
                     ? `<a
-                        href="${disabled ? "#" : actionHref}"
-                        class="inline-flex items-center gap-1 px-3 py-1.5 rounded text-white text-[11px] ${
-                          disabled ? "bg-gray-400 cursor-not-allowed opacity-70" : "bg-[#0d8ddb] hover:bg-[#0b7cc4]"
-                        }"
-                        ${disabled ? "aria-disabled='true' tabindex='-1'" : ""}
+                        href="${actionHref}"
+                        class="inline-flex items-center gap-1 px-3 py-1.5 rounded bg-[#0d8ddb] text-white text-[11px] hover:bg-[#0b7cc4]"
                       >
                         <i class="fas fa-eye"></i>
-                        ${actionLabel}
+                        View Evaluation
                       </a>`
-                    : `<span class="text-[11px] text-red-600 italic">Not yet opened</span>`
+                    : evalOpen
+                      ? `<span class="inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700">Waiting for Head</span>`
+                      : `<span class="inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">Evaluation Closed</span>`
                 }
               </td>
             `;

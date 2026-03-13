@@ -1,12 +1,13 @@
 <?php
-session_start();
-if (empty($_SESSION["head_username"])) {
-  header("Location: headLogin.php");
-  exit;
-}
+require_once __DIR__ . "/head-auth.php";
+headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
+if (trim((string)($_GET["tab"] ?? "")) === "my-sas") {
+  header("Location: my-sas.php");
+  exit;
+}
 require_once "../db.php";
 date_default_timezone_set("Asia/Manila");
 
@@ -77,6 +78,11 @@ function headDashboardScholarKey(array $row): string
   }
 
   return "name-" . sha1($fullName . "|" . $programYear . "|" . $semester . "|" . $academicYear . "|" . $assignedOffice);
+}
+
+function headDashboardEvaluationKey(int $applicationId, string $schoolYear, string $semester): string
+{
+  return strtolower(trim((string)$applicationId)) . "|" . strtolower(trim($schoolYear)) . "|" . strtolower(trim($semester));
 }
 
 if (($conn ?? null) instanceof mysqli) {
@@ -195,6 +201,8 @@ if ($headOffice === "") {
             "sort_timestamp" => $submittedAtRaw !== "" ? (int)strtotime($submittedAtRaw) : 0,
             "name" => trim((string)($scholarRow["full_name"] ?? "")),
             "program_course" => trim((string)($scholarRow["program_year"] ?? "")),
+            "semester" => trim((string)($scholarRow["semester"] ?? "")),
+            "academic_year" => trim((string)($scholarRow["academic_year"] ?? "")),
             "status_text" => headDashboardDisplayStatusLabel((string)($scholarRow["status"] ?? "official_scholar")),
             "can_evaluate" => true,
             "has_evaluation" => false,
@@ -232,23 +240,52 @@ if ($headOffice === "") {
   }
 
   if ($hasHeadEvaluationTable && $hasScholarTable) {
+    $evaluatedRecordKeys = [];
+    $statusQuery = "SELECT
+        application_id,
+        TRIM(COALESCE(school_year, '')) AS school_year,
+        TRIM(COALESCE(semester, '')) AS semester
+      FROM department_head_evaluations
+      WHERE head_username = ?
+        AND application_id <> 0
+        AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?";
+
+    if ($statusStmt = $conn->prepare($statusQuery)) {
+      $statusStmt->bind_param("ss", $headUsername, $headOfficeKey);
+      if ($statusStmt->execute()) {
+        $statusResult = $statusStmt->get_result();
+        while ($statusRow = $statusResult->fetch_assoc()) {
+          $applicationId = (int)($statusRow["application_id"] ?? 0);
+          if ($applicationId === 0) {
+            continue;
+          }
+          $recordKey = headDashboardEvaluationKey(
+            $applicationId,
+            (string)($statusRow["school_year"] ?? ""),
+            (string)($statusRow["semester"] ?? "")
+          );
+          $evaluatedRecordKeys[$recordKey] = true;
+        }
+        if ($statusResult instanceof mysqli_result) {
+          $statusResult->free();
+        }
+      }
+      $statusStmt->close();
+    }
+
     $evaluatedQuery = "SELECT
-        CASE
-          WHEN dhe.application_id < 0 THEN dhe.application_id
-          ELSE 0 - isr.id
-        END AS reference_id,
+        dhe.id AS evaluation_id,
+        0 - ABS(dhe.application_id) AS reference_id,
         COALESCE(NULLIF(TRIM(dhe.applicant_name), ''), isr.full_name) AS applicant_name,
         COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course,
         dhe.evaluation_date,
         dhe.updated_at
       FROM department_head_evaluations dhe
       INNER JOIN institutional_scholar_records isr
-        ON (
-          (dhe.application_id > 0 AND COALESCE(isr.source_application_id, 0) = dhe.application_id)
-          OR
-          (dhe.application_id < 0 AND isr.id = (0 - dhe.application_id))
-        )
+        ON isr.id = ABS(dhe.application_id)
       WHERE dhe.head_username = ?
+        AND dhe.application_id <> 0
+        AND LOWER(TRIM(COALESCE(dhe.assigned_office, ''))) = ?
         AND (
           LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
           OR (
@@ -256,8 +293,11 @@ if ($headOffice === "") {
             AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
           )
         )
-        AND COALESCE(isr.contract_ended, 0) = 0
-        AND LOWER(TRIM(COALESCE(isr.assigned_office, ''))) = ?
+        AND (
+          COALESCE(isr.contract_ended, 0) = 0
+          OR TRIM(COALESCE(isr.academic_year, '')) <> TRIM(COALESCE(dhe.school_year, ''))
+          OR TRIM(COALESCE(isr.semester, '')) <> TRIM(COALESCE(dhe.semester, ''))
+        )
       ORDER BY
         dhe.updated_at DESC,
         CASE
@@ -272,10 +312,10 @@ if ($headOffice === "") {
       $evalStmt->bind_param("ss", $headUsername, $headOfficeKey);
       if ($evalStmt->execute()) {
         $evalResult = $evalStmt->get_result();
-        $evaluatedApplicantMap = [];
         while ($evalRow = $evalResult->fetch_assoc()) {
-          $referenceId = isset($evalRow["reference_id"]) ? (int)$evalRow["reference_id"] : (int)($evalRow["id"] ?? 0);
-          if ($referenceId === 0 || isset($evaluatedApplicantMap[(string)$referenceId])) {
+          $evaluationId = (int)($evalRow["evaluation_id"] ?? 0);
+          $referenceId = (int)($evalRow["reference_id"] ?? 0);
+          if ($evaluationId <= 0 || $referenceId === 0) {
             continue;
           }
           $updatedAtRaw = trim((string)($evalRow["updated_at"] ?? ""));
@@ -286,14 +326,14 @@ if ($headOffice === "") {
           } elseif ($evaluationDateRaw !== "") {
             $displayUpdatedAt = date("Y-m-d", strtotime($evaluationDateRaw));
           }
-          $evaluatedApplicantMap[(string)$referenceId] = [
+          $evaluatedApplicants[] = [
+            "evaluation_id" => $evaluationId,
             "id" => $referenceId,
             "name" => (string)($evalRow["applicant_name"] ?? ""),
             "program_course" => (string)($evalRow["program_course"] ?? ""),
             "updated_at" => $displayUpdatedAt,
           ];
         }
-        $evaluatedApplicants = array_values($evaluatedApplicantMap);
         $evalResult->free();
       } else {
         $evaluationLoadError = "Unable to load evaluation entries.";
@@ -304,23 +344,17 @@ if ($headOffice === "") {
     }
   }
 
-  if (!empty($approvedApplicants) && !empty($evaluatedApplicants)) {
-    $evaluatedReferenceIds = [];
-    foreach ($evaluatedApplicants as $evaluatedRow) {
-      $evaluatedId = (int)($evaluatedRow["id"] ?? 0);
-      if ($evaluatedId !== 0) {
-        $evaluatedReferenceIds[(string)$evaluatedId] = true;
-      }
-    }
-
-    if (!empty($evaluatedReferenceIds)) {
+  if (!empty($approvedApplicants) && !empty($evaluatedRecordKeys)) {
       foreach ($approvedApplicants as $approvedIndex => $approvedApplicant) {
-        $referenceId = (int)($approvedApplicant["id"] ?? 0);
-        if ($referenceId !== 0 && isset($evaluatedReferenceIds[(string)$referenceId])) {
+        $recordKey = headDashboardEvaluationKey(
+          (int)($approvedApplicant["id"] ?? 0),
+          (string)($approvedApplicant["academic_year"] ?? ""),
+          (string)($approvedApplicant["semester"] ?? "")
+        );
+        if (isset($evaluatedRecordKeys[$recordKey])) {
           $approvedApplicants[$approvedIndex]["has_evaluation"] = true;
         }
       }
-    }
   }
 }
 
@@ -350,6 +384,7 @@ if ($requestedTab === "my-sas") {
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>Head of Office Dashboard</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
@@ -520,7 +555,7 @@ if ($requestedTab === "my-sas") {
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              data-target-section="mySAsSection"
+              onclick="window.location.href='my-sas.php'"
             >
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
@@ -822,7 +857,7 @@ if ($requestedTab === "my-sas") {
                         <button
                           class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] font-semibold text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
                           type="button"
-                          onclick="window.location.href='department-evaluation-view.php?application_id=<?= urlencode((string)($applicant['id'] ?? 0)) ?>'"
+                          onclick="window.location.href='department-evaluation-view.php?evaluation_id=<?= urlencode((string)($applicant['evaluation_id'] ?? 0)) ?>'"
                         >
                           View Evaluation
                         </button>

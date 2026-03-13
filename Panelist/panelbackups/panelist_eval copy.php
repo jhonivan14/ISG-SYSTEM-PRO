@@ -1,4 +1,7 @@
-﻿<!DOCTYPE html>
+<?php
+require_once dirname(__DIR__) . "/panelist-auth.php";
+panelistRequireLogin();
+?><!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
@@ -187,3 +190,6 @@
     </div>
 </body>
 </html>
+<?php
+?>
+

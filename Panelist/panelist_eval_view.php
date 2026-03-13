@@ -1,24 +1,26 @@
 ﻿<?php
-session_start();
-if (empty($_SESSION["panelist_username"])) {
-    header("Location: panelLogin.php");
-    exit;
+require_once __DIR__ . "/panelist-auth.php";
+require_once __DIR__ . "/../Admin/includes/admin-auth.php";
+$isAdminPreviewRequested = trim((string)($_GET["admin_preview"] ?? "")) === "1";
+$isAdminPreview = $isAdminPreviewRequested && adminIsAuthenticated();
+if (!$isAdminPreview) {
+    panelistRequireLogin();
 }
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 require_once __DIR__ . '/../db.php';
 
-$panelistUsername = trim((string)($_SESSION["panelist_username"] ?? ""));
-$panelistName = trim((string)($_SESSION["panelist_name"] ?? ""));
+$panelistUsername = $isAdminPreview ? "" : trim((string)($_SESSION["panelist_username"] ?? ""));
+$panelistName = $isAdminPreview ? "Admin Preview" : trim((string)($_SESSION["panelist_name"] ?? ""));
 if ($panelistName === "") {
-    $panelistName = $panelistUsername !== "" ? $panelistUsername : "Panelist";
+    $panelistName = $panelistUsername !== "" ? $panelistUsername : ($isAdminPreview ? "Admin Preview" : "Panelist");
 }
 
 $applicantId = (int)($_GET["applicant_id"] ?? 0);
 $loadError = "";
-$evaluation = null;
-$itemsByCriterion = [];
+$evaluations = [];
+$itemsByEvaluationId = [];
 
 $criteria = [
     1 => "Academic Performance",
@@ -48,63 +50,99 @@ $sections = [
     "C. Work Behavior and Personal Qualities" => [9, 10, 11, 12],
 ];
 
-if ($panelistUsername === "") {
+if (!$isAdminPreview && $panelistUsername === "") {
     $loadError = "Panelist account not found in session.";
 } elseif ($applicantId <= 0) {
     $loadError = "Applicant not found.";
 } else {
-    $assignStmt = $conn->prepare(
-        "SELECT 1 FROM panelist_queue WHERE application_id = ? AND panelist_username = ? LIMIT 1"
-    );
-    if ($assignStmt) {
-        $assignStmt->bind_param("is", $applicantId, $panelistUsername);
-        if ($assignStmt->execute()) {
-            $assignStmt->store_result();
-            if ($assignStmt->num_rows === 0) {
-                $loadError = "Applicant is not assigned to this panelist.";
+    if (!$isAdminPreview) {
+        $assignStmt = $conn->prepare(
+            "SELECT 1 FROM panelist_queue WHERE application_id = ? AND panelist_username = ? LIMIT 1"
+        );
+        if ($assignStmt) {
+            $assignStmt->bind_param("is", $applicantId, $panelistUsername);
+            if ($assignStmt->execute()) {
+                $assignStmt->store_result();
+                if ($assignStmt->num_rows === 0) {
+                    $loadError = "Applicant is not assigned to this panelist.";
+                }
             }
+            $assignStmt->close();
         }
-        $assignStmt->close();
     }
 
     if ($loadError === "") {
-        $stmt = $conn->prepare(
-            "SELECT id, applicant_name, interview_date, interviewer_name, total_points, overall_assessment,
+        $evaluationSql = $isAdminPreview
+            ? "SELECT ie.id, ie.applicant_name, ie.interview_date, ie.interviewer_name, ie.total_points, ie.overall_assessment,
+                    ie.strengths, ie.areas_for_improvement, ie.signature_data
+               FROM interview_evaluations ie
+               INNER JOIN (
+                   SELECT interviewer_name, MAX(id) AS latest_id
+                   FROM interview_evaluations
+                   WHERE applicant_id = ?
+                   GROUP BY interviewer_name
+               ) latest ON latest.latest_id = ie.id
+               WHERE ie.applicant_id = ?
+               ORDER BY ie.interviewer_name ASC, ie.id DESC"
+            : "SELECT id, applicant_name, interview_date, interviewer_name, total_points, overall_assessment,
                     strengths, areas_for_improvement, signature_data
-             FROM interview_evaluations
-             WHERE applicant_id = ? AND interviewer_name = ?
-             ORDER BY id DESC
-             LIMIT 1"
-        );
+               FROM interview_evaluations
+               WHERE applicant_id = ? AND interviewer_name = ?
+               ORDER BY id DESC
+               LIMIT 1";
+        $stmt = $conn->prepare($evaluationSql);
         if ($stmt) {
-            $stmt->bind_param("is", $applicantId, $panelistName);
+            if ($isAdminPreview) {
+                $stmt->bind_param("ii", $applicantId, $applicantId);
+            } else {
+                $stmt->bind_param("is", $applicantId, $panelistName);
+            }
             if ($stmt->execute()) {
                 $result = $stmt->get_result();
-                if ($row = $result->fetch_assoc()) {
-                    $evaluation = $row;
+                while ($row = $result->fetch_assoc()) {
+                    $evaluations[] = $row;
                 }
                 $result->free();
             }
             $stmt->close();
         }
 
-        if (!$evaluation) {
+        if (empty($evaluations)) {
             $loadError = "No evaluation found yet.";
         } else {
-            $itemsStmt = $conn->prepare(
-                "SELECT criterion_id, rating, comment
-                 FROM interview_evaluation_items
-                 WHERE evaluation_id = ?
-                 ORDER BY criterion_id ASC"
-            );
+            $evaluationIds = [];
+            foreach ($evaluations as $evaluationRow) {
+                $evaluationId = (int)($evaluationRow["id"] ?? 0);
+                if ($evaluationId <= 0) {
+                    continue;
+                }
+
+                $evaluationIds[] = $evaluationId;
+                $itemsByEvaluationId[$evaluationId] = [];
+            }
+
+            if (!empty($evaluationIds)) {
+                $itemPlaceholders = implode(", ", array_fill(0, count($evaluationIds), "?"));
+                $itemTypes = str_repeat("i", count($evaluationIds));
+                $itemsStmt = $conn->prepare(
+                    "SELECT evaluation_id, criterion_id, rating, comment
+                     FROM interview_evaluation_items
+                     WHERE evaluation_id IN ({$itemPlaceholders})
+                     ORDER BY evaluation_id ASC, criterion_id ASC"
+                );
+            } else {
+                $itemsStmt = false;
+            }
+
             if ($itemsStmt) {
-                $itemsStmt->bind_param("i", $evaluation["id"]);
+                $itemsStmt->bind_param($itemTypes, ...$evaluationIds);
                 if ($itemsStmt->execute()) {
                     $itemsResult = $itemsStmt->get_result();
                     while ($item = $itemsResult->fetch_assoc()) {
+                        $evaluationId = (int)($item["evaluation_id"] ?? 0);
                         $criterionId = (int)($item["criterion_id"] ?? 0);
-                        if ($criterionId > 0) {
-                            $itemsByCriterion[$criterionId] = [
+                        if ($evaluationId > 0 && $criterionId > 0) {
+                            $itemsByEvaluationId[$evaluationId][$criterionId] = [
                                 "rating" => (int)($item["rating"] ?? 0),
                                 "comment" => (string)($item["comment"] ?? ""),
                             ];
@@ -124,6 +162,7 @@ if ($panelistUsername === "") {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Interview Evaluation Sheet</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
         href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
@@ -179,7 +218,7 @@ if ($panelistUsername === "") {
         }
         @page {
             size: 8.5in 13in portrait;
-            margin: 0.25in 0.49in 0in 0.49in;
+            margin: 0.18in 0.32in 0.1in 0.32in;
         }
         body {
             margin: 0;
@@ -201,11 +240,48 @@ if ($panelistUsername === "") {
             border: 1px solid #0f172a;
             box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
             padding: 12px 16px 14px;
+            break-inside: avoid-page;
+            page-break-inside: avoid;
+        }
+        .paper + .paper {
+            margin-top: 18px;
         }
         .no-print {
             display: flex;
             justify-content: flex-end;
             margin-bottom: 8px;
+        }
+        .compiled-meta {
+            margin-bottom: 10px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #334155;
+        }
+        .compiled-meta span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: #e0f2fe;
+            color: #0f172a;
+        }
+        body.admin-preview .sidebar,
+        body.admin-preview .topbar {
+            display: none !important;
+        }
+        body.admin-preview .main-content {
+            margin-left: 0 !important;
+            padding-top: 0 !important;
+            min-height: auto !important;
+        }
+        body.admin-preview .page {
+            padding: 12px;
+            min-height: auto;
+        }
+        body.admin-preview .paper {
+            max-width: none;
+            margin: 0;
         }
         .btn {
             border: 1px solid #0f172a;
@@ -412,8 +488,10 @@ if ($panelistUsername === "") {
             page-break-inside: avoid;
         }
         .sheet-footer {
-            margin-top: 10px;
+            margin-top: 4px;
             width: 100%;
+            display: flex;
+            align-items: flex-start;
             text-align: left;
             line-height: 0;
             overflow: hidden;
@@ -425,7 +503,7 @@ if ($panelistUsername === "") {
             height: auto;
             display: block;
             object-fit: contain;
-            margin: 0 0 0 calc(-1 * var(--footer-left-offset));
+            margin: -1px 0 0 calc(-1 * var(--footer-left-offset));
         }
         .error {
             max-width: 720px;
@@ -441,8 +519,29 @@ if ($panelistUsername === "") {
         @media print {
             html,
             body {
-                width: 8.5in;
-                height: 13in;
+                width: auto !important;
+                height: auto !important;
+                min-height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                overflow: visible !important;
+            }
+            body {
+                background: #fff !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .app-shell,
+            .main-content,
+            .page {
+                background: #fff !important;
+                min-height: 0 !important;
+                height: auto !important;
+                overflow: visible !important;
+            }
+            .app-shell,
+            .main-content {
+                display: block !important;
             }
             .sidebar,
             .topbar {
@@ -452,28 +551,103 @@ if ($panelistUsername === "") {
                 margin-left: 0 !important;
                 padding-top: 0 !important;
             }
-            body {
-                background: #fff;
-            }
             .page {
                 padding: 0;
             }
             .paper {
+                background: #fff !important;
                 border: none;
                 box-shadow: none;
-                padding: 0;
+                padding: 0 0.03in;
                 margin: 0 auto;
                 width: 100%;
                 max-width: none;
                 transform: none;
+                break-inside: avoid-page;
+                page-break-inside: avoid;
+                break-after: page;
+                page-break-after: always;
+            }
+            .paper + .paper {
+                margin-top: 0;
+                break-before: page;
+                page-break-before: always;
+            }
+            .paper:last-child {
+                break-after: auto;
+                page-break-after: auto;
             }
             .no-print {
                 display: none !important;
             }
+            .header {
+                grid-template-columns: 100px 1fr 100px;
+                min-height: 62px;
+                padding: 2px 0 4px;
+            }
+            .logo-group img {
+                width: 48px;
+                height: 48px;
+            }
+            .school-name,
+            .sheet-name {
+                font-size: 10.5pt;
+            }
+            .school-sub,
+            .sheet-sub,
+            .info-table,
+            .assessment,
+            .note-line {
+                font-size: 8pt;
+            }
+            .office,
+            .direction,
+            .scale-table,
+            .criteria-table,
+            .signature-box {
+                font-size: 7.6pt;
+            }
+            .sheet-title {
+                margin: 6px 0 4px;
+            }
+            .info-table {
+                margin-bottom: 2px;
+            }
+            .info-table td {
+                padding: 1px 3px;
+            }
+            .info-table .line {
+                height: 12px;
+            }
+            .direction {
+                margin: 2px 0 3px;
+            }
+            .scale-table th,
+            .scale-table td,
+            .criteria-table th,
+            .criteria-table td {
+                padding: 2px 3px;
+            }
+            .assessment {
+                margin-top: 4px;
+            }
+            .note-line {
+                margin-top: 3px;
+            }
+            .signature-block {
+                margin-top: 6px;
+            }
+            .signature-img {
+                max-height: 36px;
+            }
+            .sheet-footer {
+                margin-top: 2px;
+                --footer-left-offset: 22px;
+            }
         }
     </style>
 </head>
-<body>
+<body class="<?php echo $isAdminPreview ? 'admin-preview' : ''; ?>">
     <div class="app-shell">
         <aside
             id="sidebar"
@@ -568,173 +742,189 @@ if ($panelistUsername === "") {
     <div class="error"><?php echo htmlspecialchars($loadError); ?></div>
 <?php else: ?>
     <div class="page">
-        <div class="paper">
-            <div class="no-print">
-                <button class="btn" type="button" onclick="window.print()">Print</button>
-            </div>
+        <?php foreach ($evaluations as $evaluationIndex => $evaluation): ?>
+            <?php
+                $currentEvaluationId = (int)($evaluation["id"] ?? 0);
+                $itemsByCriterion = $itemsByEvaluationId[$currentEvaluationId] ?? [];
+                $totalEvaluations = count($evaluations);
+            ?>
+            <div class="paper">
+                <?php if (!$isAdminPreview): ?>
+                    <div class="no-print">
+                        <button class="btn" type="button" onclick="window.print()">Print</button>
+                    </div>
+                <?php elseif ($totalEvaluations > 1): ?>
+                    <div class="compiled-meta no-print">
+                        <span>
+                            <i class="fas fa-layer-group"></i>
+                            Evaluation <?php echo htmlspecialchars((string)($evaluationIndex + 1)); ?> of <?php echo htmlspecialchars((string)$totalEvaluations); ?>
+                        </span>
+                    </div>
+                <?php endif; ?>
 
-            <div class="header">
-                <div class="logo-group logo-left">
-                    <img src="../img/SMCCNEWLOGO.png" alt="SMCC Logo" />
-                    <img src="../img/admission-logo.jpg" alt="Admission Logo" />
+                <div class="header">
+                    <div class="logo-group logo-left">
+                        <img src="../img/SMCCNEWLOGO.png" alt="SMCC Logo" />
+                        <img src="../img/admission-logo.jpg" alt="Admission Logo" />
+                    </div>
+                    <div class="header-text">
+                        <div class="school-name">SAINT MICHAEL COLLEGE OF CARAGA</div>
+                        <div class="school-sub">Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines</div>
+                        <div class="school-sub">Website: www.smccnasipit.edu.ph | Tel. Nos. 085 300-2932</div>
+                        <div class="office">Office of the Admission &amp; Scholarship</div>
+                    </div>
+                    <div class="logo-group logo-right">
+                        <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC Logo" />
+                    </div>
                 </div>
-                <div class="header-text">
-                    <div class="school-name">SAINT MICHAEL COLLEGE OF CARAGA</div>
-                    <div class="school-sub">Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines</div>
-                    <div class="school-sub">Website: www.smccnasipit.edu.ph | Tel. Nos. 085 300-2932</div>
-                    <div class="office">Office of the Admission &amp; Scholarship</div>
+
+                <div class="sheet-title">
+                    <div class="sheet-name">INTERVIEW EVALUATION SHEET</div>
+                    <div class="sheet-sub">Student Assistant Scholarship Program</div>
                 </div>
-                <div class="logo-group logo-right">
-                    <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC Logo" />
+
+                <table class="info-table">
+                    <tr>
+                        <td class="label">Applicant&apos;s Name</td>
+                        <td class="line"><?php echo htmlspecialchars((string)($evaluation["applicant_name"] ?? "")); ?></td>
+                    </tr>
+                    <tr>
+                        <td class="label">Date of Interview</td>
+                        <td class="line"><?php echo htmlspecialchars((string)($evaluation["interview_date"] ?? "")); ?></td>
+                    </tr>
+                    <tr>
+                        <td class="label">Interviewer&apos;s Name</td>
+                        <td class="line"><?php echo htmlspecialchars((string)($evaluation["interviewer_name"] ?? "")); ?></td>
+                    </tr>
+                </table>
+
+                <div class="direction">
+                    <strong>Direction:</strong> Please evaluate the applicant based on the criteria below. Use the rating scale provided.
                 </div>
-            </div>
 
-            <div class="sheet-title">
-                <div class="sheet-name">INTERVIEW EVALUATION SHEET</div>
-                <div class="sheet-sub">Student Assistant Scholarship Program</div>
-            </div>
-
-            <table class="info-table">
-                <tr>
-                    <td class="label">Applicant&apos;s Name</td>
-                    <td class="line"><?php echo htmlspecialchars((string)($evaluation["applicant_name"] ?? "")); ?></td>
-                </tr>
-                <tr>
-                    <td class="label">Date of Interview</td>
-                    <td class="line"><?php echo htmlspecialchars((string)($evaluation["interview_date"] ?? "")); ?></td>
-                </tr>
-                <tr>
-                    <td class="label">Interviewer&apos;s Name</td>
-                    <td class="line"><?php echo htmlspecialchars((string)($evaluation["interviewer_name"] ?? "")); ?></td>
-                </tr>
-            </table>
-
-            <div class="direction">
-                <strong>Direction:</strong> Please evaluate the applicant based on the criteria below. Use the rating scale provided.
-            </div>
-
-            <table class="scale-table">
-                <thead>
-                    <tr>
-                        <th style="width: 60px;">Rating</th>
-                        <th style="width: 160px;">Description</th>
-                        <th>Interpretation</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>5</td>
-                        <td>Excellent</td>
-                        <td>Outstanding performance; far exceeds expectations.</td>
-                    </tr>
-                    <tr>
-                        <td>4</td>
-                        <td>Very Good</td>
-                        <td>Above average; exceeds expectations.</td>
-                    </tr>
-                    <tr>
-                        <td>3</td>
-                        <td>Good</td>
-                        <td>Meets expectations satisfactorily.</td>
-                    </tr>
-                    <tr>
-                        <td>2</td>
-                        <td>Fair</td>
-                        <td>Below expectations; needs improvement.</td>
-                    </tr>
-                    <tr>
-                        <td>1</td>
-                        <td>Poor</td>
-                        <td>Far below expectations.</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <table class="criteria-table" style="margin-top: 8px;">
-                <thead>
-                    <tr>
-                        <th style="width: 36%;">Criteria</th>
-                        <th style="width: 6%;">5</th>
-                        <th style="width: 6%;">4</th>
-                        <th style="width: 6%;">3</th>
-                        <th style="width: 6%;">2</th>
-                        <th style="width: 6%;">1</th>
-                        <th>Interviewer&apos;s Comment(s)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($sections as $sectionTitle => $sectionCriteria): ?>
-                        <tr class="section-row">
-                            <td colspan="7"><?php echo htmlspecialchars($sectionTitle); ?></td>
+                <table class="scale-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 60px;">Rating</th>
+                            <th style="width: 160px;">Description</th>
+                            <th>Interpretation</th>
                         </tr>
-                        <?php foreach ($sectionCriteria as $criterionId): ?>
-                            <?php
-                                $item = $itemsByCriterion[$criterionId] ?? ["rating" => 0, "comment" => ""];
-                                $rating = (int)$item["rating"];
-                                $criterionLabel = $criterionId . ". " . ($criteria[$criterionId] ?? ("Criterion " . $criterionId));
-                            ?>
-                            <tr>
-                                <td><?php echo htmlspecialchars($criterionLabel); ?></td>
-                                <td><?php echo $rating === 5 ? "&#10003;" : ""; ?></td>
-                                <td><?php echo $rating === 4 ? "&#10003;" : ""; ?></td>
-                                <td><?php echo $rating === 3 ? "&#10003;" : ""; ?></td>
-                                <td><?php echo $rating === 2 ? "&#10003;" : ""; ?></td>
-                                <td><?php echo $rating === 1 ? "&#10003;" : ""; ?></td>
-                                <td class="comment-cell"><?php echo htmlspecialchars((string)$item["comment"]); ?></td>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>5</td>
+                            <td>Excellent</td>
+                            <td>Outstanding performance; far exceeds expectations.</td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>Very Good</td>
+                            <td>Above average; exceeds expectations.</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>Good</td>
+                            <td>Meets expectations satisfactorily.</td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>Fair</td>
+                            <td>Below expectations; needs improvement.</td>
+                        </tr>
+                        <tr>
+                            <td>1</td>
+                            <td>Poor</td>
+                            <td>Far below expectations.</td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <table class="criteria-table" style="margin-top: 8px;">
+                    <thead>
+                        <tr>
+                            <th style="width: 36%;">Criteria</th>
+                            <th style="width: 6%;">5</th>
+                            <th style="width: 6%;">4</th>
+                            <th style="width: 6%;">3</th>
+                            <th style="width: 6%;">2</th>
+                            <th style="width: 6%;">1</th>
+                            <th>Interviewer&apos;s Comment(s)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($sections as $sectionTitle => $sectionCriteria): ?>
+                            <tr class="section-row">
+                                <td colspan="7"><?php echo htmlspecialchars($sectionTitle); ?></td>
                             </tr>
+                            <?php foreach ($sectionCriteria as $criterionId): ?>
+                                <?php
+                                    $item = $itemsByCriterion[$criterionId] ?? ["rating" => 0, "comment" => ""];
+                                    $rating = (int)$item["rating"];
+                                    $criterionLabel = $criterionId . ". " . ($criteria[$criterionId] ?? ("Criterion " . $criterionId));
+                                ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($criterionLabel); ?></td>
+                                    <td><?php echo $rating === 5 ? "&#10003;" : ""; ?></td>
+                                    <td><?php echo $rating === 4 ? "&#10003;" : ""; ?></td>
+                                    <td><?php echo $rating === 3 ? "&#10003;" : ""; ?></td>
+                                    <td><?php echo $rating === 2 ? "&#10003;" : ""; ?></td>
+                                    <td><?php echo $rating === 1 ? "&#10003;" : ""; ?></td>
+                                    <td class="comment-cell"><?php echo htmlspecialchars((string)$item["comment"]); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
                         <?php endforeach; ?>
-                    <?php endforeach; ?>
-                    <tr class="total-row">
-                        <td colspan="6">Total Points Earned</td>
-                        <td><?php echo htmlspecialchars((string)($evaluation["total_points"] ?? "")); ?></td>
-                    </tr>
-                </tbody>
-            </table>
+                        <tr class="total-row">
+                            <td colspan="6">Total Points Earned</td>
+                            <td><?php echo htmlspecialchars((string)($evaluation["total_points"] ?? "")); ?></td>
+                        </tr>
+                    </tbody>
+                </table>
 
-            <div class="assessment">
-                <div class="assessment-title">Overall Assessment</div>
-                <div>General Impression of the Applicant:</div>
-                <div class="assessment-list">
-                    <?php
-                        $assessmentKey = (string)($evaluation["overall_assessment"] ?? "");
-                        $assessmentOptions = [
-                            "highly_recommended" => "Highly Recommended",
-                            "recommended" => "Recommended",
-                            "recommended_with_reservations" => "Recommended with Reservations",
-                            "not_recommended" => "Not Recommended",
-                        ];
-                    ?>
-                    <?php foreach ($assessmentOptions as $key => $label): ?>
-                        <div class="assessment-item">
-                            <span class="check-box"><?php echo $assessmentKey === $key ? "&#10003;" : ""; ?></span>
-                            <span><?php echo htmlspecialchars($label); ?></span>
-                        </div>
-                    <?php endforeach; ?>
+                <div class="assessment">
+                    <div class="assessment-title">Overall Assessment</div>
+                    <div>General Impression of the Applicant:</div>
+                    <div class="assessment-list">
+                        <?php
+                            $assessmentKey = (string)($evaluation["overall_assessment"] ?? "");
+                            $assessmentOptions = [
+                                "highly_recommended" => "Highly Recommended",
+                                "recommended" => "Recommended",
+                                "recommended_with_reservations" => "Recommended with Reservations",
+                                "not_recommended" => "Not Recommended",
+                            ];
+                        ?>
+                        <?php foreach ($assessmentOptions as $key => $label): ?>
+                            <div class="assessment-item">
+                                <span class="check-box"><?php echo $assessmentKey === $key ? "&#10003;" : ""; ?></span>
+                                <span><?php echo htmlspecialchars($label); ?></span>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+
+                <div class="note-line">
+                    <div class="label">Strengths:</div>
+                    <div class="line"><?php echo htmlspecialchars((string)($evaluation["strengths"] ?? "")); ?></div>
+                </div>
+                <div class="note-line">
+                    <div class="label">Areas for Improvement:</div>
+                    <div class="line"><?php echo htmlspecialchars((string)($evaluation["areas_for_improvement"] ?? "")); ?></div>
+                </div>
+
+                <div class="signature-block">
+                    <div class="signature-box">
+                        <?php if (!empty($evaluation["signature_data"])): ?>
+                            <img class="signature-img" src="<?php echo htmlspecialchars((string)$evaluation["signature_data"]); ?>" alt="Signature" />
+                        <?php endif; ?>
+                        <div class="signature-line">Interviewer&apos;s Signature</div>
+                    </div>
+                </div>
+
+                <div class="sheet-footer">
+                    <img src="../img/admissionFooter.png" alt="Admission Footer" />
                 </div>
             </div>
-
-            <div class="note-line">
-                <div class="label">Strengths:</div>
-                <div class="line"><?php echo htmlspecialchars((string)($evaluation["strengths"] ?? "")); ?></div>
-            </div>
-            <div class="note-line">
-                <div class="label">Areas for Improvement:</div>
-                <div class="line"><?php echo htmlspecialchars((string)($evaluation["areas_for_improvement"] ?? "")); ?></div>
-            </div>
-
-            <div class="signature-block">
-                <div class="signature-box">
-                    <?php if (!empty($evaluation["signature_data"])): ?>
-                        <img class="signature-img" src="<?php echo htmlspecialchars((string)$evaluation["signature_data"]); ?>" alt="Signature" />
-                    <?php endif; ?>
-                    <div class="signature-line">Interviewer&apos;s Signature</div>
-                </div>
-            </div>
-
-            <div class="sheet-footer">
-                <img src="../img/admissionFooter.png" alt="Admission Footer" />
-            </div>
-        </div>
+        <?php endforeach; ?>
     </div>
 <?php endif; ?>
         </main>

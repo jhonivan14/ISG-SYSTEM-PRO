@@ -1,7 +1,8 @@
 <?php
 use PHPMailer\PHPMailer\PHPMailer;
 
-session_start();
+require_once __DIR__ . "/includes/admin-auth.php";
+adminRequireLogin();
 require_once "../db.php";
 require_once __DIR__ . "/../vendor/autoload.php";
 

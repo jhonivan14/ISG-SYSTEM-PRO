@@ -1,9 +1,6 @@
 <?php
-session_start();
-if (empty($_SESSION["head_username"])) {
-  header("Location: headLogin.php");
-  exit;
-}
+require_once __DIR__ . "/head-auth.php";
+headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
@@ -23,9 +20,7 @@ $applicationId = isset($_GET["application_id"])
 if ($applicationId <= 0 && isset($_GET["id"])) {
   $applicationId = (int)$_GET["id"];
 }
-$originalApplicationId = $applicationId;
-$isScholarRecord = $applicationId < 0;
-$scholarRecordId = $isScholarRecord ? abs($applicationId) : 0;
+$scholarRecordId = $applicationId !== 0 ? abs($applicationId) : 0;
 
 $loadError = "";
 $applicationProfile = [
@@ -52,6 +47,7 @@ $saveSuccess = "";
 $saveError = "";
 $evaluationDateValue = date("Y-m-d");
 $hasEvaluationTable = false;
+$isEvaluationWindowOpen = false;
 
 function saBuildHeadDisplayName(string $firstName, string $lastName, string $fallback = ""): string
 {
@@ -66,6 +62,77 @@ function saBuildHeadDisplayName(string $firstName, string $lastName, string $fal
   }
   $fullName = trim(implode(" ", $parts));
   return $fullName !== "" ? $fullName : trim($fallback);
+}
+
+function saEnsureDepartmentHeadEvaluationTable(mysqli $conn): bool
+{
+  $createTableSql = "CREATE TABLE IF NOT EXISTS department_head_evaluations (
+    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    application_id INT NOT NULL,
+    applicant_name VARCHAR(255) NOT NULL,
+    semester VARCHAR(50) DEFAULT NULL,
+    school_year VARCHAR(50) DEFAULT NULL,
+    assigned_office VARCHAR(120) DEFAULT NULL,
+    head_username VARCHAR(100) NOT NULL,
+    head_name VARCHAR(150) NOT NULL,
+    evaluation_date DATE NOT NULL,
+    ratings_json LONGTEXT NOT NULL,
+    section_a_total INT NOT NULL DEFAULT 0,
+    section_b_total INT NOT NULL DEFAULT 0,
+    section_c_total INT NOT NULL DEFAULT 0,
+    overall_total INT NOT NULL DEFAULT 0,
+    strengths TEXT DEFAULT NULL,
+    recommendations TEXT DEFAULT NULL,
+    signature_data LONGTEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_application_head_term (application_id, head_username, semester, school_year)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+
+  if ($conn->query($createTableSql) !== true) {
+    return false;
+  }
+
+  $indexColumns = [];
+  $indexResult = $conn->query("SHOW INDEX FROM department_head_evaluations");
+  if ($indexResult instanceof mysqli_result) {
+    while ($indexRow = $indexResult->fetch_assoc()) {
+      $keyName = trim((string)($indexRow["Key_name"] ?? ""));
+      if ($keyName === "") {
+        continue;
+      }
+      $sequence = (int)($indexRow["Seq_in_index"] ?? 0);
+      $columnName = trim((string)($indexRow["Column_name"] ?? ""));
+      if ($sequence > 0 && $columnName !== "") {
+        if (!isset($indexColumns[$keyName])) {
+          $indexColumns[$keyName] = [];
+        }
+        $indexColumns[$keyName][$sequence] = $columnName;
+      }
+    }
+    $indexResult->free();
+  }
+
+  if (isset($indexColumns["uniq_application_head"])) {
+    ksort($indexColumns["uniq_application_head"]);
+    $legacyColumns = array_values($indexColumns["uniq_application_head"]);
+    if ($legacyColumns === ["application_id", "head_username"]) {
+      if ($conn->query("ALTER TABLE department_head_evaluations DROP INDEX uniq_application_head") !== true) {
+        return false;
+      }
+      unset($indexColumns["uniq_application_head"]);
+    }
+  }
+
+  if (!isset($indexColumns["uniq_application_head_term"])) {
+    $addIndexSql = "ALTER TABLE department_head_evaluations
+      ADD UNIQUE KEY uniq_application_head_term (application_id, head_username, semester, school_year)";
+    if ($conn->query($addIndexSql) !== true) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 if ($headUsername !== "") {
@@ -100,7 +167,7 @@ if ($headUsername !== "") {
   }
 }
 
-function saLoadActiveScholarRecord(mysqli $conn, int $recordId, int $sourceApplicationId, string $officeKey): ?array
+function saLoadActiveScholarRecord(mysqli $conn, int $recordId, string $officeKey): ?array
 {
   $sql = "
     SELECT
@@ -110,11 +177,7 @@ function saLoadActiveScholarRecord(mysqli $conn, int $recordId, int $sourceAppli
       academic_year,
       assigned_office
     FROM institutional_scholar_records
-    WHERE (
-        (? > 0 AND id = ?)
-        OR
-        (? > 0 AND source_application_id = ?)
-      )
+    WHERE id = ?
       AND (
         LOWER(TRIM(COALESCE(category, ''))) = 'student_assistant'
         OR (
@@ -139,7 +202,7 @@ function saLoadActiveScholarRecord(mysqli $conn, int $recordId, int $sourceAppli
     return null;
   }
 
-  $stmt->bind_param("iiiis", $recordId, $recordId, $sourceApplicationId, $sourceApplicationId, $officeKey);
+  $stmt->bind_param("is", $recordId, $officeKey);
   $row = null;
   if ($stmt->execute()) {
     $result = $stmt->get_result();
@@ -169,14 +232,12 @@ if ($applicationId === 0) {
   } else {
     $resolvedScholarRow = saLoadActiveScholarRecord(
       $conn,
-      $isScholarRecord ? $scholarRecordId : 0,
-      $isScholarRecord ? 0 : $applicationId,
+      $scholarRecordId,
       $headOfficeKey
     );
     if (is_array($resolvedScholarRow)) {
       $scholarRecordId = (int)($resolvedScholarRow["id"] ?? 0);
       $applicationId = 0 - $scholarRecordId;
-      $isScholarRecord = true;
       $applicationProfile = [
         "id" => $applicationId,
         "applicant_name" => trim((string)($resolvedScholarRow["full_name"] ?? "")),
@@ -191,77 +252,45 @@ if ($applicationId === 0) {
 }
 
 if ($loadError === "" && ($conn ?? null) instanceof mysqli) {
-  $createTableSql = "CREATE TABLE IF NOT EXISTS department_head_evaluations (
-    id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    application_id INT NOT NULL,
-    applicant_name VARCHAR(255) NOT NULL,
-    semester VARCHAR(50) DEFAULT NULL,
-    school_year VARCHAR(50) DEFAULT NULL,
-    assigned_office VARCHAR(120) DEFAULT NULL,
-    head_username VARCHAR(100) NOT NULL,
-    head_name VARCHAR(150) NOT NULL,
-    evaluation_date DATE NOT NULL,
-    ratings_json LONGTEXT NOT NULL,
-    section_a_total INT NOT NULL DEFAULT 0,
-    section_b_total INT NOT NULL DEFAULT 0,
-    section_c_total INT NOT NULL DEFAULT 0,
-    overall_total INT NOT NULL DEFAULT 0,
-    strengths TEXT DEFAULT NULL,
-    recommendations TEXT DEFAULT NULL,
-    signature_data LONGTEXT NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_application_head (application_id, head_username)
+  $createWindowTableSql = "CREATE TABLE IF NOT EXISTS department_evaluation_window (
+    id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+    is_open TINYINT(1) NOT NULL DEFAULT 0,
+    opened_at DATETIME DEFAULT NULL,
+    opened_by VARCHAR(100) DEFAULT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-  $hasEvaluationTable = $conn->query($createTableSql) === true;
+  if ($conn->query($createWindowTableSql) === true) {
+    $windowStateResult = $conn->query("SELECT is_open FROM department_evaluation_window WHERE id = 1 LIMIT 1");
+    if ($windowStateResult instanceof mysqli_result) {
+      $windowRow = $windowStateResult->fetch_assoc();
+      if (is_array($windowRow)) {
+        $isEvaluationWindowOpen = ((int)($windowRow["is_open"] ?? 0)) === 1;
+      }
+      $windowStateResult->free();
+    }
+  }
+
+  $hasEvaluationTable = saEnsureDepartmentHeadEvaluationTable($conn);
   if (!$hasEvaluationTable) {
     $saveError = "Unable to prepare evaluation storage.";
   }
 }
 
 if ($loadError === "" && $hasEvaluationTable) {
-  if ($originalApplicationId > 0 && $applicationId < 0 && $originalApplicationId !== $applicationId) {
-    $canonicalExistsStmt = $conn->prepare(
-      "SELECT id
-       FROM department_head_evaluations
-       WHERE application_id = ? AND head_username = ?
-       LIMIT 1"
-    );
-    $canonicalExists = false;
-    if ($canonicalExistsStmt) {
-      $canonicalExistsStmt->bind_param("is", $applicationId, $headUsername);
-      if ($canonicalExistsStmt->execute()) {
-        $canonicalExistsResult = $canonicalExistsStmt->get_result();
-        $canonicalExists = $canonicalExistsResult instanceof mysqli_result && $canonicalExistsResult->num_rows > 0;
-        if ($canonicalExistsResult instanceof mysqli_result) {
-          $canonicalExistsResult->free();
-        }
-      }
-      $canonicalExistsStmt->close();
-    }
-
-    if (!$canonicalExists) {
-      $normalizeStmt = $conn->prepare(
-        "UPDATE department_head_evaluations
-         SET application_id = ?
-         WHERE application_id = ? AND head_username = ?"
-      );
-      if ($normalizeStmt) {
-        $normalizeStmt->bind_param("iis", $applicationId, $originalApplicationId, $headUsername);
-        $normalizeStmt->execute();
-        $normalizeStmt->close();
-      }
-    }
-  }
-
   $existingStmt = $conn->prepare(
     "SELECT ratings_json, strengths, recommendations, signature_data, evaluation_date
      FROM department_head_evaluations
-     WHERE application_id = ? AND head_username = ?
+     WHERE application_id = ? AND head_username = ? AND semester = ? AND school_year = ?
      LIMIT 1"
   );
   if ($existingStmt) {
-    $existingStmt->bind_param("is", $applicationId, $headUsername);
+    $existingStmt->bind_param(
+      "isss",
+      $applicationId,
+      $headUsername,
+      $applicationProfile["semester"],
+      $applicationProfile["school_year"]
+    );
     if ($existingStmt->execute()) {
       $existingResult = $existingStmt->get_result();
       $existingRow = $existingResult ? $existingResult->fetch_assoc() : null;
@@ -312,6 +341,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $saveError = $loadError;
   } elseif (!$hasEvaluationTable) {
     $saveError = "Evaluation storage is unavailable.";
+  } elseif (!$isEvaluationWindowOpen) {
+    $saveError = "Evaluation window is currently closed.";
   } elseif (!empty($invalidRatings)) {
     $saveError = "Please complete all ratings before submitting.";
   } elseif ($signatureDataInput === "" || stripos($signatureDataInput, "data:image/") !== 0) {
@@ -415,6 +446,7 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Student Assistants&#39; Evaluation Form</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -528,7 +560,7 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='headDashboard.php?tab=my-sas'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='my-sas.php'">
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
@@ -686,9 +718,15 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                 <?= htmlspecialchars($saveError) ?>
               </div>
             <?php endif; ?>
+            <?php if (!$isEvaluationWindowOpen && $loadError === ""): ?>
+              <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                Evaluation window is closed. Previous entries stay visible, but you cannot submit changes right now.
+              </div>
+            <?php endif; ?>
 
             <form id="evaluation-form" method="POST" class="mt-8 overflow-hidden rounded-lg border border-slate-300">
                 <input type="hidden" name="application_id" value="<?= htmlspecialchars((string)$applicationId) ?>" />
+                <fieldset <?= (!$isEvaluationWindowOpen || $loadError !== "") ? "disabled" : "" ?>>
                 <table class="min-w-full border-collapse text-sm text-slate-700">
                     <thead>
                         <tr class="bg-slate-100">
@@ -1009,16 +1047,17 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
 
             <div class="mt-8 flex flex-col gap-3 border-t border-slate-200 pt-6 md:flex-row md:items-center md:justify-between">
                 <p class="text-xs text-slate-500">
-                  Complete all ratings and signature before saving.
+                  <?= !$isEvaluationWindowOpen ? "Evaluation window is closed for this term." : "Complete all ratings and signature before saving." ?>
                 </p>
                 <button
                   type="submit"
                   class="rounded-full bg-gradient-to-r from-blue-700 to-blue-500 px-6 py-3 text-sm font-semibold uppercase tracking-wide text-white shadow-lg shadow-blue-500/30 transition hover:from-blue-800 hover:to-blue-600 focus:outline-none focus:ring focus:ring-blue-400/40 disabled:cursor-not-allowed disabled:opacity-60"
-                  <?php echo $loadError !== "" ? "disabled" : ""; ?>
+                  <?php echo ($loadError !== "" || !$isEvaluationWindowOpen) ? "disabled" : ""; ?>
                 >
                   Save Evaluation
                 </button>
             </div>
+                </fieldset>
             </form>
         </section>
               </div>

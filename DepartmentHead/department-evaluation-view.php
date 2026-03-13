@@ -1,9 +1,6 @@
 <?php
-session_start();
-if (empty($_SESSION["head_username"])) {
-  header("Location: headLogin.php");
-  exit;
-}
+require_once __DIR__ . "/head-auth.php";
+headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
@@ -16,7 +13,9 @@ if ($headName === "") {
   $headName = "Head of Office";
 }
 $headOffice = trim((string)($_SESSION["head_office"] ?? ""));
+$evaluationId = isset($_GET["evaluation_id"]) ? (int)$_GET["evaluation_id"] : 0;
 $applicationId = isset($_GET["application_id"]) ? (int)$_GET["application_id"] : 0;
+$scholarRecordId = $applicationId !== 0 ? abs($applicationId) : 0;
 
 $loadError = "";
 $evaluation = null;
@@ -46,56 +45,6 @@ $ratingGroups = [
   ],
 ];
 
-function departmentEvaluationLoadScholarRecord(mysqli $conn, int $recordId, int $sourceApplicationId, string $officeKey): ?array
-{
-  $sql = "
-    SELECT
-      id,
-      program_year
-    FROM institutional_scholar_records
-    WHERE (
-        (? > 0 AND id = ?)
-        OR
-        (? > 0 AND source_application_id = ?)
-      )
-      AND (
-        LOWER(TRIM(COALESCE(category, ''))) = 'student_assistant'
-        OR (
-          LOWER(TRIM(COALESCE(category, ''))) = 'official'
-          AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
-        )
-      )
-      AND COALESCE(contract_ended, 0) = 0
-      AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
-    ORDER BY
-      CASE
-        WHEN LOWER(TRIM(COALESCE(category, ''))) = 'official'
-          AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
-        THEN 0
-        ELSE 1
-      END,
-      id DESC
-    LIMIT 1
-  ";
-  $stmt = $conn->prepare($sql);
-  if (!$stmt) {
-    return null;
-  }
-
-  $stmt->bind_param("iiiis", $recordId, $recordId, $sourceApplicationId, $sourceApplicationId, $officeKey);
-  $row = null;
-  if ($stmt->execute()) {
-    $result = $stmt->get_result();
-    $row = $result ? $result->fetch_assoc() : null;
-    if ($result instanceof mysqli_result) {
-      $result->free();
-    }
-  }
-  $stmt->close();
-
-  return is_array($row) ? $row : null;
-}
-
 if ($headOffice === "" && $headUsername !== "") {
   $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
   if ($officeStmt) {
@@ -115,7 +64,7 @@ if ($headOffice === "" && $headUsername !== "") {
   }
 }
 
-if ($applicationId === 0) {
+if ($evaluationId <= 0 && $applicationId === 0) {
   $loadError = "No applicant selected.";
 } elseif ($headOffice === "") {
   $loadError = "No office is assigned to this head account.";
@@ -129,70 +78,91 @@ if ($applicationId === 0) {
   if (!$hasTable) {
     $loadError = "No saved evaluation found yet.";
   } else {
-    $officeKey = strtolower(trim($headOffice));
-    $originalApplicationId = $applicationId;
-    $canonicalApplicationId = $applicationId;
-    $resolvedScholarRow = departmentEvaluationLoadScholarRecord(
-      $conn,
-      $applicationId < 0 ? abs($applicationId) : 0,
-      $applicationId > 0 ? $applicationId : 0,
-      $officeKey
-    );
-    if (is_array($resolvedScholarRow) && (int)($resolvedScholarRow["id"] ?? 0) > 0) {
-      $canonicalApplicationId = 0 - (int)$resolvedScholarRow["id"];
+    $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
+    $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
+    if ($scholarTableResult instanceof mysqli_result) {
+      $scholarTableResult->free();
     }
-
-    if ($canonicalApplicationId < 0) {
-      $stmt = $conn->prepare(
-        "SELECT
-          dhe.applicant_name,
-          dhe.semester,
-          dhe.school_year,
-          dhe.assigned_office,
-          dhe.head_name,
-          dhe.evaluation_date,
-          dhe.ratings_json,
-          dhe.strengths,
-          dhe.recommendations,
-          dhe.signature_data,
-          COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course
-        FROM department_head_evaluations dhe
-        INNER JOIN institutional_scholar_records isr
-          ON (
-            (dhe.application_id < 0 AND isr.id = (0 - dhe.application_id))
-            OR
-            (dhe.application_id > 0 AND isr.source_application_id = dhe.application_id)
-          )
-        WHERE dhe.application_id IN (?, ?)
-          AND dhe.head_username = ?
-          AND (
-            LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
-            OR (
-              LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
-              AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
+    if (!$hasScholarTable) {
+      $loadError = "Scholar records table is not available.";
+    } else {
+      $officeKey = strtolower(trim($headOffice));
+      if ($evaluationId > 0) {
+        $stmt = $conn->prepare(
+          "SELECT
+            dhe.id AS evaluation_id,
+            dhe.applicant_name,
+            dhe.semester,
+            dhe.school_year,
+            dhe.assigned_office,
+            dhe.head_name,
+            dhe.evaluation_date,
+            dhe.ratings_json,
+            dhe.strengths,
+            dhe.recommendations,
+            dhe.signature_data,
+            COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course
+          FROM department_head_evaluations dhe
+          INNER JOIN institutional_scholar_records isr
+            ON isr.id = ABS(dhe.application_id)
+          WHERE dhe.id = ?
+            AND dhe.application_id <> 0
+            AND dhe.head_username = ?
+            AND LOWER(TRIM(COALESCE(dhe.assigned_office, ''))) = ?
+            AND (
+              LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
+              OR (
+                LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
+                AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
+              )
             )
-          )
-          AND COALESCE(isr.contract_ended, 0) = 0
-          AND LOWER(TRIM(COALESCE(isr.assigned_office, ''))) = ?
-        ORDER BY
-          CASE WHEN dhe.application_id = ? THEN 0 ELSE 1 END,
-          CASE
-            WHEN LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
-              AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
-            THEN 0
-            ELSE 1
-          END,
-          dhe.updated_at DESC,
-          isr.id DESC
-        LIMIT 1"
-      );
+          LIMIT 1"
+        );
+      } else {
+        $stmt = $conn->prepare(
+          "SELECT
+            dhe.id AS evaluation_id,
+            dhe.applicant_name,
+            dhe.semester,
+            dhe.school_year,
+            dhe.assigned_office,
+            dhe.head_name,
+            dhe.evaluation_date,
+            dhe.ratings_json,
+            dhe.strengths,
+            dhe.recommendations,
+            dhe.signature_data,
+            COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course
+          FROM department_head_evaluations dhe
+          INNER JOIN institutional_scholar_records isr
+            ON isr.id = ABS(dhe.application_id)
+          WHERE ABS(dhe.application_id) = ?
+            AND dhe.application_id <> 0
+            AND dhe.head_username = ?
+            AND LOWER(TRIM(COALESCE(dhe.assigned_office, ''))) = ?
+            AND (
+              LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
+              OR (
+                LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
+                AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
+              )
+            )
+          ORDER BY dhe.updated_at DESC, dhe.id DESC
+          LIMIT 1"
+        );
+      }
       if ($stmt) {
-        $stmt->bind_param("iissi", $canonicalApplicationId, $originalApplicationId, $headUsername, $officeKey, $canonicalApplicationId);
+        if ($evaluationId > 0) {
+          $stmt->bind_param("iss", $evaluationId, $headUsername, $officeKey);
+        } else {
+          $stmt->bind_param("iss", $scholarRecordId, $headUsername, $officeKey);
+        }
         if ($stmt->execute()) {
           $result = $stmt->get_result();
           $row = $result ? $result->fetch_assoc() : null;
           if (is_array($row)) {
             $evaluation = [
+              "evaluation_id" => (int)($row["evaluation_id"] ?? 0),
               "applicant_name" => trim((string)($row["applicant_name"] ?? "")),
               "program_course" => trim((string)($row["program_course"] ?? "")),
               "semester" => trim((string)($row["semester"] ?? "")),
@@ -214,7 +184,7 @@ if ($applicationId === 0) {
               }
             }
           } else {
-            $loadError = "No saved evaluation found for this applicant.";
+            $loadError = "No saved evaluation found for this student assistant.";
           }
           if ($result instanceof mysqli_result) {
             $result->free();
@@ -224,86 +194,7 @@ if ($applicationId === 0) {
         }
         $stmt->close();
       } else {
-          $loadError = "Unable to prepare evaluation query.";
-        }
-    } else {
-      $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
-      $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
-      if ($scholarTableResult instanceof mysqli_result) {
-        $scholarTableResult->free();
-      }
-      if (!$hasScholarTable) {
-        $loadError = "Scholar records table is not available.";
-      } else {
-        $stmt = $conn->prepare(
-          "SELECT
-            dhe.applicant_name,
-            dhe.semester,
-            dhe.school_year,
-            dhe.assigned_office,
-            dhe.head_name,
-            dhe.evaluation_date,
-            dhe.ratings_json,
-            dhe.strengths,
-            dhe.recommendations,
-            dhe.signature_data,
-            COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course
-          FROM department_head_evaluations dhe
-          INNER JOIN institutional_scholar_records isr ON isr.id = (0 - dhe.application_id)
-          WHERE dhe.application_id = ?
-            AND dhe.head_username = ?
-            AND dhe.application_id < 0
-            AND (
-              LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
-              OR (
-                LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
-                AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
-              )
-            )
-            AND isr.contract_ended = 0
-            AND LOWER(TRIM(COALESCE(isr.assigned_office, ''))) = ?
-          LIMIT 1"
-        );
-        if ($stmt) {
-          $stmt->bind_param("iss", $applicationId, $headUsername, $officeKey);
-          if ($stmt->execute()) {
-            $result = $stmt->get_result();
-            $row = $result ? $result->fetch_assoc() : null;
-            if (is_array($row)) {
-              $evaluation = [
-                "applicant_name" => trim((string)($row["applicant_name"] ?? "")),
-                "program_course" => trim((string)($row["program_course"] ?? "")),
-                "semester" => trim((string)($row["semester"] ?? "")),
-                "school_year" => trim((string)($row["school_year"] ?? "")),
-                "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
-                "head_name" => trim((string)($row["head_name"] ?? "")),
-                "evaluation_date" => trim((string)($row["evaluation_date"] ?? "")),
-                "strengths" => trim((string)($row["strengths"] ?? "")),
-                "recommendations" => trim((string)($row["recommendations"] ?? "")),
-                "signature_data" => trim((string)($row["signature_data"] ?? "")),
-              ];
-              $decoded = json_decode((string)($row["ratings_json"] ?? ""), true);
-              if (is_array($decoded)) {
-                foreach ($decoded as $key => $val) {
-                  $score = (int)$val;
-                  if ($score >= 1 && $score <= 4) {
-                    $ratings[(string)$key] = $score;
-                  }
-                }
-              }
-            } else {
-              $loadError = "No saved evaluation found for this student assistant.";
-            }
-            if ($result instanceof mysqli_result) {
-              $result->free();
-            }
-          } else {
-            $loadError = "Unable to load evaluation details.";
-          }
-          $stmt->close();
-        } else {
-          $loadError = "Unable to prepare evaluation query.";
-        }
+        $loadError = "Unable to prepare evaluation query.";
       }
     }
   }
@@ -333,6 +224,7 @@ $check = static function (int $actual, int $scale): string {
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>View Evaluation</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
@@ -426,7 +318,7 @@ $check = static function (int $actual, int $scale): string {
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='headDashboard.php?tab=my-sas'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='my-sas.php'">
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>

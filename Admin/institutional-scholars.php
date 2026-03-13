@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . "/includes/admin-auth.php";
+adminRequireLogin();
 require_once __DIR__ . "/includes/school-term-filter.php";
 
 $autoImportType = "";
@@ -84,6 +86,98 @@ function isgIncrementSchoolYear(string $schoolYear, string $fallback): string
   }
   $nextStart = ((int)$matches[1]) + 1;
   return $nextStart . "-" . ($nextStart + 1);
+}
+
+function isgSchoolYearAvailableForRenewal(array $schoolYearOptions, string $targetSchoolYear): bool
+{
+  $targetValue = trim($targetSchoolYear);
+  if ($targetValue === "") {
+    return false;
+  }
+
+  foreach ($schoolYearOptions as $option) {
+    if (trim((string)$option) === $targetValue) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isgNormalizeYearLevelLabel(int $yearLevel): string
+{
+  if ($yearLevel <= 1) {
+    return "1st Year";
+  }
+  if ($yearLevel === 2) {
+    return "2nd Year";
+  }
+  if ($yearLevel === 3) {
+    return "3rd Year";
+  }
+  return "4th Year";
+}
+
+function isgIncrementYearLevelLabel(string $yearLabel): string
+{
+  $value = trim($yearLabel);
+  if ($value === "") {
+    return $value;
+  }
+
+  if (preg_match('/\b([1-4])(?:st|nd|rd|th)\s*year\b/i', $value, $matches)) {
+    $currentYearLevel = (int)$matches[1];
+    $nextYearLevel = min($currentYearLevel + 1, 4);
+    return preg_replace(
+      '/\b([1-4])(?:st|nd|rd|th)\s*year\b/i',
+      isgNormalizeYearLevelLabel($nextYearLevel),
+      $value,
+      1
+    ) ?? $value;
+  }
+
+  $wordMap = [
+    "first" => 1,
+    "second" => 2,
+    "third" => 3,
+    "fourth" => 4,
+  ];
+  if (preg_match('/\b(first|second|third|fourth)\s*year\b/i', $value, $matches)) {
+    $matchedWord = strtolower((string)($matches[1] ?? ""));
+    $currentYearLevel = $wordMap[$matchedWord] ?? 0;
+    if ($currentYearLevel > 0) {
+      $nextYearLevel = min($currentYearLevel + 1, 4);
+      return preg_replace(
+        '/\b(first|second|third|fourth)\s*year\b/i',
+        isgNormalizeYearLevelLabel($nextYearLevel),
+        $value,
+        1
+      ) ?? $value;
+    }
+  }
+
+  return $value;
+}
+
+function isgIncrementProgramYearLevel(string $programYear): string
+{
+  $value = trim($programYear);
+  if ($value === "") {
+    return $value;
+  }
+
+  $parts = preg_split('/\s*\/\s*/', $value, 2);
+  if (is_array($parts) && count($parts) === 2) {
+    $program = trim((string)($parts[0] ?? ""));
+    $yearLabel = trim((string)($parts[1] ?? ""));
+    $nextYearLabel = isgIncrementYearLevelLabel($yearLabel);
+    if ($program !== "" && $nextYearLabel !== "") {
+      return $program . " / " . $nextYearLabel;
+    }
+    return $value;
+  }
+
+  return isgIncrementYearLevelLabel($value);
 }
 
 function isgSchoolYearStart(string $schoolYear): int
@@ -1176,7 +1270,7 @@ if (($conn ?? null) instanceof mysqli) {
               }
             } else {
               $currentYearSql = "
-                SELECT academic_year
+                SELECT academic_year, program_year
                 FROM institutional_scholar_records
                 WHERE $whereSql
                 ORDER BY
@@ -1191,12 +1285,14 @@ if (($conn ?? null) instanceof mysqli) {
               ";
               $currentYearStmt = $conn->prepare($currentYearSql);
               $baseAcademicYear = "";
+              $baseProgramYear = "";
               if ($currentYearStmt) {
                 isgBindParams($currentYearStmt, $whereTypes, $whereParams);
                 if ($currentYearStmt->execute()) {
                   $result = $currentYearStmt->get_result();
                   $row = $result ? $result->fetch_assoc() : null;
                   $baseAcademicYear = trim((string)($row["academic_year"] ?? ""));
+                  $baseProgramYear = trim((string)($row["program_year"] ?? ""));
                   if ($result instanceof mysqli_result) {
                     $result->free();
                   }
@@ -1217,31 +1313,40 @@ if (($conn ?? null) instanceof mysqli) {
               if ($baseStartYear > 0 && $nextStartYear > 0 && $nextStartYear <= $baseStartYear) {
                 $nextAcademicYear = isgIncrementSchoolYear($baseAcademicYear, $renewalBaseYear);
               }
+              $nextProgramYear = isgIncrementProgramYearLevel($baseProgramYear);
 
-              $renewSql = "
-                UPDATE institutional_scholar_records
-                SET
-                  renewal_status = 'renew',
-                  renewal_scope = 'school_year',
-                  second_semester_renewed = 0,
-                  semester = '1st Semester',
-                  academic_year = ?,
-                  status = 'renewed',
-                  contract_ended = 0,
-                  updated_at = CURRENT_TIMESTAMP
-                WHERE $whereSql AND contract_ended = 0
-              ";
-              $renewStmt = $conn->prepare($renewSql);
-              if ($renewStmt) {
-                isgBindParams($renewStmt, "s" . $whereTypes, array_merge([$nextAcademicYear], $whereParams));
-                $renewExecuted = $renewStmt->execute();
-                $renewAffectedRows = $renewStmt->affected_rows;
-                $renewStmt->close();
-                if ($renewExecuted && $renewAffectedRows > 0) {
-                  $actionSuccess = true;
-                  $actionMessage = "Scholar renewed for next School Year.";
-                } elseif ($renewExecuted) {
-                  $actionMessage = "No renewal changes applied. Scholar may already be renewed or not active.";
+              if (!isgSchoolYearAvailableForRenewal($schoolYearOptions, $nextAcademicYear)) {
+                $actionMessage = $nextAcademicYear !== ""
+                  ? "Cannot renew for next School Year until " . $nextAcademicYear . " is added to the system school year list."
+                  : "Cannot renew for next School Year until the next school year is added to the system school year list.";
+              } else {
+
+                $renewSql = "
+                  UPDATE institutional_scholar_records
+                  SET
+                    renewal_status = 'renew',
+                    renewal_scope = 'school_year',
+                    second_semester_renewed = 0,
+                    semester = '1st Semester',
+                    program_year = ?,
+                    academic_year = ?,
+                    status = 'renewed',
+                    contract_ended = 0,
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE $whereSql AND contract_ended = 0
+                ";
+                $renewStmt = $conn->prepare($renewSql);
+                if ($renewStmt) {
+                  isgBindParams($renewStmt, "ss" . $whereTypes, array_merge([$nextProgramYear, $nextAcademicYear], $whereParams));
+                  $renewExecuted = $renewStmt->execute();
+                  $renewAffectedRows = $renewStmt->affected_rows;
+                  $renewStmt->close();
+                  if ($renewExecuted && $renewAffectedRows > 0) {
+                    $actionSuccess = true;
+                    $actionMessage = "Scholar renewed for next School Year.";
+                  } elseif ($renewExecuted) {
+                    $actionMessage = "No renewal changes applied. Scholar may already be renewed or not active.";
+                  }
                 }
               }
             }
@@ -1398,6 +1503,7 @@ if (($conn ?? null) instanceof mysqli) {
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>Institutional Scholars</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link
@@ -1932,6 +2038,7 @@ if (($conn ?? null) instanceof mysqli) {
         $currentStartYear = (int)substr((string)$currentSchoolYear, 0, 4);
         echo json_encode(($currentStartYear + 1) . "-" . ($currentStartYear + 2));
       ?>;
+      const availableSchoolYears = <?php echo json_encode(array_values(array_unique($schoolYearOptions)), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const activeFilterSchoolYear = String(selectedSchoolYear || displaySchoolYear || "").trim();
       const activeFilterSemester = String(selectedSemester || displaySemester || "").trim();
       const initialActiveCategory = <?php echo json_encode($activeCategoryParam); ?>;
@@ -2206,6 +2313,19 @@ if (($conn ?? null) instanceof mysqli) {
         };
       }
 
+      function getNextAcademicYearForRecord(record) {
+        const range = getRecordAcademicYearRange(record);
+        if (!range) return "";
+        return String(Number(range.startYear) + 1) + "-" + String(Number(range.endYear) + 1);
+      }
+
+      function isSchoolYearAvailable(targetSchoolYear) {
+        const targetValue = String(targetSchoolYear || "").trim().toLowerCase();
+        if (targetValue === "") return false;
+        return Array.isArray(availableSchoolYears)
+          && availableSchoolYears.some((value) => String(value || "").trim().toLowerCase() === targetValue);
+      }
+
       function getRecordSemesterPhase(record) {
         const semesterValue = String(record && typeof record === "object" ? (record.semester || "") : "").trim().toLowerCase();
         if (semesterValue.includes("2nd")) return "second";
@@ -2271,6 +2391,18 @@ if (($conn ?? null) instanceof mysqli) {
         }
 
         if (!schoolYearRenewed) {
+          const nextAcademicYearValue = getNextAcademicYearForRecord(record);
+          const nextSchoolYearReady = isSchoolYearAvailable(nextAcademicYearValue);
+          if (!nextSchoolYearReady) {
+            return {
+              statusKey: secondSemesterRenewed ? "renewed" : "official_scholar",
+              nextScope: "school_year",
+              renewEnabled: false,
+              reason: nextAcademicYearValue !== ""
+                ? "Next school year " + nextAcademicYearValue + " is not yet available in the system."
+                : "Next school year is not yet available in the system."
+            };
+          }
           if (todayDate > secondDeadline) {
             return {
               statusKey: "expired",
@@ -2414,6 +2546,21 @@ if (($conn ?? null) instanceof mysqli) {
         const statusContext = getScholarStatusContext(record);
         if (statusContext.statusKey === "contract_ended") {
           const message = "Contract already ended.";
+          if (typeof Swal !== "undefined") {
+            Swal.fire({
+              title: "Action Disabled",
+              text: message,
+              icon: "info",
+              confirmButtonColor: "#0d8ddb"
+            });
+          } else {
+            window.alert(message);
+          }
+          return;
+        }
+
+        if (statusContext.renewEnabled !== true) {
+          const message = String(statusContext.reason || "Renewal is not available for this scholar right now.");
           if (typeof Swal !== "undefined") {
             Swal.fire({
               title: "Action Disabled",
@@ -2612,9 +2759,13 @@ if (($conn ?? null) instanceof mysqli) {
             isContractEnded
               ? "bg-slate-700 text-white border-slate-700"
               : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50";
-          const renewalDisabledClasses = isContractEnded ? "opacity-50 cursor-not-allowed hover:bg-transparent" : "";
-          const renewalDisabledAttrs = isContractEnded
-            ? ' disabled title="Contract already ended." aria-disabled="true" '
+          const renewDisabled = isContractEnded || statusContext.renewEnabled !== true;
+          const renewalDisabledClasses = renewDisabled ? "opacity-50 cursor-not-allowed hover:bg-transparent" : "";
+          const renewalDisabledTitle = isContractEnded
+            ? "Contract already ended."
+            : String(statusContext.reason || "Renewal is not available.");
+          const renewalDisabledAttrs = renewDisabled
+            ? ' disabled title="' + escapeHtml(renewalDisabledTitle) + '" aria-disabled="true" '
             : "";
           const endContractDisabledAttrs = isContractEnded
             ? ' disabled title="Contract already ended." aria-disabled="true" '

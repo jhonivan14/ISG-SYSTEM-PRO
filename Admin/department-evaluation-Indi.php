@@ -1,6 +1,11 @@
 <?php
+require_once __DIR__ . "/includes/admin-auth.php";
+adminRequireLogin();
 require_once "../db.php";
 
+$evaluationId = isset($_GET["evaluation_id"])
+  ? (int)$_GET["evaluation_id"]
+  : 0;
 $applicationId = isset($_GET["application_id"])
   ? (int)$_GET["application_id"]
   : (isset($_GET["id"]) ? (int)$_GET["id"] : 0);
@@ -47,6 +52,7 @@ $sectionWeightedTotals = [
 ];
 $overallWeightedTotals = [4 => 0, 3 => 0, 2 => 0, 1 => 0];
 $resolvedScholarRow = null;
+$loadedByEvaluationId = false;
 
 function adminDepartmentEvaluationLoadScholarRecord(mysqli $conn, int $recordId, int $sourceApplicationId): ?array
 {
@@ -97,7 +103,107 @@ function adminDepartmentEvaluationLoadScholarRecord(mysqli $conn, int $recordId,
   return is_array($row) ? $row : null;
 }
 
-if (($conn ?? null) instanceof mysqli && $applicationId !== 0) {
+if (($conn ?? null) instanceof mysqli && $evaluationId > 0) {
+  $evaluationStmt = $conn->prepare(
+    "SELECT
+      dhe.application_id,
+      dhe.applicant_name,
+      dhe.semester,
+      dhe.school_year,
+      dhe.assigned_office,
+      dhe.head_name,
+      dhe.head_username,
+      dhe.evaluation_date,
+      dhe.ratings_json,
+      dhe.strengths,
+      dhe.recommendations,
+      dhe.signature_data,
+      COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_year,
+      (
+        SELECT TRIM(
+          CONCAT(
+            TRIM(COALESCE(ho.name, '')),
+            CASE
+              WHEN TRIM(COALESCE(ho.name, '')) <> '' AND TRIM(COALESCE(ho.lastname, '')) <> '' THEN ' '
+              ELSE ''
+            END,
+            TRIM(COALESCE(ho.lastname, ''))
+          )
+        )
+        FROM head_offices ho
+        WHERE ho.username = dhe.head_username
+        LIMIT 1
+      ) AS head_account_full_name,
+      (
+        SELECT TRIM(COALESCE(ho.lastname, ''))
+        FROM head_offices ho
+        WHERE ho.username = dhe.head_username
+        LIMIT 1
+      ) AS head_account_lastname
+    FROM department_head_evaluations dhe
+    LEFT JOIN institutional_scholar_records isr
+      ON isr.id = ABS(dhe.application_id)
+    WHERE dhe.id = ?
+    LIMIT 1"
+  );
+
+  if ($evaluationStmt) {
+    $evaluationStmt->bind_param("i", $evaluationId);
+    if ($evaluationStmt->execute()) {
+      $evaluationResult = $evaluationStmt->get_result();
+      $evaluationRow = $evaluationResult ? $evaluationResult->fetch_assoc() : null;
+      if (is_array($evaluationRow)) {
+        $loadedByEvaluationId = true;
+        $applicationId = (int)($evaluationRow["application_id"] ?? 0);
+        $displayApplicantName = trim((string)($evaluationRow["applicant_name"] ?? ""));
+        $semester = trim((string)($evaluationRow["semester"] ?? ""));
+        $schoolYear = trim((string)($evaluationRow["school_year"] ?? ""));
+        if ($semester !== "" && $schoolYear !== "") {
+          $displaySemesterSchoolYear = $semester . ", S.Y. " . $schoolYear;
+        } elseif ($semester !== "") {
+          $displaySemesterSchoolYear = $semester;
+        } elseif ($schoolYear !== "") {
+          $displaySemesterSchoolYear = $schoolYear;
+        }
+        $displayAreaOfAssignment = trim((string)($evaluationRow["assigned_office"] ?? ""));
+        $resolvedHeadFullName = trim((string)($evaluationRow["head_account_full_name"] ?? ""));
+        $displayHeadOfOffice = $resolvedHeadFullName !== ""
+          ? $resolvedHeadFullName
+          : trim((string)($evaluationRow["head_name"] ?? ""));
+        if ($displayHeadOfOffice === "") {
+          $displayHeadOfOffice = trim((string)($evaluationRow["head_username"] ?? ""));
+        }
+        $displayHeadAccountLastName = trim((string)($evaluationRow["head_account_lastname"] ?? ""));
+        $displayStrengths = trim((string)($evaluationRow["strengths"] ?? ""));
+        $displayRecommendations = trim((string)($evaluationRow["recommendations"] ?? ""));
+        $displaySignatureData = trim((string)($evaluationRow["signature_data"] ?? ""));
+        $displayProgramYearLevel = trim((string)($evaluationRow["program_year"] ?? ""));
+
+        $rawDate = trim((string)($evaluationRow["evaluation_date"] ?? ""));
+        if ($rawDate !== "") {
+          $parsedDate = strtotime($rawDate);
+          $displayEvaluationDate = $parsedDate !== false ? date("F j, Y", $parsedDate) : $rawDate;
+        }
+
+        $decodedRatings = json_decode((string)($evaluationRow["ratings_json"] ?? ""), true);
+        if (is_array($decodedRatings)) {
+          foreach ($ratings as $field => $unusedValue) {
+            $score = isset($decodedRatings[$field]) ? (int)$decodedRatings[$field] : 0;
+            if ($score >= 1 && $score <= 4) {
+              $ratings[$field] = $score;
+            }
+          }
+        }
+      }
+      if ($evaluationResult instanceof mysqli_result) {
+        $evaluationResult->free();
+      }
+    }
+    $evaluationStmt->close();
+  }
+}
+
+if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationId !== 0) {
   $resolvedScholarRow = adminDepartmentEvaluationLoadScholarRecord(
     $conn,
     $applicationId < 0 ? abs($applicationId) : 0,
@@ -412,8 +518,8 @@ if ($assistantFullName !== "") {
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
-    <title>Admin Dashboard</title>
-
+    <title>Student Assistants Evaluation List</title>
+    <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
 
     <link
