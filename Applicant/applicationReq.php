@@ -203,6 +203,87 @@ if (empty($_SESSION["from_index"])) {
       color: #7c3f10;
     }
 
+    .guide-shell {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(13, 141, 219, 0.16);
+      border-radius: 1.75rem;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(239, 247, 255, 0.94));
+      box-shadow: 0 18px 38px -32px rgba(5, 44, 106, 0.34);
+      padding: 1.25rem;
+    }
+
+    .guide-shell::before {
+      content: "";
+      position: absolute;
+      inset: auto -5rem -4.5rem auto;
+      width: 12rem;
+      height: 12rem;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(252, 220, 47, 0.22), transparent 68%);
+      pointer-events: none;
+    }
+
+    .guide-grid {
+      display: grid;
+      gap: 0.85rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .guide-step {
+      position: relative;
+      border: 1px solid rgba(13, 141, 219, 0.14);
+      border-radius: 1.4rem;
+      background: rgba(255, 255, 255, 0.86);
+      padding: 1rem;
+      box-shadow: 0 16px 28px -30px rgba(5, 44, 106, 0.4);
+    }
+
+    .guide-step strong {
+      display: block;
+      margin-top: 0.8rem;
+      color: var(--ink);
+      font-family: "Outfit", sans-serif;
+      font-size: 1rem;
+      line-height: 1.25;
+    }
+
+    .guide-step p {
+      margin-top: 0.45rem;
+      color: rgba(5, 44, 106, 0.78);
+      font-size: 0.84rem;
+      line-height: 1.55;
+    }
+
+    .guide-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #fcdc2f, #f7c51d);
+      color: #052c6a;
+      font-family: "Outfit", sans-serif;
+      font-size: 0.96rem;
+      font-weight: 800;
+      box-shadow: 0 12px 24px -18px rgba(120, 53, 15, 0.8);
+    }
+
+    .guide-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      border-radius: 999px;
+      border: 1px solid rgba(252, 220, 47, 0.5);
+      background: rgba(255, 251, 230, 0.95);
+      padding: 0.46rem 0.85rem;
+      color: #7c3f10;
+      font-size: 0.76rem;
+      font-weight: 700;
+      box-shadow: 0 10px 22px -18px rgba(120, 53, 15, 0.5);
+    }
+
     .grants-layout {
       display: grid;
       gap: 1.5rem;
@@ -217,57 +298,109 @@ if (empty($_SESSION["from_index"])) {
       grid-column: 1 / -1;
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17) {
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) {
       position: relative;
       overflow: hidden;
-      border-color: rgba(13, 141, 219, 0.2) !important;
-      background: #ffffff !important;
-      box-shadow: 0 18px 34px -30px rgba(5, 44, 106, 0.32) !important;
+      border-color: rgba(13, 141, 219, 0.18) !important;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96)) !important;
+      box-shadow: 0 22px 40px -34px rgba(5, 44, 106, 0.38) !important;
       backdrop-filter: none;
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17)::before {
-      display: none;
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18)::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0.38rem;
+      background: linear-gradient(180deg, #fcdc2f, #0d8ddb 68%, #052c6a);
+      opacity: 0.9;
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17) > div:first-child {
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:first-child {
       position: relative;
       overflow: hidden;
       border-bottom: 1px solid rgba(13, 141, 219, 0.12);
+      background: linear-gradient(135deg, #052c6a 0%, #0d8ddb 58%, #37b7f5 100%) !important;
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17) > div:first-child::after {
-      display: none;
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:first-child::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(120deg, rgba(255, 255, 255, 0.12), transparent 45%);
+      pointer-events: none;
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17) > div:last-child {
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:first-child > span {
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 14px 24px -20px rgba(5, 44, 106, 0.7);
+    }
+
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:last-child {
       position: relative;
-      background: #ffffff;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 255, 0.95));
       backdrop-filter: none;
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17) ul {
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:last-child > p:not(:empty),
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:last-child > div:not(:last-child),
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:last-child > .grid > div {
+      border: 1px solid rgba(13, 141, 219, 0.12);
+      border-radius: 1.25rem;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(241, 248, 255, 0.9));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+      padding: 1rem 1.1rem;
+    }
+
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:last-child > div:last-child {
+      margin-top: 0.2rem;
+      border-top: 1px dashed rgba(13, 141, 219, 0.18);
+      padding-top: 1.1rem !important;
+    }
+
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:last-child > div.grid {
+      gap: 1rem;
+    }
+
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) h4 {
+      color: var(--ink) !important;
+      font-family: "Outfit", sans-serif;
+      font-size: 0.98rem;
+      letter-spacing: 0.01em;
+    }
+
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) ul {
       margin-top: 0.4rem;
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17) li {
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) li {
       margin-bottom: 0.28rem;
       padding-left: 0.1rem;
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17) li::marker {
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) li::marker {
       color: var(--accent);
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17) button {
-      border: 1px solid rgba(4, 44, 106, 0.08);
-      background-image: linear-gradient(135deg, #0d8ddb 0%, #1354c8 100%);
-      box-shadow: 0 14px 28px -20px rgba(13, 141, 219, 0.8);
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) button {
+      border: 1px solid rgba(146, 104, 18, 0.24);
+      background-image: linear-gradient(135deg, #fcdc2f 0%, #f7c51d 100%);
+      color: #052c6a !important;
+      box-shadow: 0 16px 30px -22px rgba(252, 220, 47, 0.92);
     }
 
-    main > section:nth-of-type(n+3):nth-of-type(-n+17) button:hover {
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) button::after {
+      content: "\2192";
+      font-size: 1rem;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) button:hover {
       transform: translateY(-2px);
-      box-shadow: 0 18px 34px -22px rgba(13, 141, 219, 0.9);
+      background-image: linear-gradient(135deg, #ffe05a 0%, #f9c423 100%);
+      box-shadow: 0 20px 34px -22px rgba(252, 220, 47, 0.98);
     }
 
     .final-cta {
@@ -293,7 +426,12 @@ if (empty($_SESSION["from_index"])) {
         grid-template-columns: 1fr;
       }
 
+      .guide-grid {
+        grid-template-columns: 1fr;
+      }
+
       .hero-card,
+      .guide-shell,
       .hero-progress,
       .metric-card {
         border-radius: 1.2rem;
@@ -411,6 +549,8 @@ if (empty($_SESSION["from_index"])) {
         </div>
       </div>
     </section>
+
+
 
     <!-- ============ 1. STUDENT ASSISTANT ============ -->
     <section
@@ -931,7 +1071,7 @@ if (empty($_SESSION["from_index"])) {
             10. DXSM-FM Grant
           </h3>
         </div>
-        <span class="inline-flex items-center rounded-full bg:white/90 bg-white/90 text-[#0d8ddb] text-[11px] sm:text-xs font-semibold px-3 py-1 shadow">
+        <span class="inline-flex items-center rounded-full bg-white/90 text-[#0d8ddb] text-[11px] sm:text-xs font-semibold px-3 py-1 shadow">
           DXSM-FM
         </span>
       </div>
@@ -1009,7 +1149,7 @@ if (empty($_SESSION["from_index"])) {
           <button
             type="button"
             onclick="goApply(11)"
-            class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#0d8ddb] hover:bg-[#0b63d1] text:white text-white font-semibold text-sm sm:text-base px-8 py-2.5 rounded-full shadow-md transition-transform duration-150 hover:-translate-y-[1px]"
+            class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#0d8ddb] hover:bg-[#0b63d1] text-white font-semibold text-sm sm:text-base px-8 py-2.5 rounded-full shadow-md transition-transform duration-150 hover:-translate-y-[1px]"
           >
             APPLY FOR THIS GRANT
           </button>
@@ -1024,7 +1164,7 @@ if (empty($_SESSION["from_index"])) {
           <p class="text-[11px] sm:text-xs text-blue-100 uppercase tracking-[0.25em]">
             Grant Category
           </p>
-          <h3 class="text-lg sm:text-xl font-extrabold text:white text-white">
+          <h3 class="text-lg sm:text-xl font-extrabold text-white">
             12. Grant for the Dependents of a Lot Donor
           </h3>
         </div>
@@ -1191,6 +1331,7 @@ if (empty($_SESSION["from_index"])) {
 
       <div class="px-6 sm:px-8 py-6 sm:py-8 space-y-4 text-[#052c6a] text-sm sm:text-base">
         <p class="text-xs sm:text-sm text-[#052c6a]/90 italic">
+          If this is the grant assigned to you, review the card title and click apply to continue to the application form with this option selected.
         </p>
         <div class="pt-2 flex justify-center">
           <button

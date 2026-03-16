@@ -8,6 +8,42 @@ function read_post_field($key) {
   return isset($_POST[$key]) ? trim($_POST[$key]) : "";
 }
 
+function normalize_contact_number($value) {
+  return preg_replace('/\D+/', '', trim((string)$value));
+}
+
+function validate_contact_number(&$errors, $field, $label) {
+  $value = read_post_field($field);
+  if ($value === "") {
+    return;
+  }
+
+  $normalizedValue = normalize_contact_number($value);
+  $_POST[$field] = $normalizedValue;
+
+  if (!preg_match('/^\d{11}$/', $normalizedValue)) {
+    $errors[] = $label . " must contain exactly 11 digits.";
+  }
+}
+
+function validate_birth_date(&$errors, $field, $label) {
+  $value = read_post_field($field);
+  if ($value === "") {
+    return;
+  }
+
+  if (!preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $value)) {
+    $errors[] = $label . " must use the format mm/dd/yyyy.";
+    return;
+  }
+
+  $date = DateTime::createFromFormat('m/d/Y', $value);
+  $hasValidDate = $date instanceof DateTime && $date->format('m/d/Y') === $value;
+  if (!$hasValidDate) {
+    $errors[] = $label . " must be a valid date in mm/dd/yyyy format.";
+  }
+}
+
 function infer_scholarship_type($grantId) {
   if ($grantId === 1) {
     return "Student Assistance";
@@ -131,6 +167,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       $errors[] = "Email address must be a valid @gmail.com address.";
     }
   }
+
+  validate_contact_number($errors, "contactNumber", "Contact number");
+  validate_contact_number($errors, "motherContact", "Mother's contact number");
+  validate_contact_number($errors, "fatherContact", "Father's contact number");
+  validate_birth_date($errors, "dateOfBirth", "Date of birth");
 
   if (empty($errors)) {
     $scholarshipType = read_post_field("scholarshipType");
@@ -437,7 +478,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                 id="applicantName"
                 name="applicantName"
-                placeholder="Full name (Last Name, First Name, Middle Name)"
+                placeholder="Full name"
                 required
                 type="text"
               />
@@ -596,9 +637,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                 id="dateOfBirth"
+                inputmode="numeric"
+                maxlength="10"
+                minlength="10"
                 name="dateOfBirth"
+                pattern="\d{2}/\d{2}/\d{4}"
+                placeholder="mm/dd/yyyy"
                 required
-                type="date"
+                title="Please enter date of birth in mm/dd/yyyy format."
+                type="text"
               />
             </div>
 
@@ -610,9 +657,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                 id="contactNumber"
+                inputmode="numeric"
+                maxlength="11"
+                minlength="11"
                 name="contactNumber"
-                placeholder="+63 9XX XXX XXXX"
+                pattern="\d{11}"
+                placeholder="09XXXXXXXXX"
                 required
+                title="Please enter exactly 11 digits."
                 type="tel"
               />
             </div>
@@ -685,8 +737,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                 id="motherContact"
+                inputmode="numeric"
+                maxlength="11"
+                minlength="11"
                 name="motherContact"
-                placeholder="+63 9XX XXX XXXX"
+                pattern="\d{11}"
+                placeholder="09XXXXXXXXX"
+                title="Please enter exactly 11 digits."
                 type="tel"
               />
             </div>
@@ -783,8 +840,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                 id="fatherContact"
+                inputmode="numeric"
+                maxlength="11"
+                minlength="11"
                 name="fatherContact"
-                placeholder="+63 9XX XXX XXXX"
+                pattern="\d{11}"
+                placeholder="09XXXXXXXXX"
+                title="Please enter exactly 11 digits."
                 type="tel"
               />
             </div>
@@ -892,6 +954,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     const programCourseSelect = document.getElementById('programCourseSelect');
     const programCourseInput = document.getElementById('programCourseInput');
     const programCourseHint = document.getElementById('programCourseHint');
+    const dateOfBirthInput = document.getElementById('dateOfBirth');
+    const contactNumberInputs = document.querySelectorAll('#contactNumber, #motherContact, #fatherContact');
 
     function getAutoScholarshipType(grantId) {
       const idNum = parseInt(grantId, 10);
@@ -964,6 +1028,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       }
     }
 
+    function sanitizeContactNumberInput(event) {
+      const cleanedValue = event.target.value.replace(/\D/g, '').slice(0, 11);
+      if (event.target.value !== cleanedValue) {
+        event.target.value = cleanedValue;
+      }
+    }
+
+    function sanitizeBirthDateInput(event) {
+      const cleanedValue = event.target.value.replace(/[^\d/]/g, '').slice(0, 10);
+      if (event.target.value !== cleanedValue) {
+        event.target.value = cleanedValue;
+      }
+    }
+
     if (activeGrantId && grantNames[activeGrantId]) {
       grantLabelEl.textContent = grantNames[activeGrantId] + ' (Grant #' + activeGrantId + ')';
       grantIdField.value = activeGrantId;
@@ -995,6 +1073,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         radio.addEventListener('change', syncProgramCourseField);
       }
     });
+
+    contactNumberInputs.forEach((input) => {
+      input.addEventListener('input', sanitizeContactNumberInput);
+      input.addEventListener('paste', () => {
+        requestAnimationFrame(() => sanitizeContactNumberInput({ target: input }));
+      });
+    });
+
+    if (dateOfBirthInput) {
+      dateOfBirthInput.addEventListener('input', sanitizeBirthDateInput);
+      dateOfBirthInput.addEventListener('paste', () => {
+        requestAnimationFrame(() => sanitizeBirthDateInput({ target: dateOfBirthInput }));
+      });
+    }
 
     syncOthersSpecify();
     syncProgramCourseField();
