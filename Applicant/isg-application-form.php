@@ -749,6 +749,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             </div>
 
             <div>
+              <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="motherOccupation">
+                Occupation
+              </label>
+              <input
+                class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+                       focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
+                id="motherOccupation"
+                name="motherOccupation"
+                placeholder="Occupation"
+                type="text"
+              />
+            </div>
+
+            <div>
               <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="motherCompanyName">
                 Company's Name
               </label>
@@ -791,19 +805,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               />
             </div>
 
-            <div>
-              <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="motherOccupation">
-                Occupation
-              </label>
-              <input
-                class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
-                       focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
-                id="motherOccupation"
-                name="motherOccupation"
-                placeholder="Occupation"
-                type="text"
-              />
-            </div>
+
           </div>
         </fieldset>
 
@@ -852,6 +854,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             </div>
 
             <div>
+              <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="fatherOccupation">
+                Occupation
+              </label>
+              <input
+                class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+                       focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
+                id="fatherOccupation"
+                name="fatherOccupation"
+                placeholder="Occupation"
+                type="text"
+              />
+            </div>
+
+            <div>
               <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="fatherCompanyName">
                 Company's Name
               </label>
@@ -894,19 +910,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               />
             </div>
 
-            <div>
-              <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="fatherOccupation">
-                Occupation
-              </label>
-              <input
-                class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
-                       focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
-                id="fatherOccupation"
-                name="fatherOccupation"
-                placeholder="Occupation"
-                type="text"
-              />
-            </div>
           </div>
         </fieldset>
 
