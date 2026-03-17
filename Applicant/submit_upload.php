@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "../db.php";
+require_once "../upload-storage.php";
 
 $errors = [];
 $success = false;
@@ -148,8 +149,7 @@ if (empty($errors) && $grantRequiresUploads) {
   if (!$files || !isset($files["name"]) || !is_array($files["name"])) {
     $errors[] = "Missing uploaded files.";
   } else {
-    $uploadBase = realpath(__DIR__ . "/..") . DIRECTORY_SEPARATOR . "uploads";
-    $uploadDir = $uploadBase . DIRECTORY_SEPARATOR . "applications" . DIRECTORY_SEPARATOR . $applicationId;
+    $uploadDir = applicationUploadDirectory($applicationId);
 
     if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) {
       $errors[] = "Failed to create upload directory.";
@@ -201,7 +201,7 @@ if (empty($errors) && $grantRequiresUploads) {
         continue;
       }
 
-      $relativePath = "uploads/applications/" . $applicationId . "/" . $storedFileName;
+      $relativePath = storedUploadDbPath($applicationId, $storedFileName);
 
       $uploadStmt->bind_param(
         "isssss",

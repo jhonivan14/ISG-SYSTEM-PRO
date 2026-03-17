@@ -752,7 +752,11 @@ foreach ($uploadedRequirements as $upload) {
                         $uploadsForRequirement = $uploadsByLabel[$requirementLabel] ?? [];
                         $primaryUpload = $uploadsForRequirement[0] ?? null;
                         $storedPath = $primaryUpload["stored_path"] ?? "";
-                        $downloadPath = $storedPath !== "" ? "../" . ltrim((string)$storedPath, "/") : "";
+                        $downloadBasePath = $storedPath !== ""
+                          ? "application-upload.php?application_id=" . urlencode((string)$applicationId) . "&stored_path=" . urlencode((string)$storedPath)
+                          : "";
+                        $viewPath = $downloadBasePath !== "" ? $downloadBasePath . "&mode=view" : "";
+                        $downloadPath = $downloadBasePath !== "" ? $downloadBasePath . "&mode=download" : "";
                         $extraCount = count($uploadsForRequirement) - 1;
                       ?>
                       <tr>
@@ -772,7 +776,7 @@ foreach ($uploadedRequirements as $upload) {
                         <td class="border px-3 py-2 text-center">
                           <?php if ($downloadPath !== ""): ?>
                             <div class="flex items-center justify-center gap-3">
-                              <a href="<?= htmlspecialchars($downloadPath) ?>" class="text-[#0d8ddb] hover:underline" target="_blank" rel="noopener">
+                              <a href="<?= htmlspecialchars($viewPath) ?>" class="text-[#0d8ddb] hover:underline" target="_blank" rel="noopener">
                                 View
                               </a>
                               <a href="<?= htmlspecialchars($downloadPath) ?>" class="text-[#0d8ddb] hover:underline" download>
@@ -795,7 +799,11 @@ foreach ($uploadedRequirements as $upload) {
                     <?php foreach ($uploadedRequirements as $upload): ?>
                       <?php
                         $storedPath = isset($upload["stored_path"]) ? (string)$upload["stored_path"] : "";
-                        $downloadPath = "../" . ltrim($storedPath, "/");
+                        $downloadBasePath = $storedPath !== ""
+                          ? "application-upload.php?application_id=" . urlencode((string)$applicationId) . "&stored_path=" . urlencode($storedPath)
+                          : "";
+                        $viewPath = $downloadBasePath !== "" ? $downloadBasePath . "&mode=view" : "";
+                        $downloadPath = $downloadBasePath !== "" ? $downloadBasePath . "&mode=download" : "";
                       ?>
                       <tr>
                         <td class="border px-3 py-2">
@@ -807,7 +815,7 @@ foreach ($uploadedRequirements as $upload) {
                         <td class="border px-3 py-2 text-center">
                           <?php if ($storedPath !== ""): ?>
                             <div class="flex items-center justify-center gap-3">
-                              <a href="<?= htmlspecialchars($downloadPath) ?>" class="text-[#0d8ddb] hover:underline" target="_blank" rel="noopener">
+                              <a href="<?= htmlspecialchars($viewPath) ?>" class="text-[#0d8ddb] hover:underline" target="_blank" rel="noopener">
                                 View
                               </a>
                               <a href="<?= htmlspecialchars($downloadPath) ?>" class="text-[#0d8ddb] hover:underline" download>

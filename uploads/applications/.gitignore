@@ -1,0 +1,3 @@
+# Ignore applicant uploads so sensitive files do not appear in Git.
+*
+!.gitignore
