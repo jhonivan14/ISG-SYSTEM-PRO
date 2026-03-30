@@ -15,6 +15,28 @@ $totalScholarsCount = 0;
 $registeredPanelistsCount = 0;
 $registeredHeadOfficesCount = 0;
 $pendingCount = 0;
+$dashboardGrantLabels = [
+  1 => "Student Assistant",
+  2 => "Academic Scholarship Program",
+  3 => "Executive Student Government (ESG) President Scholarship Program",
+  4 => "Kabayani Scholarship Program",
+  5 => "Kabayani Loyalty Grant",
+  6 => "Discount for Persons with Disability (PWD)",
+  7 => "Discount for Children of Employees",
+  8 => "Discount for Sibling of Employees",
+  9 => "Sibling Discount",
+  10 => "DXSM-FM Grant",
+  11 => "Michaelinian Mirror Grant (Editor-in-Chief)",
+  12 => "Grant for the Dependents of a Lot Donor",
+  13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
+  14 => "SMCC Alumni Discount",
+  15 => "Michaelinian Stakeholders Grant",
+];
+$requestedDashboardGrantId = (int)($_GET["grant_id"] ?? 0);
+$dashboardGrantId = array_key_exists($requestedDashboardGrantId, $dashboardGrantLabels) ? $requestedDashboardGrantId : 0;
+$dashboardGrantLabel = $dashboardGrantId > 0
+  ? $dashboardGrantLabels[$dashboardGrantId]
+  : "All Grants and Discounts";
 
 function adminDashboardScholarCountKey(array $row): string
 {
@@ -132,15 +154,34 @@ $chartYears = [];
 $barData = [];
 $lineData = [];
 
-$yearResult = $conn->query("SELECT DISTINCT school_year FROM applications WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''");
-if ($yearResult) {
-  while ($row = $yearResult->fetch_assoc()) {
-    $value = trim((string)($row["school_year"] ?? ""));
-    if ($value !== "") {
-      $chartYears[] = $value;
+$yearSql = "
+  SELECT DISTINCT school_year
+  FROM applications
+  WHERE school_year IS NOT NULL
+    AND TRIM(school_year) <> ''
+";
+if ($dashboardGrantId > 0) {
+  $yearSql .= " AND grant_id = ?";
+}
+$yearSql .= " ORDER BY school_year ASC";
+$yearStmt = $conn->prepare($yearSql);
+if ($yearStmt) {
+  if ($dashboardGrantId > 0) {
+    $yearStmt->bind_param("i", $dashboardGrantId);
+  }
+  if ($yearStmt->execute()) {
+    $yearResult = $yearStmt->get_result();
+    if ($yearResult instanceof mysqli_result) {
+      while ($row = $yearResult->fetch_assoc()) {
+        $value = trim((string)($row["school_year"] ?? ""));
+        if ($value !== "") {
+          $chartYears[] = $value;
+        }
+      }
+      $yearResult->free();
     }
   }
-  $yearResult->free();
+  $yearStmt->close();
 }
 if (!in_array($currentSchoolYear, $chartYears, true)) {
   $chartYears[] = $currentSchoolYear;
@@ -155,50 +196,87 @@ usort($chartYears, function ($a, $b) {
   return $aYear <=> $bYear;
 });
 
-$barQuery = "SELECT school_year, semester, COUNT(*) AS total
+$barSql = "
+  SELECT school_year, semester, COUNT(*) AS total
   FROM applications
-  WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''
-    AND semester IS NOT NULL AND TRIM(semester) <> ''
+  WHERE school_year IS NOT NULL
+    AND TRIM(school_year) <> ''
+    AND semester IS NOT NULL
+    AND TRIM(semester) <> ''
+";
+if ($dashboardGrantId > 0) {
+  $barSql .= " AND grant_id = ?";
+}
+$barSql .= "
   GROUP BY school_year, semester
-  ORDER BY school_year ASC";
-if ($result = $conn->query($barQuery)) {
-  while ($row = $result->fetch_assoc()) {
-    $year = (string)($row["school_year"] ?? "");
-    $semester = (string)($row["semester"] ?? "");
-    $total = (int)($row["total"] ?? 0);
-    if ($year !== "") {
-      if (!isset($barData[$year])) {
-        $barData[$year] = [
-          "1st Semester" => 0,
-          "2nd Semester" => 0,
-        ];
+  ORDER BY school_year ASC
+";
+$barStmt = $conn->prepare($barSql);
+if ($barStmt) {
+  if ($dashboardGrantId > 0) {
+    $barStmt->bind_param("i", $dashboardGrantId);
+  }
+  if ($barStmt->execute()) {
+    $result = $barStmt->get_result();
+    if ($result instanceof mysqli_result) {
+      while ($row = $result->fetch_assoc()) {
+        $year = (string)($row["school_year"] ?? "");
+        $semester = (string)($row["semester"] ?? "");
+        $total = (int)($row["total"] ?? 0);
+        if ($year !== "") {
+          if (!isset($barData[$year])) {
+            $barData[$year] = [
+              "1st Semester" => 0,
+              "2nd Semester" => 0,
+            ];
+          }
+          if (isset($barData[$year][$semester])) {
+            $barData[$year][$semester] = $total;
+          }
+        }
       }
-      if (isset($barData[$year][$semester])) {
-        $barData[$year][$semester] = $total;
-      }
+      $result->free();
     }
   }
-  $result->free();
+  $barStmt->close();
 }
 
-$lineQuery = "SELECT school_year,
+$lineSql = "
+  SELECT school_year,
     COUNT(*) AS total,
     SUM(CASE WHEN LOWER(TRIM(status)) = 'approved' THEN 1 ELSE 0 END) AS qualified
   FROM applications
-  WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''
+  WHERE school_year IS NOT NULL
+    AND TRIM(school_year) <> ''
+";
+if ($dashboardGrantId > 0) {
+  $lineSql .= " AND grant_id = ?";
+}
+$lineSql .= "
   GROUP BY school_year
-  ORDER BY school_year ASC";
-if ($result = $conn->query($lineQuery)) {
-  while ($row = $result->fetch_assoc()) {
-    $year = (string)($row["school_year"] ?? "");
-    if ($year !== "") {
-      $lineData[$year] = [
-        "total" => (int)($row["total"] ?? 0),
-        "qualified" => (int)($row["qualified"] ?? 0),
-      ];
+  ORDER BY school_year ASC
+";
+$lineStmt = $conn->prepare($lineSql);
+if ($lineStmt) {
+  if ($dashboardGrantId > 0) {
+    $lineStmt->bind_param("i", $dashboardGrantId);
+  }
+  if ($lineStmt->execute()) {
+    $result = $lineStmt->get_result();
+    if ($result instanceof mysqli_result) {
+      while ($row = $result->fetch_assoc()) {
+        $year = (string)($row["school_year"] ?? "");
+        if ($year !== "") {
+          $lineData[$year] = [
+            "total" => (int)($row["total"] ?? 0),
+            "qualified" => (int)($row["qualified"] ?? 0),
+          ];
+        }
+      }
+      $result->free();
     }
   }
-  $result->free();
+  $lineStmt->close();
 }
 
 $firstSemCounts = [];
@@ -255,6 +333,37 @@ foreach ($chartYears as $year) {
       #sidebar li[data-nav]:hover {
         transform: translateX(2px);
         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+      }
+
+      @media print {
+        body {
+          background: #ffffff !important;
+        }
+        #sidebar,
+        .page-header,
+        .no-print {
+          display: none !important;
+        }
+        main {
+          margin-left: 0 !important;
+          padding-top: 0 !important;
+          background: #ffffff !important;
+        }
+        .print-panel {
+          box-shadow: none !important;
+          border-color: #cbd5e1 !important;
+          background: #ffffff !important;
+          break-inside: avoid;
+        }
+        .print-only {
+          display: block !important;
+        }
+        canvas {
+          max-height: 420px !important;
+        }
+      }
+      .print-only {
+        display: none;
       }
     </style>
   </head>
@@ -466,7 +575,7 @@ foreach ($chartYears as $year) {
 
         <!-- Stats cards above charts -->
         <section
-          class="px-4 sm:px-6 pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4"
+          class="px-4 sm:px-6 pt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 no-print"
         >
           <!-- Total Scholars -->
           <div
@@ -537,10 +646,65 @@ foreach ($chartYears as $year) {
 
         <!-- Charts -->
         <section class="px-4 sm:px-6 space-y-6 mt-4">
+          <div class="print-only border-b border-slate-300 pb-3">
+            <h1 class="text-2xl font-bold text-slate-800">Statistical Report</h1>
+            <p class="text-sm text-slate-500 mt-1">
+              <?php echo htmlspecialchars($dashboardGrantLabel); ?>
+            </p>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm no-print">
+            <form method="get" action="adminDashboard.php" class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <div class="flex flex-col gap-1 min-w-[260px]">
+                <label class="text-xs font-semibold uppercase tracking-wide text-slate-600" for="dashboardGrantFilter">
+                  Grant / Discount Filter
+                </label>
+                <select
+                  id="dashboardGrantFilter"
+                  name="grant_id"
+                  class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                  onchange="this.form.submit()"
+                >
+                  <option value="">All grants and discounts</option>
+                  <?php foreach ($dashboardGrantLabels as $grantId => $grantName): ?>
+                    <option value="<?php echo htmlspecialchars((string)$grantId); ?>" <?php echo $dashboardGrantId === (int)$grantId ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($grantName); ?>
+                    </option>
+                  <?php endforeach; ?>
+                </select>
+                <p class="text-[11px] text-slate-500">
+                  Filter the charts by applicant grant or discount category.
+                </p>
+              </div>
+              <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($dashboardSchoolYear); ?>" />
+              <div class="flex flex-wrap items-center gap-2">
+                <a
+                  href="adminDashboard.php?school_year=<?php echo urlencode($dashboardSchoolYear); ?>"
+                  class="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Refresh
+                </a>
+                <button
+                  type="button"
+                  onclick="window.print()"
+                  class="inline-flex items-center gap-2 rounded-full border border-[#052c6a] bg-[#052c6a] px-4 py-2 text-xs font-semibold text-white hover:bg-[#041f4f]"
+                >
+                  <i class="fas fa-print text-[11px]"></i>
+                  <span>Print Report</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
           <!-- Applicants Statistical Report (Bar Chart) -->
-          <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4">
-            <div class="text-[#052c6a] text-sm font-semibold mb-2">
-              Applicants Statistical Report
+          <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4 print-panel">
+            <div class="mb-2">
+              <div class="text-[#052c6a] text-sm font-semibold">
+                Applicants Statistical Report
+              </div>
+              <p class="text-[11px] text-slate-500 mt-1">
+                Grant filter: <?php echo htmlspecialchars($dashboardGrantLabel); ?>
+              </p>
             </div>
             <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
               <canvas id="applicantsBarChart" class="w-full h-full"></canvas>
@@ -548,9 +712,14 @@ foreach ($chartYears as $year) {
           </div>
 
           <!-- Trends (Line Chart) -->
-          <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4">
-            <div class="text-[#052c6a] text-sm font-semibold mb-2">
-              Yearly Trend
+          <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4 print-panel">
+            <div class="mb-2">
+              <div class="text-[#052c6a] text-sm font-semibold">
+                Yearly Trend
+              </div>
+              <p class="text-[11px] text-slate-500 mt-1">
+                Grant filter: <?php echo htmlspecialchars($dashboardGrantLabel); ?>
+              </p>
             </div>
             <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
               <canvas id="trendLineChart" class="w-full h-full"></canvas>

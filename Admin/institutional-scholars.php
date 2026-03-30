@@ -46,6 +46,20 @@ $scholarCategoryLabels = [
   "others" => "Others",
 ];
 
+$manualGrantOptions = [
+  "Student Assistant",
+  "Academic Scholarship Program",
+  "Kabayani Scholarship Program",
+  "Others",
+];
+$manualGrantDefaultsByCategory = [
+  "student_assistant" => "Student Assistant",
+  "academic" => "Academic Scholarship Program",
+  "kabayani" => "Kabayani Scholarship Program",
+  "others" => "Others",
+];
+$manualDefaultGrant = $manualGrantDefaultsByCategory[$activeCategoryParam] ?? "";
+
 $serverScholarRecords = array_fill_keys($validScholarCategories, []);
 $assignedOfficeOptions = [];
 $noticeTypeParam = strtolower(trim((string)($_GET["scholar_notice"] ?? "")));
@@ -998,8 +1012,14 @@ if (($conn ?? null) instanceof mysqli) {
   if ($hasScholarStorage && ($_SERVER["REQUEST_METHOD"] ?? "") === "POST" && (string)($_POST["form_action"] ?? "") === "add_manual_scholar") {
     $manualFullName = trim((string)($_POST["manual_full_name"] ?? ""));
     $manualGrantApplied = trim((string)($_POST["manual_grant_applied"] ?? ""));
+    if (!in_array($manualGrantApplied, $manualGrantOptions, true)) {
+      $manualGrantApplied = "";
+    }
     $manualProgramYear = trim((string)($_POST["manual_program_year"] ?? ""));
     $manualAssignedOffice = trim((string)($_POST["manual_assigned_office"] ?? ""));
+    if ($manualAssignedOffice !== "" && !in_array($manualAssignedOffice, $assignedOfficeOptions, true)) {
+      $manualAssignedOffice = "";
+    }
     $manualSemester = trim((string)($_POST["manual_semester"] ?? ""));
     if (!in_array($manualSemester, $semesterOptions, true)) {
       $manualSemester = $displaySemester;
@@ -1007,9 +1027,6 @@ if (($conn ?? null) instanceof mysqli) {
     $manualAcademicYear = trim((string)($_POST["manual_academic_year"] ?? ""));
     if ($manualAcademicYear === "") {
       $manualAcademicYear = $displaySchoolYear;
-    }
-    if ($manualGrantApplied === "") {
-      $manualGrantApplied = "Others";
     }
     $manualScholarId = isgGenerateManualScholarId($conn);
 
@@ -1827,13 +1844,18 @@ if (($conn ?? null) instanceof mysqli) {
                       <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                           <label class="mb-1 block text-[11px] font-semibold text-slate-700">Scholarship Grant</label>
-                          <input
-                            type="text"
+                          <select
                             name="manual_grant_applied"
-                            placeholder="Ex: Student Assistant"
                             class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
                             required
-                          />
+                          >
+                            <option value="" <?php echo $manualDefaultGrant === "" ? "selected" : ""; ?> disabled>Select scholarship grant</option>
+                            <?php foreach ($manualGrantOptions as $grantOption): ?>
+                              <option value="<?php echo htmlspecialchars($grantOption); ?>" <?php echo $manualDefaultGrant === $grantOption ? "selected" : ""; ?>>
+                                <?php echo htmlspecialchars($grantOption); ?>
+                              </option>
+                            <?php endforeach; ?>
+                          </select>
                         </div>
                         <div>
                           <label class="mb-1 block text-[11px] font-semibold text-slate-700">Full Name</label>
@@ -1855,11 +1877,21 @@ if (($conn ?? null) instanceof mysqli) {
                         </div>
                         <div>
                           <label class="mb-1 block text-[11px] font-semibold text-slate-700">Assigned Office</label>
-                          <input
-                            type="text"
+                          <select
                             name="manual_assigned_office"
                             class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
-                          />
+                            <?php echo empty($assignedOfficeOptions) ? "disabled" : ""; ?>
+                          >
+                            <option value="">Select assigned office</option>
+                            <?php foreach ($assignedOfficeOptions as $officeOption): ?>
+                              <option value="<?php echo htmlspecialchars($officeOption); ?>">
+                                <?php echo htmlspecialchars($officeOption); ?>
+                              </option>
+                            <?php endforeach; ?>
+                          </select>
+                          <?php if (empty($assignedOfficeOptions)): ?>
+                            <p class="mt-1 text-[11px] text-slate-500">No active head office available yet.</p>
+                          <?php endif; ?>
                         </div>
                         <div>
                           <label class="mb-1 block text-[11px] font-semibold text-slate-700">Semester</label>
@@ -2368,10 +2400,10 @@ if (($conn ?? null) instanceof mysqli) {
         if (semesterPhase === "first" && !secondSemesterRenewed) {
           if (todayDate > firstDeadline) {
             return {
-              statusKey: "expired",
+              statusKey: "for_renewal",
               nextScope: "2nd_semester",
-              renewEnabled: false,
-              reason: "Renewal deadline for 2nd Semester already passed."
+              renewEnabled: true,
+              reason: ""
             };
           }
           if (todayDate >= firstRenewStart) {
@@ -2405,10 +2437,10 @@ if (($conn ?? null) instanceof mysqli) {
           }
           if (todayDate > secondDeadline) {
             return {
-              statusKey: "expired",
+              statusKey: "for_renewal",
               nextScope: "school_year",
-              renewEnabled: false,
-              reason: "Renewal deadline for next School Year already passed."
+              renewEnabled: true,
+              reason: ""
             };
           }
           if (todayDate >= secondRenewStart) {
@@ -2446,7 +2478,7 @@ if (($conn ?? null) instanceof mysqli) {
           currentRange &&
           Number(recordRange.startYear) < Number(currentRange.startYear)
         );
-        if (context.statusKey === "expired" && isBehindCurrentSchoolYear) {
+        if (context.statusKey === "for_renewal" && isBehindCurrentSchoolYear) {
           return "school_year";
         }
 
@@ -2470,13 +2502,10 @@ if (($conn ?? null) instanceof mysqli) {
         if (statusKey === "renewed") {
           return '<span class="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 text-[10px] font-semibold">Renewed</span>';
         }
-        if (statusKey === "expired") {
-          return '<span class="inline-flex items-center rounded-full bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 text-[10px] font-semibold">Expired</span>';
-        }
         if (statusKey === "contract_ended") {
           return '<span class="inline-flex items-center rounded-full bg-slate-100 text-slate-700 border border-slate-300 px-2 py-0.5 text-[10px] font-semibold">Contract Ended</span>';
         }
-        if (statusKey === "for_renewal") {
+        if (statusKey === "for_renewal" || statusKey === "expired") {
           return '<span class="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold">For Renewal</span>';
         }
         return '<span class="inline-flex items-center rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold">Official Scholar</span>';
@@ -2526,7 +2555,7 @@ if (($conn ?? null) instanceof mysqli) {
         const notice = document.getElementById("renewalTermNotice");
         if (!notice) return;
         notice.classList.remove("hidden");
-        notice.textContent = "Status is automatic: 1 month before semester end = For Renewal, after deadline without renewal = Expired.";
+        notice.textContent = "Status is automatic: scholars due for renewal stay tagged as For Renewal until renewed or contract ended.";
       }
 
       function getRecordByKey(category, recordKey) {
