@@ -1,4 +1,7 @@
 <?php
+// Guide: Admin login gate and session bootstrap page.
+// Trace: redirect authenticated users -> validate POST credentials -> set session -> render login form.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 require_once "../db.php";
 
@@ -7,6 +10,8 @@ if (adminIsAuthenticated()) {
   header("Location: " . adminPath("adminDashboard.php"));
   exit();
 }
+
+// Handle login submissions before the page markup is rendered.
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $username = trim((string)($_POST["admin_username"] ?? ""));
@@ -17,10 +22,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   } else {
     // For demonstration, we will just check against hardcoded credentials.
     // In a real application, you would query the database here.
-    if ($username === "admin" && $password === "admin123") {
+    if ($username === "admin" && $password === "admin_123") {
       $_SESSION["admin_username"] = $username;
       $_SESSION["admin_name"] = $username;
-      header("Location: " . adminConsumeRedirectTarget("adminDashboard.php"));
+      $loginRedirectTarget = adminConsumeRedirectTarget("adminDashboard.php");
+      $loginRedirectPath = (string)parse_url($loginRedirectTarget, PHP_URL_PATH);
+      if (basename($loginRedirectPath) === "adminDashboard.php") {
+        $loginRedirectTarget .= strpos($loginRedirectTarget, "?") === false ? "?login=success" : "&login=success";
+      }
+      header("Location: " . $loginRedirectTarget);
       exit();
     } else {
       $loginError = "Invalid username or password.";
@@ -214,6 +224,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   </div>
 
 <script>
+  // Toggle password visibility so the admin can verify the typed secret.
   const toggleBtn = document.getElementById("togglePassword");
   const password = document.getElementById("password");
   const eyeIcon = document.getElementById("eyeIcon");

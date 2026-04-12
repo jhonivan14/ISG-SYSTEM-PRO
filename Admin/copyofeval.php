@@ -1,4 +1,7 @@
 <?php
+// Guide: Static print template for student assistant evaluation results.
+// Trace: auth check -> render printable evaluation layout.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 ?>

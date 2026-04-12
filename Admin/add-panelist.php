@@ -1,4 +1,7 @@
 <?php
+// Guide: Standalone panelist account registration form.
+// Trace: validate submitted fields -> insert account -> show success or error feedback.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";

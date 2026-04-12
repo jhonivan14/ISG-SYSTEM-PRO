@@ -1,4 +1,7 @@
 <?php
+// Guide: Institutional scholar registry with imports, renewals, status changes, and category tabs.
+// Trace: normalize filters/actions -> ensure table exists -> load scholar records -> render UI -> client-side state handlers.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once __DIR__ . "/includes/school-term-filter.php";
@@ -67,6 +70,8 @@ if (($noticeTypeParam === "success" || $noticeTypeParam === "error") && isset($_
   $actionNoticeType = $noticeTypeParam;
   $actionNoticeMessage = trim((string)$_GET["scholar_notice_message"]);
 }
+
+// Helpers below normalize scholar data, renewal rules, imports, and table persistence logic.
 
 function isgBuildProgramYear(string $program, string $yearLevel): string
 {
@@ -2061,6 +2066,7 @@ if (($conn ?? null) instanceof mysqli) {
     </div>
 
     <script>
+      // Client-side store for scholar tabs, renewal flows, modal state, and table rendering.
       const selectedSchoolYear = <?php echo json_encode($selectedSchoolYear); ?>;
       const selectedSemester = <?php echo json_encode($selectedSemester); ?>;
       const displaySchoolYear = <?php echo json_encode($displaySchoolYear); ?>;

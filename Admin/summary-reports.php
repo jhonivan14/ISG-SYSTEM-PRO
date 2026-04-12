@@ -1,4 +1,7 @@
 <?php
+// Guide: Static admin summary dashboard or report mockup with sample charts.
+// Trace: auth check -> render dashboard layout -> initialize demo charts and sidebar highlighting.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 ?>
@@ -723,6 +726,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!sidebar) {
     return;
   }
+
+  // Highlight the current admin page in the shared sidebar menu.
 
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {

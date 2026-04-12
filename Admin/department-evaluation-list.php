@@ -1,4 +1,7 @@
 <?php
+// Guide: Department evaluation monitor with evaluation window controls and term filters.
+// Trace: load evaluation settings -> fetch assistant records -> render status list -> table/sidebar scripts.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once __DIR__ . "/includes/school-term-filter.php";
@@ -16,6 +19,8 @@ $assistantEvaluationRecords = [];
 $isEvaluationWindowOpen = false;
 $evaluationWindowNotice = "";
 $evaluationWindowError = "";
+
+// Helpers below keep program-year parsing, category filtering, and record-key generation consistent.
 
 function isgSplitProgramYearForDepartmentList(string $programYear): array
 {
@@ -64,6 +69,8 @@ function isgDepartmentEvaluationSemesterSortRank(string $semester): int
   }
   return 9;
 }
+
+// Load evaluation-window settings and student assistant records for the selected term.
 
 if (($conn ?? null) instanceof mysqli) {
   $createWindowTableSql = "CREATE TABLE IF NOT EXISTS department_evaluation_window (
@@ -958,6 +965,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!sidebar) {
     return;
   }
+
+  // Highlight the current admin page in the shared sidebar menu.
 
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {

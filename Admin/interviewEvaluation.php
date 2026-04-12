@@ -1,4 +1,7 @@
 <?php
+// Guide: Interview evaluation summary page for panelist-assigned student assistant applicants.
+// Trace: load shared filters/sent applicants -> aggregate latest panel scores -> render summary table -> preview/sidebar scripts.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 $defaultBatchLabel = "All Batches";
@@ -848,6 +851,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
+  // Highlight the current admin page in the shared sidebar menu.
+
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {
     "view-application.php": "applicant.php",
@@ -869,6 +874,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  // Open an iframe preview of the latest panelist evaluation and allow in-modal printing.
   const modal = document.getElementById("panelistEvalModal");
   const frame = document.getElementById("panelistEvalFrame");
   const loading = document.getElementById("panelistEvalLoading");

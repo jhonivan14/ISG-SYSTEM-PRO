@@ -1,4 +1,7 @@
 <?php
+// Guide: Static printable department evaluation form layout.
+// Trace: auth check -> render evaluation form template.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 ?>

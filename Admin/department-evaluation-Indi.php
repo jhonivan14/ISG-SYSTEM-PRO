@@ -1,4 +1,7 @@
 <?php
+// Guide: Detailed department evaluation viewer and print page for one scholar or evaluation record.
+// Trace: load scholar/evaluation data -> compute summaries -> render sections -> print/sidebar helpers.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
@@ -53,6 +56,8 @@ $sectionWeightedTotals = [
 $overallWeightedTotals = [4 => 0, 3 => 0, 2 => 0, 1 => 0];
 $resolvedScholarRow = null;
 $loadedByEvaluationId = false;
+
+// Helpers below load the selected evaluation record and format print-friendly score summaries.
 
 function adminDepartmentEvaluationLoadScholarRecord(mysqli $conn, int $recordId, int $sourceApplicationId): ?array
 {

@@ -1,10 +1,15 @@
 <?php
+// Guide: Mail dispatch endpoint for approved applicant status messages.
+// Trace: validate POST payload -> verify recipient -> load SMTP config -> send mail -> redirect with status.
+
 use PHPMailer\PHPMailer\PHPMailer;
 
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
 require_once __DIR__ . "/../vendor/autoload.php";
+
+// Helper: partially mask addresses in errors so admins can troubleshoot without exposing full emails.
 
 $maskEmail = function (string $email): string {
   $email = trim($email);

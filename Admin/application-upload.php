@@ -1,4 +1,7 @@
 <?php
+// Guide: Secure file streaming endpoint for uploaded application requirements.
+// Trace: validate request params -> verify upload record -> resolve storage path -> send file response.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";

@@ -1,4 +1,7 @@
 <?php
+// Guide: Single application review page with document checks and approve or decline actions.
+// Trace: load application and uploads -> validate action requests -> render details -> confirmation/sidebar scripts.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
@@ -79,6 +82,8 @@ $grantRequirements = [
   ],
 ];
 
+// Helper: safely pull optional application fields while keeping the template code compact.
+
 function app_value(array $application, string $key): string {
   return isset($application[$key]) ? (string)$application[$key] : "";
 }
@@ -113,6 +118,7 @@ if ($applicationId <= 0) {
 $postAction = isset($_POST["application_action"]) ? (string)$_POST["application_action"] : "";
 $postId = (int)($_POST["application_id"] ?? 0);
 $postBatch = trim((string)($_POST["application_batch"] ?? ""));
+// Process approve or decline actions after validating the selected application and batch rules.
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   if ($postId <= 0 || ($postAction !== "approve" && $postAction !== "decline")) {
     $actionMessage = "Invalid action request.";
@@ -892,6 +898,7 @@ foreach ($uploadedRequirements as $upload) {
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script>
       document.addEventListener("DOMContentLoaded", () => {
+        // Collapse the admin sidebar on mobile while reviewing an application.
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
 
@@ -911,6 +918,7 @@ foreach ($uploadedRequirements as $upload) {
       });
 
       document.addEventListener("DOMContentLoaded", () => {
+        // Confirm approve or decline actions before the form posts back to PHP.
         const form = document.getElementById("applicationActionForm");
         const actionInput = document.getElementById("applicationActionInput");
         const batchInput = document.getElementById("applicationBatchInput");
@@ -976,6 +984,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!sidebar) {
     return;
   }
+
+  // Highlight the current admin page in the shared sidebar menu.
 
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {

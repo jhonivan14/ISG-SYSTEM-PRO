@@ -1,4 +1,7 @@
 <?php
+// Guide: Shared school year, semester, and batch filter bootstrap for admin pages.
+// Trace: ensure DB and auth context -> build option lists -> normalize selected filters -> expose display values.
+
 require_once __DIR__ . "/admin-auth.php";
 adminRequireLogin();
 

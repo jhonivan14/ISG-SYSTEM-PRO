@@ -1,7 +1,12 @@
 <?php
+// Guide: Queue endpoint for sending approved student assistant applicants to selected panelists.
+// Trace: validate panelist selection -> verify applicant and grant -> upsert queue rows -> redirect with result.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
+
+// Read and validate the target applicant together with the selected panelist usernames.
 
 $applicantId = (int)($_POST["applicant_id"] ?? 0);
 $panelistUsernames = isset($_POST["panelist_usernames"]) && is_array($_POST["panelist_usernames"])

@@ -1,4 +1,7 @@
 <?php
+// Guide: Approved applicants page with messaging, panelist routing, and scholar confirmation actions.
+// Trace: handle confirm POST -> load approved applicants/panelists -> render modals -> action scripts.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once '../db.php';
@@ -42,6 +45,8 @@ $grantLabels = [
   13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
   14 => "SMCC Alumni Discount",
 ];
+
+// Handle scholar confirmation requests before the approved-applicants list is assembled.
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["confirm_applicant_id"])) {
   $confirmApplicantId = (int)($_POST["confirm_applicant_id"] ?? 0);
@@ -1140,6 +1145,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!sidebar) {
     return;
   }
+
+  // Highlight the current admin page in the shared sidebar menu.
 
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {

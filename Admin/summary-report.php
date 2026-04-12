@@ -1,10 +1,15 @@
 <?php
+// Guide: Printable summary report for department evaluation results by term.
+// Trace: load selected term -> collect summary rows -> sort display order -> render report and sidebar scripts.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once __DIR__ . "/includes/school-term-filter.php";
 
 $summaryRecords = [];
 $summaryLoadError = "";
+
+// Helpers below standardize weighted mean formatting before the printable summary is rendered.
 
 $truncateAverage = static function (?float $value): ?float {
   if ($value === null) {
@@ -747,6 +752,7 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
     </div>
 
     <script>
+      // Collapse the admin sidebar on mobile for the printable summary view.
       document.addEventListener("DOMContentLoaded", function () {
         var sidebar = document.getElementById("sidebar");
         var toggleBtn = document.getElementById("sidebarToggle");
@@ -772,6 +778,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!sidebar) {
     return;
   }
+
+  // Highlight the current admin page in the shared sidebar menu.
 
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {

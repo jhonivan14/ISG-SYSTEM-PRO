@@ -1,4 +1,7 @@
 <?php
+// Guide: Shared loader for applicants already sent to panelists.
+// Trace: reuse active term filters -> verify queue availability -> fetch latest sent-applicant snapshot.
+
 require_once __DIR__ . "/admin-auth.php";
 adminRequireLogin();
 

@@ -1,4 +1,7 @@
 <?php
+// Guide: Static sample print layout for the list of qualified applicants.
+// Trace: auth check -> render printable list template.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 ?>

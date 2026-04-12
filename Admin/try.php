@@ -1,4 +1,7 @@
 <?php
+// Guide: Static printable interview result mockup.
+// Trace: auth check -> render interview result layout.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 ?>

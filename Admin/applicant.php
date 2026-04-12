@@ -1,4 +1,7 @@
 <?php
+// Guide: Applicant intake page for pending and declined records.
+// Trace: build term filters -> load applicant groups -> categorize counts -> render tables -> filter/sidebar scripts.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once '../db.php';
@@ -827,6 +830,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!sidebar) {
     return;
   }
+
+  // Highlight the current admin page in the shared sidebar menu.
 
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {

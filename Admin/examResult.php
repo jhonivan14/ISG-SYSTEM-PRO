@@ -1,4 +1,7 @@
 <?php
+// Guide: Static printable qualifying exam result template.
+// Trace: auth check -> render exam result layout.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 ?>

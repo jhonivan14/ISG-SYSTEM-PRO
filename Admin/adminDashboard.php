@@ -1,7 +1,13 @@
 <?php
+// Guide: Admin home dashboard that aggregates counts and chart-ready datasets.
+// Trace: load dashboard filters -> gather totals/trends -> render cards/charts -> sidebar scripts.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once '../db.php';
+
+$showLoginSuccess = isset($_GET["login"]) && trim((string)$_GET["login"]) === "success";
+$dashboardAdminName = trim((string)($_SESSION["admin_name"] ?? $_SESSION["admin_username"] ?? "Admin"));
 
 $currentYear = (int)date("Y");
 $currentMonth = (int)date("n");
@@ -37,6 +43,8 @@ $dashboardGrantId = array_key_exists($requestedDashboardGrantId, $dashboardGrant
 $dashboardGrantLabel = $dashboardGrantId > 0
   ? $dashboardGrantLabels[$dashboardGrantId]
   : "All Grants and Discounts";
+
+// Helper: build a stable scholar key so repeated source rows are counted only once.
 
 function adminDashboardScholarCountKey(array $row): string
 {
@@ -298,6 +306,7 @@ foreach ($chartYears as $year) {
     <title>Admin Dashboard</title>
      <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
@@ -876,6 +885,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return;
   }
 
+  // Highlight the current admin page in the shared sidebar menu.
+
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {
     "view-application.php": "applicant.php",
@@ -895,6 +906,31 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 </script>
+<?php if ($showLoginSuccess): ?>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
+  const cleanUrl = new URL(window.location.href);
+  cleanUrl.searchParams.delete("login");
+  window.history.replaceState({}, document.title, cleanUrl.toString());
+
+  if (typeof Swal === "undefined") {
+    return;
+  }
+
+  await Swal.fire({
+    icon: "success",
+    title: "Welcome Admin",
+    text: <?= json_encode("Welcome, " . $dashboardAdminName . "!") ?>,
+    timer: 1800,
+    timerProgressBar: true,
+    showConfirmButton: false,
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    confirmButtonColor: "#052c6a"
+  });
+});
+</script>
+<?php endif; ?>
 </body>
 </html>
 

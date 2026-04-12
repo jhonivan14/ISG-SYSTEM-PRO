@@ -1,4 +1,7 @@
 <?php
+// Guide: Dynamic list-of-qualified report builder for confirmed scholars.
+// Trace: load qualified records and filters -> prepare printable rows -> render report view -> term/sidebar scripts.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 $defaultBatchLabel = "All Batches";
@@ -14,6 +17,8 @@ $officeSaveMessageType = "";
 $hasBatchColumn = false;
 $hasRankInputTable = false;
 $hasInstitutionalScholarTable = false;
+
+// Helpers below keep report redirects, scholar-table checks, and printable labels consistent.
 
 $buildQualifiedUrl = static function (string $schoolYear, string $semester, string $batch, string $saveStatus = ""): string {
   $query = [];
@@ -963,6 +968,7 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
       document.addEventListener("DOMContentLoaded", () => {
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
+        // Sync the report header term text and collapse the sidebar on smaller screens.
         const academicYearSelect = document.getElementById("academicYear");
         const semesterSelect = document.getElementById("semesterSelect");
         const termText = document.getElementById("termText");
@@ -999,6 +1005,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!sidebar) {
     return;
   }
+
+  // Highlight the current admin page in the shared sidebar menu.
 
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {

@@ -1,7 +1,12 @@
 <?php
+// Guide: Shared admin authentication, base path, and redirect helpers.
+// Trace: start session -> expose path helpers -> enforce login -> resolve post-login redirect target.
+
 if (session_status() !== PHP_SESSION_ACTIVE) {
   session_start();
 }
+
+// These helpers are wrapped in function_exists guards so multiple admin includes stay safe.
 
 if (!function_exists("adminBasePath")) {
   function adminBasePath(): string

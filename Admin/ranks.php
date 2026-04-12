@@ -1,4 +1,7 @@
 <?php
+// Guide: Applicant ranking page combining interview, exam, and grade inputs.
+// Trace: ensure storage table -> save ranking inputs -> compute rank rows -> render interactive ranking script.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 $defaultBatchLabel = "All Batches";
@@ -14,6 +17,7 @@ $rankRemarkOptions = [
 $rankSaveStatus = isset($_GET["rank_save"]) ? strtolower(trim((string)$_GET["rank_save"])) : "";
 $rankSaveMessage = "";
 $rankSaveMessageType = "";
+// Helpers below keep score formatting and filter-preserving redirect URLs consistent.
 $truncateToTwoDecimals = static function (float $value): float {
   if ($value >= 0) {
     return floor($value * 100) / 100;
@@ -69,6 +73,8 @@ if (($conn ?? null) instanceof mysqli) {
     }
   }
 }
+
+// Save manual exam, grades, and remarks inputs before recomputing the displayed ranking table.
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) {
   $postedSchoolYear = trim((string)($_POST["school_year"] ?? $selectedSchoolYear ?? ""));
@@ -944,6 +950,7 @@ if (!empty($rankRows)) {
       </main>
     </div>
     <script>
+      // Client-side ranking engine: recalculate weighted totals, ranks, and remarks as the form changes.
       const rows = <?php echo json_encode($rankRows, JSON_UNESCAPED_SLASHES); ?>;
       const remarkOptions = <?php echo json_encode(array_values($rankRemarkOptions), JSON_UNESCAPED_SLASHES); ?>;
       const truncateToTwoDecimals = (value) => {

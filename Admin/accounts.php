@@ -1,4 +1,7 @@
 <?php
+// Guide: Admin account maintenance page for panelist and head office users.
+// Trace: request validation -> create/reset account queries -> list rendering -> modal/sidebar scripts.
+
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
@@ -25,6 +28,8 @@ $headOfficeFormData = [
   "office" => "",
   "status" => "active",
 ];
+
+// Handle password resets and account creation requests before loading the account tables.
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   if (isset($_POST["reset_account_password"])) {
@@ -894,6 +899,7 @@ if ($headOfficeResult) {
       document.addEventListener("DOMContentLoaded", () => {
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
+        // Restore modal state after validation errors and wire sidebar plus modal interactions.
         const initialModal = <?= json_encode($activeModal) ?>;
 
         const setModalState = (modalId, isOpen) => {
@@ -964,6 +970,8 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!sidebar) {
     return;
   }
+
+  // Highlight the current admin page in the shared sidebar menu.
 
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {
