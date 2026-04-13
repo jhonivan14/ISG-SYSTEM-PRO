@@ -456,6 +456,26 @@ foreach ($uploadedRequirements as $upload) {
                   <?= htmlspecialchars($actionMessage) ?>
                 </div>
               <?php endif; ?>
+              <?php if (isset($_GET["message_status"])): ?>
+                <?php
+                  $messageStatus = (string)$_GET["message_status"];
+                  $messageSuccess = $messageStatus === "sent";
+                  $messageError = $messageStatus === "error";
+                  $messageErrorText = $_SESSION["message_error"] ?? "";
+                  unset($_SESSION["message_error"]);
+                ?>
+                <?php if ($messageSuccess || $messageError): ?>
+                  <div class="mb-4 rounded border px-3 py-2 text-xs font-semibold <?php echo $messageSuccess ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"; ?>">
+                    <?php
+                      if ($messageSuccess) {
+                        echo "Message sent successfully.";
+                      } else {
+                        echo htmlspecialchars($messageErrorText !== "" ? $messageErrorText : "Failed to send message. Please try again.");
+                      }
+                    ?>
+                  </div>
+                <?php endif; ?>
+              <?php endif; ?>
               <header>
                 <div class="header-top">
                   <div class="header-left">
@@ -843,55 +863,137 @@ foreach ($uploadedRequirements as $upload) {
 
         <section class="px-4 sm:px-6 pb-10 no-print bg-[#eef2f7]">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6">
-            <form
-              id="applicationActionForm"
-              class="flex flex-wrap items-center justify-end gap-3"
-              method="post"
-            >
-              <input type="hidden" name="application_id" value="<?= htmlspecialchars((string)$applicationId) ?>" />
-              <input type="hidden" name="application_action" id="applicationActionInput" value="" />
-              <?php if ($isStudentAssistantApplicant && $batchColumnExists): ?>
-                <label for="applicationBatchInput" class="text-xs font-semibold text-[#052c6a]">
-                  Assign Batch
-                </label>
-                <select
-                  id="applicationBatchInput"
-                  name="application_batch"
-                  class="rounded border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] focus:outline-none"
-                  aria-label="Assign applicant batch"
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div class="flex flex-wrap items-center gap-3">
+                <?php if (!empty($application)): ?>
+                  <button
+                    id="sendMessageOpen"
+                    class="inline-flex items-center gap-2 rounded border border-[#0d8ddb] px-4 py-2 text-xs font-semibold text-[#0d8ddb] hover:bg-[#0d8ddb] hover:text-white transition"
+                    type="button"
+                  >
+                    <i class="fas fa-envelope"></i>
+                    Send Message
+                  </button>
+                <?php endif; ?>
+                <?php if ($isStudentAssistantApplicant && !$batchColumnExists): ?>
+                  <p class="text-[11px] font-semibold text-red-600">
+                    Batch column not found in applications table.
+                  </p>
+                <?php endif; ?>
+              </div>
+              <form
+                id="applicationActionForm"
+                class="flex flex-wrap items-center justify-end gap-3"
+                method="post"
+              >
+                <input type="hidden" name="application_id" value="<?= htmlspecialchars((string)$applicationId) ?>" />
+                <input type="hidden" name="application_action" id="applicationActionInput" value="" />
+                <?php if ($isStudentAssistantApplicant && $batchColumnExists): ?>
+                  <label for="applicationBatchInput" class="text-xs font-semibold text-[#052c6a]">
+                    Assign Batch
+                  </label>
+                  <select
+                    id="applicationBatchInput"
+                    name="application_batch"
+                    class="rounded border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] focus:outline-none"
+                    aria-label="Assign applicant batch"
+                  >
+                    <option value="">Select batch...</option>
+                    <?php foreach ($batchOptions as $batchOption): ?>
+                      <option
+                        value="<?= htmlspecialchars($batchOption) ?>"
+                        <?= app_value($application, "batch") === $batchOption ? "selected" : "" ?>
+                      >
+                        <?= htmlspecialchars($batchOption) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                <?php endif; ?>
+                <button
+                  class="rounded bg-[#16a34a] px-4 py-2 text-xs font-semibold text-white hover:bg-[#15803d] transition"
+                  type="button"
+                  data-action="approve"
                 >
-                  <option value="">Select batch...</option>
-                  <?php foreach ($batchOptions as $batchOption): ?>
-                    <option
-                      value="<?= htmlspecialchars($batchOption) ?>"
-                      <?= app_value($application, "batch") === $batchOption ? "selected" : "" ?>
-                    >
-                      <?= htmlspecialchars($batchOption) ?>
-                    </option>
-                  <?php endforeach; ?>
-                </select>
-              <?php elseif ($isStudentAssistantApplicant): ?>
-                <p class="text-[11px] font-semibold text-red-600">
-                  Batch column not found in applications table.
-                </p>
-              <?php endif; ?>
-              <button
-                class="rounded bg-[#16a34a] px-4 py-2 text-xs font-semibold text-white hover:bg-[#15803d] transition"
-                type="button"
-                data-action="approve"
-              >
-                Approve Application
-              </button>
-              <button
-                class="rounded border border-[#f44336] px-4 py-2 text-xs font-semibold text-[#f44336] hover:bg-[#f44336] hover:text-white transition"
-                type="button"
-                data-action="decline"
-              >
-                Decline Application
-              </button>
-            </form>
+                  Approve Application
+                </button>
+                <button
+                  class="rounded border border-[#f44336] px-4 py-2 text-xs font-semibold text-[#f44336] hover:bg-[#f44336] hover:text-white transition"
+                  type="button"
+                  data-action="decline"
+                >
+                  Decline Application
+                </button>
+              </form>
+            </div>
           </div>
         </section>
+
+        <?php if (!empty($application)): ?>
+          <div
+            id="sendMessageModal"
+            class="fixed inset-0 z-40 hidden items-center justify-center bg-black/40 px-4"
+            aria-hidden="true"
+          >
+            <div class="w-full max-w-md rounded-lg bg-white shadow-lg">
+              <div class="flex items-center justify-between border-b border-[#0d8ddb] px-4 py-3">
+                <h2 class="text-sm font-semibold text-[#052c6a]">Send Message</h2>
+                <button id="sendMessageClose" class="text-[#052c6a] hover:text-[#0d8ddb]" type="button">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+              <form action="send_message.php" method="post" class="px-4 py-3 space-y-3">
+                <input type="hidden" name="applicant_id" value="<?= htmlspecialchars((string)$applicationId) ?>" />
+                <input type="hidden" name="return_page" value="view-application.php" />
+                <input type="hidden" name="return_id" value="<?= htmlspecialchars((string)$applicationId) ?>" />
+                <div>
+                  <label class="block text-xs font-semibold text-[#052c6a] mb-1">Recipient</label>
+                  <input
+                    type="text"
+                    class="w-full rounded border border-[#0d8ddb] px-3 py-2 text-xs text-[#052c6a] bg-gray-50"
+                    value="<?= htmlspecialchars(app_value($application, "applicant_name")) ?>"
+                    readonly
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-[#052c6a] mb-1">Recipient Email</label>
+                  <input
+                    type="text"
+                    name="recipient_email"
+                    class="w-full rounded border border-[#0d8ddb] px-3 py-2 text-xs text-[#052c6a] bg-gray-50"
+                    value="<?= htmlspecialchars(app_value($application, "email_address")) ?>"
+                    readonly
+                  />
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-[#052c6a] mb-1" for="messageBody">Message</label>
+                  <textarea
+                    id="messageBody"
+                    name="message_body"
+                    rows="5"
+                    required
+                    class="w-full rounded border border-[#0d8ddb] px-3 py-2 text-xs text-[#052c6a] focus:outline-none"
+                    placeholder="Type your message here..."
+                  ></textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    id="sendMessageCancel"
+                    class="rounded border border-[#0d8ddb] px-3 py-2 text-xs font-semibold text-[#052c6a]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="rounded bg-[#0d8ddb] px-3 py-2 text-xs font-semibold text-white hover:bg-[#0b7cc0]"
+                  >
+                    Send
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        <?php endif; ?>
       </main>
     </div>
 
@@ -915,6 +1017,39 @@ foreach ($uploadedRequirements as $upload) {
             });
           });
         }
+      });
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const modal = document.getElementById("sendMessageModal");
+        const openButton = document.getElementById("sendMessageOpen");
+        const closeButtons = [
+          document.getElementById("sendMessageClose"),
+          document.getElementById("sendMessageCancel"),
+        ].filter(Boolean);
+
+        if (!modal || !openButton) {
+          return;
+        }
+
+        const closeModal = () => {
+          modal.classList.add("hidden");
+          modal.classList.remove("flex");
+        };
+
+        openButton.addEventListener("click", () => {
+          modal.classList.remove("hidden");
+          modal.classList.add("flex");
+        });
+
+        closeButtons.forEach((button) => {
+          button.addEventListener("click", closeModal);
+        });
+
+        modal.addEventListener("click", (event) => {
+          if (event.target === modal) {
+            closeModal();
+          }
+        });
       });
 
       document.addEventListener("DOMContentLoaded", () => {

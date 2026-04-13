@@ -173,6 +173,101 @@ $_SESSION["from_index"] = true;
       position: relative;
       z-index: 10;
     }
+
+    @keyframes heroSilverSweep {
+      0% {
+        background-position: 180% 50%;
+      }
+      100% {
+        background-position: -40% 50%;
+      }
+    }
+
+    .hero-title-shine {
+      background-image: linear-gradient(
+        102deg,
+        #f4f7fb 0%,
+        #ffffff 14%,
+        #b8c4d1 27%,
+        #ffffff 39%,
+        #d7dfe8 53%,
+        #ffffff 66%,
+        #aab6c3 82%,
+        #f7fbff 100%
+      );
+      background-size: 240% 100%;
+      background-position: 180% 50%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      -webkit-text-fill-color: transparent;
+      animation: heroSilverSweep 6.2s linear infinite;
+      filter: drop-shadow(0 3px 12px rgba(5, 44, 106, 0.24));
+    }
+
+    .hero-subtitle-shine {
+      background-image: linear-gradient(
+        100deg,
+        #dfe6ee 0%,
+        #ffffff 20%,
+        #c2ccd7 36%,
+        #ffffff 52%,
+        #b7c3cf 72%,
+        #eef3f8 100%
+      );
+      background-size: 220% 100%;
+      background-position: 180% 50%;
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      -webkit-text-fill-color: transparent;
+      animation: heroSilverSweep 7.2s linear infinite;
+      filter: drop-shadow(0 2px 10px rgba(5, 44, 106, 0.18));
+    }
+
+    @keyframes ctaSilverSweep {
+      0% {
+        transform: translateX(-165%) skewX(-24deg);
+        opacity: 0;
+      }
+      12% {
+        opacity: 0.15;
+      }
+      48% {
+        opacity: 0.85;
+      }
+      100% {
+        transform: translateX(165%) skewX(-24deg);
+        opacity: 0;
+      }
+    }
+
+    .hero-cta-shine {
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      box-shadow:
+        0 14px 30px -18px rgba(252, 220, 47, 0.85),
+        0 10px 22px -16px rgba(5, 44, 106, 0.48);
+    }
+
+    .hero-cta-shine::after {
+      content: "";
+      position: absolute;
+      inset: -35% auto -35% -22%;
+      width: 38%;
+      pointer-events: none;
+      background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.14) 18%,
+        rgba(255, 255, 255, 0.82) 50%,
+        rgba(214, 220, 230, 0.46) 66%,
+        rgba(255, 255, 255, 0) 100%
+      );
+      filter: blur(1px);
+      animation: ctaSilverSweep 4.8s ease-in-out infinite;
+    }
     
     header, main {
       position: relative;
@@ -199,14 +294,14 @@ $_SESSION["from_index"] = true;
 
   <div class="relative z-10 max-w-3xl mx-auto animate-fade-in-up">
     <img class="w-20 h-20 mx-auto rounded-full bg-white shadow-xl border-4 border-white animate-float" src="img/admission-logo.jpg" alt="SMCC Logo" />
-    <h1 class="text-white font-extrabold text-3xl md:text-4xl leading-tight mt-5 drop-shadow-sm">
+    <h1 class="hero-title-shine font-extrabold text-3xl md:text-4xl leading-tight mt-5">
       Institutional Scholarship Management System
     </h1>
-    <p class="text-white mt-3 text-sm md:text-base max-w-md mx-auto">
+    <p class="hero-subtitle-shine mt-3 text-sm md:text-base max-w-md mx-auto font-medium">
       SMCC Admission and Scholarship Office
     </p>
-    <button id="applyBtn" class="mt-6 md:mt-8 bg-[#fcdc2f] text-[#052c6a] font-semibold rounded-full px-6 py-2.5 md:px-7 md:py-3 text-sm md:text-base shadow-md hover:bg-[#ffe45c] hover:shadow-lg transition-transform duration-200 hover:-translate-y-1" type="button">
-      Proceed to Application
+    <button id="applyBtn" class="hero-cta-shine mt-6 md:mt-8 bg-[#fcdc2f] text-[#052c6a] font-semibold rounded-full px-6 py-2.5 md:px-7 md:py-3 text-sm md:text-base shadow-md hover:bg-[#ffe45c] hover:shadow-lg transition-transform duration-200 hover:-translate-y-1" type="button">
+      Click Here to Apply
       <i class="fas fa-arrow-right ml-2 text-xs"></i>
     </button>
   </div>
@@ -271,6 +366,15 @@ $_SESSION["from_index"] = true;
   </section>
   </div>
 </main>
+
+<footer class="mt-6 px-4 pb-6 md:mt-8">
+  <div class="mx-auto max-w-4xl text-center text-[12px] leading-[1.35] text-[#6f6f6f] sm:text-[14px]">
+    <p>&copy; 2026 Saint Michael College of Caraga | All Rights Reserved</p>
+    <p>Tabanao, Jhon Ivan.</p>
+    <p>Adviser: Rea Mie A. Omas-as</p>
+    <p>CCIS</p>
+  </div>
+</footer>
 
 <script>
   // ============================================================
@@ -444,14 +548,14 @@ $_SESSION["from_index"] = true;
   });
 
   // ============================================================
-  // Apply button logic (unchanged)
+  // Applicant portal entry
   // ============================================================
   document.getElementById("applyBtn").addEventListener("click", () => {
     Swal.fire({
       html: `
         <div class="flex flex-col items-center">
           <img src="img/SMCCNEWLOGO.png" alt="Loading Logo" class="w-20 h-20 animate-pulse mb-4" />
-          <p class="text-sm text-gray-600">Loading application form…</p>
+          <p class="text-sm text-gray-600">Loading applicant portal...</p>
         </div>
       `,
       showConfirmButton: false,
@@ -461,7 +565,7 @@ $_SESSION["from_index"] = true;
       customClass: { popup: "rounded-2xl" },
       didOpen: () => { Swal.showLoading(); }
     });
-    setTimeout(() => { window.location.href = "Applicant/applicationReq.php"; }, 700);
+    setTimeout(() => { window.location.href = "Applicant/applicant-portal.php"; }, 700);
   });
 
   window.addEventListener("pageshow", function (event) {

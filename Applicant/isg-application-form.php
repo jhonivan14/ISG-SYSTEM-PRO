@@ -12,6 +12,44 @@ function normalize_contact_number($value) {
   return preg_replace('/\D+/', '', trim((string)$value));
 }
 
+function normalize_birth_date_for_storage($value) {
+  $value = trim((string)$value);
+  if ($value === "") {
+    return "";
+  }
+
+  $isoDate = DateTime::createFromFormat('Y-m-d', $value);
+  if ($isoDate instanceof DateTime && $isoDate->format('Y-m-d') === $value) {
+    return $isoDate->format('Y-m-d');
+  }
+
+  $legacyDate = DateTime::createFromFormat('m/d/Y', $value);
+  if ($legacyDate instanceof DateTime && $legacyDate->format('m/d/Y') === $value) {
+    return $legacyDate->format('Y-m-d');
+  }
+
+  return "";
+}
+
+function format_birth_date_for_input($value) {
+  $value = trim((string)$value);
+  if ($value === "") {
+    return "";
+  }
+
+  $isoDate = DateTime::createFromFormat('Y-m-d', $value);
+  if ($isoDate instanceof DateTime && $isoDate->format('Y-m-d') === $value) {
+    return $value;
+  }
+
+  $legacyDate = DateTime::createFromFormat('m/d/Y', $value);
+  if ($legacyDate instanceof DateTime && $legacyDate->format('m/d/Y') === $value) {
+    return $legacyDate->format('Y-m-d');
+  }
+
+  return "";
+}
+
 function validate_contact_number(&$errors, $field, $label) {
   $value = read_post_field($field);
   if ($value === "") {
@@ -32,16 +70,13 @@ function validate_birth_date(&$errors, $field, $label) {
     return;
   }
 
-  if (!preg_match('/^\d{2}\/\d{2}\/\d{4}$/', $value)) {
-    $errors[] = $label . " must use the format mm/dd/yyyy.";
+  $normalizedValue = normalize_birth_date_for_storage($value);
+  if ($normalizedValue === "") {
+    $errors[] = $label . " must be a valid date.";
     return;
   }
 
-  $date = DateTime::createFromFormat('m/d/Y', $value);
-  $hasValidDate = $date instanceof DateTime && $date->format('m/d/Y') === $value;
-  if (!$hasValidDate) {
-    $errors[] = $label . " must be a valid date in mm/dd/yyyy format.";
-  }
+  $_POST[$field] = $normalizedValue;
 }
 
 function infer_scholarship_type($grantId) {
@@ -117,6 +152,7 @@ if ($othersSpecifyValue === "" && $effectiveScholarshipType === "Others" && $cur
 }
 $selectedSchoolYear = read_post_field("schoolYear");
 $selectedSemester = read_post_field("semester");
+$dateOfBirthInputValue = format_birth_date_for_input(read_post_field("dateOfBirth"));
  
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $grantId = $currentGrantId;
@@ -637,15 +673,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                 id="dateOfBirth"
-                inputmode="numeric"
-                maxlength="10"
-                minlength="10"
                 name="dateOfBirth"
-                pattern="\d{2}/\d{2}/\d{4}"
-                placeholder="mm/dd/yyyy"
                 required
-                title="Please enter date of birth in mm/dd/yyyy format."
-                type="text"
+                type="date"
+                max="<?php echo htmlspecialchars(date('Y-m-d')); ?>"
+                value="<?php echo htmlspecialchars($dateOfBirthInputValue); ?>"
               />
             </div>
 
@@ -957,7 +989,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     const programCourseSelect = document.getElementById('programCourseSelect');
     const programCourseInput = document.getElementById('programCourseInput');
     const programCourseHint = document.getElementById('programCourseHint');
-    const dateOfBirthInput = document.getElementById('dateOfBirth');
     const contactNumberInputs = document.querySelectorAll('#contactNumber, #motherContact, #fatherContact');
 
     function getAutoScholarshipType(grantId) {
@@ -1038,13 +1069,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       }
     }
 
-    function sanitizeBirthDateInput(event) {
-      const cleanedValue = event.target.value.replace(/[^\d/]/g, '').slice(0, 10);
-      if (event.target.value !== cleanedValue) {
-        event.target.value = cleanedValue;
-      }
-    }
-
     if (activeGrantId && grantNames[activeGrantId]) {
       grantLabelEl.textContent = grantNames[activeGrantId] + ' (Grant #' + activeGrantId + ')';
       grantIdField.value = activeGrantId;
@@ -1083,13 +1107,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         requestAnimationFrame(() => sanitizeContactNumberInput({ target: input }));
       });
     });
-
-    if (dateOfBirthInput) {
-      dateOfBirthInput.addEventListener('input', sanitizeBirthDateInput);
-      dateOfBirthInput.addEventListener('paste', () => {
-        requestAnimationFrame(() => sanitizeBirthDateInput({ target: dateOfBirthInput }));
-      });
-    }
 
     syncOthersSpecify();
     syncProgramCourseField();

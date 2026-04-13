@@ -1,11 +1,14 @@
 <?php
 session_start();
 require_once "../db.php";
+require_once "../application-reference.php";
 require_once "../upload-storage.php";
 
 $errors = [];
 $success = false;
 $applicationId = null;
+$referenceNumber = null;
+$referenceWarning = "";
 
 function draft_value($draft, $key) {
   return isset($draft[$key]) ? $draft[$key] : "";
@@ -131,6 +134,12 @@ if (empty($errors)) {
 
     if ($stmt->execute()) {
       $applicationId = $stmt->insert_id;
+      if ($applicationId > 0) {
+        $referenceNumber = assignApplicationReference($conn, $applicationId);
+        if ($referenceNumber === null) {
+          $referenceWarning = "Your application was saved, but the reference number is temporarily unavailable.";
+        }
+      }
     } else {
       $errors[] = "Failed to save application.";
     }
@@ -243,12 +252,39 @@ if (empty($errors)) {
       <p class="mt-2 text-sm text-[#052c6a]/80">
         Your application and documents have been submitted successfully.
       </p>
-      <a
-        href="../index.php"
-        class="mt-4 inline-flex items-center justify-center px-5 py-2 rounded-full bg-[#0d8ddb] text-white text-sm font-semibold hover:bg-[#0b63d1]"
-      >
-        Back to homepage
-      </a>
+      <?php if ($referenceNumber !== null): ?>
+        <div class="mt-4 rounded-2xl border border-[#c7dcff] bg-[#eff6ff] px-4 py-4 text-left">
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#0d8ddb]">
+            Application Reference Number
+          </p>
+          <p class="mt-2 text-lg font-extrabold tracking-wide text-[#052c6a]">
+            <?php echo htmlspecialchars($referenceNumber); ?>
+          </p>
+          <p class="mt-2 text-xs text-[#052c6a]/75">
+            Save this reference number. You can use it on the applicant tracking page to check your application status.
+          </p>
+        </div>
+      <?php elseif ($referenceWarning !== ""): ?>
+        <div class="mt-4 rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-3 text-left text-xs text-yellow-800">
+          <?php echo htmlspecialchars($referenceWarning); ?>
+        </div>
+      <?php endif; ?>
+      <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
+        <?php if ($referenceNumber !== null): ?>
+          <a
+            href="tracking-dashboard.php?reference=<?php echo urlencode($referenceNumber); ?>"
+            class="inline-flex items-center justify-center px-5 py-2 rounded-full border border-[#0d8ddb] text-[#0d8ddb] text-sm font-semibold hover:bg-[#eff6ff]"
+          >
+            Track Application
+          </a>
+        <?php endif; ?>
+        <a
+          href="../index.php"
+          class="inline-flex items-center justify-center px-5 py-2 rounded-full bg-[#0d8ddb] text-white text-sm font-semibold hover:bg-[#0b63d1]"
+        >
+          Back to homepage
+        </a>
+      </div>
     <?php else: ?>
       <h1 class="text-xl font-bold text-red-600">Submission Failed</h1>
       <div class="mt-3 text-left text-xs sm:text-sm text-[#052c6a] space-y-1">

@@ -735,9 +735,6 @@ unset($applicant);
                                 Send to Panelist
                               </button>
                             <?php endif; ?>
-                            <button class="border border-[#f44336] text-[#f44336] rounded px-3 py-1 text-xs hover:bg-[#f44336] hover:text-white" type="button">
-                              Remove
-                            </button>
                           </div>
                         </td>
                       </tr>

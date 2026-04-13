@@ -7,6 +7,7 @@ adminRequireLogin();
 $defaultBatchLabel = "All Batches";
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/panelist-sent-applicants.php";
+require_once __DIR__ . "/includes/mailer.php";
 
 $criteriaCount = 12;
 $maxInterviewPoints = $criteriaCount * 5;
@@ -49,6 +50,35 @@ $buildRanksUrl = static function (string $schoolYear, string $semester, string $
 
   $queryString = http_build_query($query);
   return "ranks.php" . ($queryString !== "" ? "?" . $queryString : "");
+};
+$buildQualificationMail = static function (string $applicantName, string $remarks): array {
+  $recipientName = trim($applicantName) !== "" ? trim($applicantName) : "Applicant";
+  $isQualified = strcasecmp(trim($remarks), "Hired") === 0;
+
+  if ($isQualified) {
+    return [
+      "subject" => "Student Assistant Qualification Update",
+      "body" => "Dear {$recipientName},\n\n"
+        . "Your Student Assistant application has completed the qualification stage.\n\n"
+        . "Result: Qualified\n\n"
+        . "You have been selected for the Student Assistant opportunity. Please wait for the next instructions from the Admission and Scholarship Office.\n\n"
+        . "Thank you.\n"
+        . "Admission and Scholarship Office\n"
+        . "Saint Michael College of Caraga",
+    ];
+  }
+
+  return [
+    "subject" => "Student Assistant Qualification Update",
+    "body" => "Dear {$recipientName},\n\n"
+      . "Your Student Assistant application has completed the qualification stage.\n\n"
+      . "Result: Not Selected\n\n"
+      . "Thank you for your time and effort throughout the screening process. After the final review, your application was not selected for this cycle.\n\n"
+      . "We appreciate your interest in the Student Assistant opportunity.\n\n"
+      . "Thank you.\n"
+      . "Admission and Scholarship Office\n"
+      . "Saint Michael College of Caraga",
+  ];
 };
 $savedRankInputsByApplicantId = [];
 $interviewScoresByApplicantId = [];
@@ -93,6 +123,46 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
       $allowedApplicantIds[$applicantId] = true;
     }
   }
+  $existingQualificationStateByApplicantId = [];
+  if (!empty($postedApplicantIds)) {
+    $qualificationLookupIds = array_values(array_unique(array_filter($postedApplicantIds, static function (int $applicantId): bool {
+      return $applicantId > 0;
+    })));
+
+    if (!empty($qualificationLookupIds)) {
+      $placeholders = implode(", ", array_fill(0, count($qualificationLookupIds), "?"));
+      $types = str_repeat("i", count($qualificationLookupIds));
+      $qualificationLookupSql = "
+        SELECT a.id, a.applicant_name, a.email_address, COALESCE(ari.remarks, '') AS remarks
+        FROM applications a
+        LEFT JOIN applicant_rank_inputs ari ON ari.application_id = a.id
+        WHERE a.id IN ({$placeholders})
+      ";
+      $qualificationLookupStmt = $conn->prepare($qualificationLookupSql);
+      if ($qualificationLookupStmt) {
+        $qualificationLookupStmt->bind_param($types, ...$qualificationLookupIds);
+        if ($qualificationLookupStmt->execute()) {
+          $qualificationLookupResult = $qualificationLookupStmt->get_result();
+          while ($qualificationLookupRow = $qualificationLookupResult->fetch_assoc()) {
+            $applicantId = (int)($qualificationLookupRow["id"] ?? 0);
+            if ($applicantId <= 0) {
+              continue;
+            }
+
+            $existingQualificationStateByApplicantId[$applicantId] = [
+              "name" => trim((string)($qualificationLookupRow["applicant_name"] ?? "")),
+              "email" => trim((string)($qualificationLookupRow["email_address"] ?? "")),
+              "remarks" => trim((string)($qualificationLookupRow["remarks"] ?? "")),
+            ];
+          }
+          if ($qualificationLookupResult instanceof mysqli_result) {
+            $qualificationLookupResult->free();
+          }
+        }
+        $qualificationLookupStmt->close();
+      }
+    }
+  }
 
   $saveStmt = $conn->prepare(
     "INSERT INTO applicant_rank_inputs (application_id, exam_rating, grades_rating, remarks)
@@ -104,6 +174,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
   );
 
   if ($saveStmt) {
+    $qualificationEmailQueue = [];
+    $qualificationEmailsSent = 0;
+    $qualificationEmailsFailed = 0;
     foreach ($postedApplicantIds as $applicantId) {
       if ($applicantId <= 0 || !isset($allowedApplicantIds[$applicantId])) {
         continue;
@@ -131,9 +204,51 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
       }
 
       $saveStmt->bind_param("idds", $applicantId, $examRating, $gradesRating, $remarks);
-      $saveStmt->execute();
+      if (!$saveStmt->execute()) {
+        continue;
+      }
+
+      $previousRemarks = trim((string)($existingQualificationStateByApplicantId[$applicantId]["remarks"] ?? ""));
+      $recipientEmail = trim((string)($existingQualificationStateByApplicantId[$applicantId]["email"] ?? ""));
+      $recipientName = trim((string)($existingQualificationStateByApplicantId[$applicantId]["name"] ?? ""));
+      if ($remarks !== "" && strcasecmp($remarks, $previousRemarks) !== 0 && filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+        $qualificationMail = $buildQualificationMail($recipientName, $remarks);
+        $qualificationEmailQueue[] = [
+          "email" => $recipientEmail,
+          "subject" => (string)($qualificationMail["subject"] ?? "Student Assistant Qualification Update"),
+          "body" => (string)($qualificationMail["body"] ?? ""),
+        ];
+      } elseif ($remarks !== "" && strcasecmp($remarks, $previousRemarks) !== 0) {
+        $qualificationEmailsFailed++;
+      }
+    }
+
+    foreach ($qualificationEmailQueue as $qualificationEmail) {
+      try {
+        isgSendPlainTextMail(
+          (string)($qualificationEmail["email"] ?? ""),
+          (string)($qualificationEmail["subject"] ?? "Student Assistant Qualification Update"),
+          (string)($qualificationEmail["body"] ?? "")
+        );
+        $qualificationEmailsSent++;
+      } catch (Throwable $mailError) {
+        $qualificationEmailsFailed++;
+      }
     }
     $saveStmt->close();
+
+    if ($qualificationEmailsSent > 0 && $qualificationEmailsFailed === 0) {
+      $_SESSION["rank_email_notice"] = "Qualification email notifications sent to {$qualificationEmailsSent} applicant(s).";
+      $_SESSION["rank_email_notice_type"] = "success";
+    } elseif ($qualificationEmailsSent > 0 && $qualificationEmailsFailed > 0) {
+      $_SESSION["rank_email_notice"] = "Qualification email notifications sent to {$qualificationEmailsSent} applicant(s), but {$qualificationEmailsFailed} notification(s) could not be delivered.";
+      $_SESSION["rank_email_notice_type"] = "warning";
+    } elseif ($qualificationEmailsFailed > 0) {
+      $_SESSION["rank_email_notice"] = "{$qualificationEmailsFailed} qualification notification(s) could not be delivered.";
+      $_SESSION["rank_email_notice_type"] = "warning";
+    } else {
+      unset($_SESSION["rank_email_notice"], $_SESSION["rank_email_notice_type"]);
+    }
 
     header("Location: " . $buildRanksUrl($postedSchoolYear, $postedSemester, $postedBatch, "success"));
     exit;
@@ -149,6 +264,22 @@ if ($rankSaveStatus === "success") {
 } elseif ($rankSaveStatus === "error") {
   $rankSaveMessage = "Unable to save ranking inputs.";
   $rankSaveMessageType = "error";
+}
+
+$rankEmailNotice = isset($_SESSION["rank_email_notice"]) ? trim((string)$_SESSION["rank_email_notice"]) : "";
+$rankEmailNoticeType = isset($_SESSION["rank_email_notice_type"]) ? trim((string)$_SESSION["rank_email_notice_type"]) : "";
+unset($_SESSION["rank_email_notice"], $_SESSION["rank_email_notice_type"]);
+
+if ($rankEmailNotice !== "") {
+  if ($rankSaveMessage !== "") {
+    $rankSaveMessage .= " " . $rankEmailNotice;
+  } else {
+    $rankSaveMessage = $rankEmailNotice;
+  }
+
+  if ($rankSaveMessageType !== "error") {
+    $rankSaveMessageType = in_array($rankEmailNoticeType, ["success", "warning"], true) ? $rankEmailNoticeType : "success";
+  }
 }
 
 if (($conn ?? null) instanceof mysqli && !empty($panelistSentApplicants)) {
@@ -849,11 +980,11 @@ if (!empty($rankRows)) {
             </div>
           </div>
 
-          <?php if ($rankSaveMessage !== ""): ?>
-            <div class="no-print mb-4 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $rankSaveMessageType === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"; ?>">
-              <?php echo htmlspecialchars($rankSaveMessage); ?>
-            </div>
-          <?php endif; ?>
+      <?php if ($rankSaveMessage !== ""): ?>
+        <div class="no-print mb-4 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $rankSaveMessageType === "success" ? "border-green-200 bg-green-50 text-green-700" : ($rankSaveMessageType === "warning" ? "border-yellow-200 bg-yellow-50 text-yellow-800" : "border-red-200 bg-red-50 text-red-700"); ?>">
+          <?php echo htmlspecialchars($rankSaveMessage); ?>
+        </div>
+      <?php endif; ?>
 
           <form id="rankInputsForm" method="post">
             <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($selectedSchoolYear); ?>" />

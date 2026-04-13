@@ -6,6 +6,7 @@ require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 $defaultBatchLabel = "All Batches";
 require_once __DIR__ . "/includes/school-term-filter.php";
+require_once __DIR__ . "/includes/mailer.php";
 
 $qualifiedApplicants = [];
 $qualifiedApplicantsError = "";
@@ -17,6 +18,13 @@ $officeSaveMessageType = "";
 $hasBatchColumn = false;
 $hasRankInputTable = false;
 $hasInstitutionalScholarTable = false;
+$hasOrientationScheduleTable = false;
+$orientationScheduleNotice = "";
+$orientationScheduleNoticeType = "";
+$currentOrientationSchedule = "";
+$currentOrientationDateValue = "";
+$currentOrientationTimeValue = "";
+$currentOrientationVenueValue = "";
 
 // Helpers below keep report redirects, scholar-table checks, and printable labels consistent.
 
@@ -129,6 +137,83 @@ function qualifiedEnsureInstitutionalScholarTable(mysqli $conn): bool
   return true;
 }
 
+function qualifiedEnsureOrientationScheduleTable(mysqli $conn): bool
+{
+  $createSql = "
+    CREATE TABLE IF NOT EXISTS orientation_schedules (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      grant_id INT NOT NULL DEFAULT 1,
+      school_year VARCHAR(20) NOT NULL DEFAULT '',
+      semester VARCHAR(50) NOT NULL DEFAULT '',
+      batch VARCHAR(50) NOT NULL DEFAULT '',
+      orientation_date DATE NOT NULL,
+      orientation_time TIME DEFAULT NULL,
+      orientation_venue VARCHAR(255) DEFAULT NULL,
+      created_by VARCHAR(100) DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uniq_orientation_target (grant_id, school_year, semester, batch),
+      KEY idx_orientation_date (orientation_date)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+  ";
+
+  if (!$conn->query($createSql)) {
+    return false;
+  }
+
+  $timeColumnResult = $conn->query("SHOW COLUMNS FROM orientation_schedules LIKE 'orientation_time'");
+  $hasTimeColumn = $timeColumnResult instanceof mysqli_result && $timeColumnResult->num_rows > 0;
+  if ($timeColumnResult instanceof mysqli_result) {
+    $timeColumnResult->free();
+  }
+  if (!$hasTimeColumn) {
+    $conn->query("ALTER TABLE orientation_schedules ADD COLUMN orientation_time TIME DEFAULT NULL AFTER orientation_date");
+  }
+
+  $venueColumnResult = $conn->query("SHOW COLUMNS FROM orientation_schedules LIKE 'orientation_venue'");
+  $hasVenueColumn = $venueColumnResult instanceof mysqli_result && $venueColumnResult->num_rows > 0;
+  if ($venueColumnResult instanceof mysqli_result) {
+    $venueColumnResult->free();
+  }
+  if (!$hasVenueColumn) {
+    $conn->query("ALTER TABLE orientation_schedules ADD COLUMN orientation_venue VARCHAR(255) DEFAULT NULL AFTER orientation_time");
+  }
+
+  return true;
+}
+
+function qualifiedFormatOrientationSchedule(string $dateValue, string $timeValue = "", string $venueValue = ""): string
+{
+  $dateValue = trim($dateValue);
+  $timeValue = trim($timeValue);
+  $venueValue = trim($venueValue);
+
+  if ($dateValue === "") {
+    return "";
+  }
+
+  $dateTimestamp = strtotime($dateValue);
+  $formattedDate = $dateTimestamp === false ? $dateValue : date("F j, Y", $dateTimestamp);
+
+  if ($timeValue === "" || $timeValue === "00:00:00") {
+    if ($venueValue !== "") {
+      return $formattedDate . " at " . $venueValue;
+    }
+
+    return $formattedDate;
+  }
+
+  $timeTimestamp = strtotime($timeValue);
+  $formattedTime = $timeTimestamp === false ? $timeValue : date("g:i A", $timeTimestamp);
+
+  $formattedSchedule = $formattedDate . " at " . $formattedTime;
+  if ($venueValue !== "") {
+    $formattedSchedule .= " at " . $venueValue;
+  }
+
+  return $formattedSchedule;
+}
+
 if (($conn ?? null) instanceof mysqli) {
   $batchColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'batch'");
   if ($batchColumnResult instanceof mysqli_result) {
@@ -136,6 +221,7 @@ if (($conn ?? null) instanceof mysqli) {
     $batchColumnResult->free();
   }
   $hasInstitutionalScholarTable = qualifiedEnsureInstitutionalScholarTable($conn);
+  $hasOrientationScheduleTable = qualifiedEnsureOrientationScheduleTable($conn);
 
   $headOfficeTableResult = $conn->query("SHOW TABLES LIKE 'head_offices'");
   if ($headOfficeTableResult instanceof mysqli_result && $headOfficeTableResult->num_rows > 0) {
@@ -176,10 +262,18 @@ if (($conn ?? null) instanceof mysqli) {
   }
 }
 
+$orientationScheduleNotice = trim((string)($_SESSION["orientation_schedule_notice"] ?? ""));
+$orientationScheduleNoticeType = trim((string)($_SESSION["orientation_schedule_notice_type"] ?? ""));
+unset($_SESSION["orientation_schedule_notice"], $_SESSION["orientation_schedule_notice_type"]);
+
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) {
+  $postAction = trim((string)($_POST["form_action"] ?? "save_offices"));
   $postedSchoolYear = trim((string)($_POST["school_year"] ?? $selectedSchoolYear));
   $postedSemester = trim((string)($_POST["semester"] ?? $selectedSemester));
   $postedBatch = trim((string)($_POST["batch"] ?? $selectedBatch));
+  $postedOrientationDate = trim((string)($_POST["orientation_date"] ?? ""));
+  $postedOrientationTime = trim((string)($_POST["orientation_time"] ?? ""));
+  $postedOrientationVenue = trim((string)($_POST["orientation_venue"] ?? ""));
   $postedApplicantIds = isset($_POST["applicant_ids"]) && is_array($_POST["applicant_ids"])
     ? array_values(array_unique(array_map("intval", $_POST["applicant_ids"])))
     : [];
@@ -187,7 +281,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
     ? $_POST["assigned_office"]
     : [];
 
-  if (!$hasRankInputTable || !$hasInstitutionalScholarTable) {
+  if (
+    !$hasRankInputTable
+    || ($postAction === "save_offices" && !$hasInstitutionalScholarTable)
+    || ($postAction === "schedule_orientation" && !$hasOrientationScheduleTable)
+  ) {
+    if ($postAction === "schedule_orientation") {
+      $_SESSION["orientation_schedule_notice"] = "Unable to prepare the orientation schedule.";
+      $_SESSION["orientation_schedule_notice_type"] = "error";
+      header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch));
+      exit;
+    }
+
     header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "error"));
     exit;
   }
@@ -221,6 +326,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
     SELECT
       a.id,
       a.applicant_name,
+      a.email_address,
       a.program_course,
       a.year_level,
       a.school_year,
@@ -245,6 +351,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
         $allowedApplicants[$allowedApplicantId] = [
           "id" => $allowedApplicantId,
           "name" => trim((string)($allowedRow["applicant_name"] ?? "")),
+          "email_address" => trim((string)($allowedRow["email_address"] ?? "")),
           "program_course" => trim((string)($allowedRow["program_course"] ?? "")),
           "year_level" => trim((string)($allowedRow["year_level"] ?? "")),
           "school_year" => trim((string)($allowedRow["school_year"] ?? "")),
@@ -257,7 +364,123 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) 
   }
 
   if (!$allowedLookupReady) {
+    if ($postAction === "schedule_orientation") {
+      $_SESSION["orientation_schedule_notice"] = "Unable to load the qualified applicants for orientation.";
+      $_SESSION["orientation_schedule_notice_type"] = "error";
+      header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch));
+      exit;
+    }
+
     header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch, "error"));
+    exit;
+  }
+
+  if ($postAction === "schedule_orientation") {
+    if (empty($allowedApplicants)) {
+      $_SESSION["orientation_schedule_notice"] = "No qualified applicants are available for orientation scheduling.";
+      $_SESSION["orientation_schedule_notice_type"] = "error";
+      header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch));
+      exit;
+    }
+
+    $orientationTimestamp = $postedOrientationDate !== "" ? strtotime($postedOrientationDate) : false;
+    if ($orientationTimestamp === false) {
+      $_SESSION["orientation_schedule_notice"] = "Please select a valid orientation date.";
+      $_SESSION["orientation_schedule_notice_type"] = "error";
+      header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch));
+      exit;
+    }
+    if ($postedOrientationTime === "" || !preg_match('/^\d{2}:\d{2}$/', $postedOrientationTime)) {
+      $_SESSION["orientation_schedule_notice"] = "Please select a valid orientation time.";
+      $_SESSION["orientation_schedule_notice_type"] = "error";
+      header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch));
+      exit;
+    }
+    if ($postedOrientationVenue === "") {
+      $_SESSION["orientation_schedule_notice"] = "Please enter the orientation venue.";
+      $_SESSION["orientation_schedule_notice_type"] = "error";
+      header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch));
+      exit;
+    }
+
+    $normalizedOrientationDate = date("Y-m-d", $orientationTimestamp);
+    $normalizedOrientationTime = $postedOrientationTime . ":00";
+    $displayOrientationDateTime = qualifiedFormatOrientationSchedule($normalizedOrientationDate, $normalizedOrientationTime);
+    $displayOrientationSchedule = qualifiedFormatOrientationSchedule($normalizedOrientationDate, $normalizedOrientationTime, $postedOrientationVenue);
+    $createdBy = trim((string)($_SESSION["admin_username"] ?? ""));
+    $scheduleStmt = $conn->prepare(
+      "INSERT INTO orientation_schedules (grant_id, school_year, semester, batch, orientation_date, orientation_time, orientation_venue, created_by)
+       VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         orientation_date = VALUES(orientation_date),
+         orientation_time = VALUES(orientation_time),
+         orientation_venue = VALUES(orientation_venue),
+         created_by = VALUES(created_by),
+         updated_at = CURRENT_TIMESTAMP"
+    );
+
+    if (!$scheduleStmt) {
+      $_SESSION["orientation_schedule_notice"] = "Unable to save the orientation schedule.";
+      $_SESSION["orientation_schedule_notice_type"] = "error";
+      header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch));
+      exit;
+    }
+
+    $scheduleStmt->bind_param("sssssss", $postedSchoolYear, $postedSemester, $postedBatch, $normalizedOrientationDate, $normalizedOrientationTime, $postedOrientationVenue, $createdBy);
+    $scheduleSaved = $scheduleStmt->execute();
+    $scheduleStmt->close();
+
+    if (!$scheduleSaved) {
+      $_SESSION["orientation_schedule_notice"] = "Unable to save the orientation schedule.";
+      $_SESSION["orientation_schedule_notice_type"] = "error";
+      header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch));
+      exit;
+    }
+
+    $semesterLabel = $postedSemester !== "" ? $postedSemester : "All Semesters";
+    $schoolYearLabel = $postedSchoolYear !== "" ? $postedSchoolYear : "All School Years";
+    $batchLabel = $postedBatch !== "" ? $postedBatch : "All Qualified Batches";
+    $emailSentCount = 0;
+    $emailFailedCount = 0;
+
+    foreach ($allowedApplicants as $allowedApplicant) {
+      $recipientEmail = trim((string)($allowedApplicant["email_address"] ?? ""));
+      if (!filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+        $emailFailedCount++;
+        continue;
+      }
+
+      $recipientName = trim((string)($allowedApplicant["name"] ?? ""));
+      $recipientName = $recipientName !== "" ? $recipientName : "Applicant";
+      $messageBody = "Dear {$recipientName},\n\n"
+        . "Congratulations. You are included in the list of qualified applicants for the Student Assistant Scholarship Program.\n\n"
+        . "Orientation Date and Time: {$displayOrientationDateTime}\n"
+        . "Venue: {$postedOrientationVenue}\n"
+        . "NOTE: Please be on time for the orientation session.\n\n"
+        . "Thank you.\n"
+        . "Admission and Scholarship Office\n"
+        . "Saint Michael College of Caraga";
+
+      try {
+        isgSendPlainTextMail($recipientEmail, "Scholarship Application Update", $messageBody);
+        $emailSentCount++;
+      } catch (Throwable $mailError) {
+        $emailFailedCount++;
+      }
+    }
+
+    if ($emailSentCount > 0 && $emailFailedCount === 0) {
+      $_SESSION["orientation_schedule_notice"] = "Orientation schedule saved for {$displayOrientationSchedule}. Email notifications were sent to {$emailSentCount} qualified applicant(s).";
+      $_SESSION["orientation_schedule_notice_type"] = "success";
+    } elseif ($emailSentCount > 0 && $emailFailedCount > 0) {
+      $_SESSION["orientation_schedule_notice"] = "Orientation schedule saved for {$displayOrientationSchedule}. Email notifications were sent to {$emailSentCount} applicant(s), but {$emailFailedCount} notification(s) could not be delivered.";
+      $_SESSION["orientation_schedule_notice_type"] = "warning";
+    } else {
+      $_SESSION["orientation_schedule_notice"] = "Orientation schedule saved for {$displayOrientationSchedule}, but no email notifications were delivered.";
+      $_SESSION["orientation_schedule_notice_type"] = "warning";
+    }
+
+    header("Location: " . $buildQualifiedUrl($postedSchoolYear, $postedSemester, $postedBatch));
     exit;
   }
 
@@ -459,6 +682,39 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
   }
 } elseif ($qualifiedApplicantsError === "") {
   $qualifiedApplicantsError = "Ranking inputs table is not available yet.";
+}
+
+if (($conn ?? null) instanceof mysqli && $hasOrientationScheduleTable) {
+  $orientationStmt = $conn->prepare(
+    "SELECT orientation_date, orientation_time, orientation_venue
+     FROM orientation_schedules
+     WHERE grant_id = 1
+       AND school_year = ?
+       AND semester = ?
+       AND batch = ?
+     LIMIT 1"
+  );
+  if ($orientationStmt) {
+    $orientationStmt->bind_param("sss", $selectedSchoolYear, $selectedSemester, $selectedBatch);
+    if ($orientationStmt->execute()) {
+      $orientationResult = $orientationStmt->get_result();
+      $orientationRow = $orientationResult ? $orientationResult->fetch_assoc() : null;
+      if ($orientationResult instanceof mysqli_result) {
+        $orientationResult->free();
+      }
+      if ($orientationRow) {
+        $currentOrientationDateValue = trim((string)($orientationRow["orientation_date"] ?? ""));
+        $currentOrientationTimeValue = substr(trim((string)($orientationRow["orientation_time"] ?? "")), 0, 5);
+        $currentOrientationVenueValue = trim((string)($orientationRow["orientation_venue"] ?? ""));
+        $currentOrientationSchedule = qualifiedFormatOrientationSchedule(
+          $currentOrientationDateValue,
+          (string)($orientationRow["orientation_time"] ?? ""),
+          $currentOrientationVenueValue
+        );
+      }
+    }
+    $orientationStmt->close();
+  }
 }
 ?>
 <html lang="en">
@@ -812,6 +1068,15 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
               </form>
               <div class="flex flex-wrap items-center gap-2">
                 <button
+                  type="button"
+                  id="openOrientationScheduleModal"
+                  class="inline-flex items-center gap-2 rounded-full border border-[#f59e0b] bg-[#f59e0b] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#d97706] disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-300"
+                  <?php echo empty($qualifiedApplicants) ? "disabled" : ""; ?>
+                >
+                  <i class="fas fa-calendar-alt"></i>
+                  <span>Create Orientation Schedule</span>
+                </button>
+                <button
                   type="submit"
                   form="qualifiedOfficeForm"
                   class="inline-flex items-center gap-2 rounded-full border border-[#052c6a] bg-[#052c6a] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#041c43]"
@@ -836,13 +1101,24 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
               <?php echo htmlspecialchars($officeSaveMessage); ?>
             </div>
           <?php endif; ?>
+          <?php if ($orientationScheduleNotice !== ""): ?>
+            <div class="no-print mb-4 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $orientationScheduleNoticeType === "success" ? "border-green-200 bg-green-50 text-green-700" : ($orientationScheduleNoticeType === "warning" ? "border-yellow-200 bg-yellow-50 text-yellow-800" : "border-red-200 bg-red-50 text-red-700"); ?>">
+              <?php echo htmlspecialchars($orientationScheduleNotice); ?>
+            </div>
+          <?php endif; ?>
           <?php if ($officeOptionsError !== "" || empty($officeOptions)): ?>
             <div class="no-print mb-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-xs font-semibold text-yellow-800">
               <?php echo htmlspecialchars($officeOptionsError !== "" ? $officeOptionsError : "No registered head office found yet."); ?>
             </div>
           <?php endif; ?>
+          <?php if ($currentOrientationSchedule !== ""): ?>
+            <div class="no-print mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-xs font-semibold text-blue-700">
+              Current orientation schedule for this qualified list: <?php echo htmlspecialchars($currentOrientationSchedule); ?>
+            </div>
+          <?php endif; ?>
 
           <form id="qualifiedOfficeForm" method="post">
+            <input type="hidden" name="form_action" value="save_offices" />
             <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($selectedSchoolYear); ?>" />
             <input type="hidden" name="semester" value="<?php echo htmlspecialchars($selectedSemester); ?>" />
             <input type="hidden" name="batch" value="<?php echo htmlspecialchars($selectedBatch); ?>" />
@@ -961,6 +1237,89 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
           </div>
           </form>
         </section>
+
+        <div
+          id="orientationScheduleModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-black/40 px-4"
+          aria-hidden="true"
+        >
+          <div class="w-full max-w-md rounded-lg bg-white shadow-lg">
+            <div class="flex items-center justify-between border-b border-[#f59e0b] px-4 py-3">
+              <h2 class="text-sm font-semibold text-[#052c6a]">Create Orientation Schedule</h2>
+              <button id="orientationScheduleClose" class="text-[#052c6a] hover:text-[#f59e0b]" type="button">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <form method="post" class="px-4 py-3 space-y-3">
+              <input type="hidden" name="form_action" value="schedule_orientation" />
+              <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($selectedSchoolYear); ?>" />
+              <input type="hidden" name="semester" value="<?php echo htmlspecialchars($selectedSemester); ?>" />
+              <input type="hidden" name="batch" value="<?php echo htmlspecialchars($selectedBatch); ?>" />
+              <div>
+                <label class="block text-xs font-semibold text-[#052c6a] mb-1">Qualified Applicants</label>
+                <input
+                  type="text"
+                  class="w-full rounded border border-[#f59e0b] px-3 py-2 text-xs text-[#052c6a] bg-gray-50"
+                  value="<?php echo htmlspecialchars((string)count($qualifiedApplicants)); ?> applicant(s)"
+                  readonly
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-[#052c6a] mb-1" for="orientationDateInput">Orientation Date</label>
+                <input
+                  id="orientationDateInput"
+                  type="date"
+                  name="orientation_date"
+                  min="<?php echo htmlspecialchars(date("Y-m-d")); ?>"
+                  required
+                  class="w-full rounded border border-[#f59e0b] px-3 py-2 text-xs text-[#052c6a] focus:outline-none"
+                  value="<?php echo htmlspecialchars($currentOrientationDateValue); ?>"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-[#052c6a] mb-1" for="orientationTimeInput">Orientation Time</label>
+                <input
+                  id="orientationTimeInput"
+                  type="time"
+                  name="orientation_time"
+                  required
+                  class="w-full rounded border border-[#f59e0b] px-3 py-2 text-xs text-[#052c6a] focus:outline-none"
+                  value="<?php echo htmlspecialchars($currentOrientationTimeValue); ?>"
+                />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-[#052c6a] mb-1" for="orientationVenueInput">Venue</label>
+                <input
+                  id="orientationVenueInput"
+                  type="text"
+                  name="orientation_venue"
+                  required
+                  class="w-full rounded border border-[#f59e0b] px-3 py-2 text-xs text-[#052c6a] focus:outline-none"
+                  placeholder="Enter orientation venue"
+                  value="<?php echo htmlspecialchars($currentOrientationVenueValue); ?>"
+                />
+              </div>
+              <p class="text-[11px] leading-5 text-slate-600">
+                Saving this schedule will notify all applicants currently shown in the qualified list by email, including the selected date, time, and venue.
+              </p>
+              <div class="flex justify-end gap-2">
+                <button
+                  type="button"
+                  id="orientationScheduleCancel"
+                  class="rounded border border-[#f59e0b] px-3 py-2 text-xs font-semibold text-[#052c6a]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  class="rounded bg-[#f59e0b] px-3 py-2 text-xs font-semibold text-white hover:bg-[#d97706]"
+                >
+                  Save and Notify
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       </main>
     </div>
 
@@ -968,6 +1327,12 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
       document.addEventListener("DOMContentLoaded", () => {
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
+        const orientationModal = document.getElementById("orientationScheduleModal");
+        const openOrientationModalButton = document.getElementById("openOrientationScheduleModal");
+        const closeOrientationButtons = [
+          document.getElementById("orientationScheduleClose"),
+          document.getElementById("orientationScheduleCancel"),
+        ].filter(Boolean);
         // Sync the report header term text and collapse the sidebar on smaller screens.
         const academicYearSelect = document.getElementById("academicYear");
         const semesterSelect = document.getElementById("semesterSelect");
@@ -982,6 +1347,28 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
           academicYearSelect.addEventListener("change", updateTermText);
           semesterSelect.addEventListener("change", updateTermText);
           updateTermText();
+        }
+
+        if (orientationModal && openOrientationModalButton) {
+          const closeOrientationModal = () => {
+            orientationModal.classList.add("hidden");
+            orientationModal.classList.remove("flex");
+          };
+
+          openOrientationModalButton.addEventListener("click", () => {
+            orientationModal.classList.remove("hidden");
+            orientationModal.classList.add("flex");
+          });
+
+          closeOrientationButtons.forEach((button) => {
+            button.addEventListener("click", closeOrientationModal);
+          });
+
+          orientationModal.addEventListener("click", (event) => {
+            if (event.target === orientationModal) {
+              closeOrientationModal();
+            }
+          });
         }
 
         if (toggleBtn && sidebar) {
