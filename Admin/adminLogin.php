@@ -69,7 +69,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       z-index: 0;
       overflow: hidden;
       pointer-events: none;
-      filter: brightness(0.35) saturate(1.1) blur(7px);
+      filter: brightness(0.35) saturate(1.1) blur(2px);
       transform: scale(1.05);
     }
     #background-cover img {

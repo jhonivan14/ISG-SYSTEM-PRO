@@ -279,7 +279,7 @@ $_SESSION["from_index"] = true;
 
 <div id="particles-js"></div>
 
-<header class="relative flex flex-col items-center text-center px-4 overflow-hidden pb-20 md:pb-16 pt-10">
+<header class="relative flex flex-col items-center text-center px-4 overflow-hidden pb-8 md:pb-16 pt-10">
   <div class="pointer-events-none absolute inset-0 -z-10">
     <div class="absolute -top-24 -left-10 h-56 w-56 bg-blue-300/30 blur-3xl rounded-full"></div>
     <div class="absolute -bottom-28 right-0 h-72 w-72 bg-yellow-300/40 blur-3xl rounded-full"></div>
@@ -306,11 +306,11 @@ $_SESSION["from_index"] = true;
     </button>
   </div>
 
-  <div class="absolute bottom-0 left-0 w-full z-10">
+  <div class="relative mt-8 w-full z-10 md:absolute md:bottom-0 md:left-0 md:mt-0">
     <div class="flex flex-col md:flex-row flex-wrap justify-center items-center gap-2 md:gap-4 lg:gap-6 px-3 py-2 text-white text-xs sm:text-sm bg-[#003b7d]/80 backdrop-blur-md">
       <div class="flex items-center gap-2">
         <i class="fas fa-phone-alt"></i>
-        <a href="tel:+63853433251" class="hover:underline">(085) 343-3251</a>
+        <a class="hover:underline">0966 947 7833</a>
       </div>
       <div class="hidden md:inline-block opacity-30">|</div>
       <div class="flex items-center gap-2">
@@ -318,9 +318,14 @@ $_SESSION["from_index"] = true;
         <a href="mailto:osas-scholarship@smccnasipit.edu.ph" class="hover:underline">osas-scholarship@smccnasipit.edu.ph</a>
       </div>
       <div class="hidden md:inline-block opacity-30">|</div>
+      <div class="flex items-center gap-2">
+        <i class="fab fa-facebook"></i>
+        <a href="mailto:osas-scholarship@smccnasipit.edu.ph" class="hover:underline">SMCC Admission and Scholarship Office</a>
+      </div>
+      <div class="hidden md:inline-block opacity-30">|</div>
       <div class="flex items-center gap-2 text-center">
         <i class="fas fa-map-marker-alt"></i>
-        <span>Brgy. 4, Nasipit, Agusan del Norte</span>
+        <span>Brgy. 4, Atupan St. Nasipit, Agusan del Norte</span>
       </div>
     </div>
   </div>
@@ -368,7 +373,7 @@ $_SESSION["from_index"] = true;
 </main>
 
 <footer class="mt-6 px-4 pb-6 md:mt-8">
-  <div class="mx-auto max-w-4xl text-center text-[12px] leading-[1.35] text-[#6f6f6f] sm:text-[14px]">
+  <div class="mx-auto max-w-4xl text-center text-[11px] leading-[1.35] text-[#6f6f6f] sm:text-[12px]">
     <p>&copy; 2026 Saint Michael College of Caraga | All Rights Reserved</p>
     <p>Tabanao, Jhon Ivan.</p>
     <p>Adviser: Rea Mie A. Omas-as</p>
