@@ -509,33 +509,33 @@ foreach ($uploadedRequirements as $upload) {
                   <div class="flex flex-wrap justify-between max-w-3xl mx-auto">
                     <div class="flex flex-col space-y-1 w-1/2 min-w-[180px]">
                       <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" <?= $scholarshipType === "academic" ? "checked" : "" ?> />
+                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $scholarshipType === "academic" ? "checked" : "" ?> />
                         <span class="text-sm">Academic</span>
                       </label>
                       <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" <?= $scholarshipType === "kabayani" ? "checked" : "" ?> />
+                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $scholarshipType === "kabayani" ? "checked" : "" ?> />
                         <span class="text-sm">Kabayani</span>
                       </label>
                       <label class="text-xs pl-6 pt-0.5">
                         Please specify:
                         <span class="specify-line inline-block border-b border-black w-36">
-                          <input type="text" value="<?= htmlspecialchars(app_value($application, "kabayani_specify")) ?>" />
+                          <input type="text" readonly value="<?= htmlspecialchars(app_value($application, "kabayani_specify")) ?>" />
                         </span>
                       </label>
                     </div>
                     <div class="flex flex-col space-y-1 w-1/2 min-w-[180px]">
                       <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" <?= $scholarshipType === "student assistance" ? "checked" : "" ?> />
+                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $scholarshipType === "student assistance" ? "checked" : "" ?> />
                         <span class="text-sm">Student Assistance</span>
                       </label>
                       <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" <?= $scholarshipType === "others" ? "checked" : "" ?> />
+                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $scholarshipType === "others" ? "checked" : "" ?> />
                         <span class="text-sm">Others</span>
                       </label>
                       <label class="text-xs pl-6 pt-0.5">
                         Please specify:
                         <span class="specify-line inline-block border-b border-black w-44">
-                          <input type="text" value="<?= htmlspecialchars(app_value($application, "others_specify")) ?>" />
+                          <input type="text" readonly value="<?= htmlspecialchars(app_value($application, "others_specify")) ?>" />
                         </span>
                       </label>
                     </div>
@@ -588,11 +588,6 @@ foreach ($uploadedRequirements as $upload) {
                       <span class="data-value border-b border-black flex-grow ml-2 h-4">
                         <?= htmlspecialchars(app_value($application, "permanent_address")) ?>
                       </span>
-                      <label class="ml-4 w-14">Gender</label>
-                      <span>:</span>
-                      <span class="data-value border-b border-black w-20 ml-2 h-4">
-                        <?= htmlspecialchars(app_value($application, "gender")) ?>
-                      </span>
                     </div>
                     <div class="flex items-center">
                       <label class="w-44">Date of Birth</label>
@@ -600,10 +595,10 @@ foreach ($uploadedRequirements as $upload) {
                       <span class="data-value border-b border-black flex-grow ml-2 h-4">
                         <?= htmlspecialchars(app_value($application, "date_of_birth")) ?>
                       </span>
-                      <label class="ml-4 w-14">Age</label>
+                      <label class="ml-4 w-14">Gender</label>
                       <span>:</span>
                       <span class="data-value border-b border-black w-20 ml-2 h-4">
-                        <?= htmlspecialchars(app_value($application, "age")) ?>
+                        <?= htmlspecialchars(app_value($application, "gender")) ?>
                       </span>
                     </div>
                     <div class="flex items-center">
@@ -611,6 +606,11 @@ foreach ($uploadedRequirements as $upload) {
                       <span>:</span>
                       <span class="data-value border-b border-black flex-grow ml-2 h-4">
                         <?= htmlspecialchars(app_value($application, "contact_number")) ?>
+                      </span>
+                      <label class="ml-4 w-14">Age</label>
+                      <span>:</span>
+                      <span class="data-value border-b border-black w-20 ml-2 h-4">
+                        <?= htmlspecialchars(app_value($application, "age")) ?>
                       </span>
                     </div>
                     <div class="flex items-center">

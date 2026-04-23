@@ -105,11 +105,30 @@ if (empty($_SESSION["from_index"])) {
     }
 
     .hero-card {
+      position: relative;
+      overflow: hidden;
       border-radius: 1.5rem;
       padding: 1.35rem;
       color: #fff;
       background: linear-gradient(135deg, #052c6a 0%, #0d8ddb 58%, #37b7f5 100%);
       box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+
+    .hero-card::after {
+      content: "";
+      position: absolute;
+      width: 13rem;
+      height: 13rem;
+      right: -5rem;
+      bottom: -6rem;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(252, 220, 47, 0.24), transparent 68%);
+      pointer-events: none;
+    }
+
+    .hero-card > * {
+      position: relative;
+      z-index: 1;
     }
 
     .step-pill {
@@ -284,6 +303,29 @@ if (empty($_SESSION["from_index"])) {
       box-shadow: 0 10px 22px -18px rgba(120, 53, 15, 0.5);
     }
 
+    .grant-list-heading {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      border-radius: 999px;
+      border: 1px solid rgba(13, 141, 219, 0.16);
+      background: rgba(255, 255, 255, 0.84);
+      padding: 0.52rem 0.9rem;
+      color: rgba(5, 44, 106, 0.82);
+      font-size: 0.78rem;
+      font-weight: 700;
+      box-shadow: 0 14px 30px -26px rgba(5, 44, 106, 0.42);
+    }
+
+    .grant-list-heading span {
+      display: inline-flex;
+      width: 0.58rem;
+      height: 0.58rem;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 0.28rem rgba(34, 197, 94, 0.12);
+    }
+
     .grants-layout {
       display: grid;
       gap: 1.5rem;
@@ -301,6 +343,7 @@ if (empty($_SESSION["from_index"])) {
     main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) {
       position: relative;
       overflow: hidden;
+      scroll-margin-top: 6rem;
       border-color: rgba(13, 141, 219, 0.18) !important;
       background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96)) !important;
       box-shadow: 0 22px 40px -34px rgba(5, 44, 106, 0.38) !important;
@@ -319,6 +362,7 @@ if (empty($_SESSION["from_index"])) {
     main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:first-child {
       position: relative;
       overflow: hidden;
+      flex-wrap: wrap;
       border-bottom: 1px solid rgba(13, 141, 219, 0.12);
       background: linear-gradient(135deg, #052c6a 0%, #0d8ddb 58%, #37b7f5 100%) !important;
     }
@@ -329,6 +373,10 @@ if (empty($_SESSION["from_index"])) {
       inset: 0;
       background: linear-gradient(120deg, rgba(255, 255, 255, 0.12), transparent 45%);
       pointer-events: none;
+    }
+
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:first-child > div {
+      min-width: 0;
     }
 
     main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) > div:first-child > span {
@@ -388,6 +436,8 @@ if (empty($_SESSION["from_index"])) {
       background-image: linear-gradient(135deg, #fcdc2f 0%, #f7c51d 100%);
       color: #052c6a !important;
       box-shadow: 0 16px 30px -22px rgba(252, 220, 47, 0.92);
+      min-height: 2.85rem;
+      letter-spacing: 0.03em;
     }
 
     main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) button::after {
@@ -401,6 +451,11 @@ if (empty($_SESSION["from_index"])) {
       transform: translateY(-2px);
       background-image: linear-gradient(135deg, #ffe05a 0%, #f9c423 100%);
       box-shadow: 0 20px 34px -22px rgba(252, 220, 47, 0.98);
+    }
+
+    main > section:not(.page-guide):nth-of-type(n+4):nth-of-type(-n+18) button:focus-visible {
+      outline: 3px solid rgba(13, 141, 219, 0.35);
+      outline-offset: 3px;
     }
 
     .final-cta {
@@ -453,19 +508,19 @@ if (empty($_SESSION["from_index"])) {
       </div>
 
       <!-- TEXT -->
-      <div class="flex-1">
-        <p class="text-[10px] sm:text-xs text-blue-100 uppercase tracking-[0.18em]">
+      <div class="flex-1 min-w-0">
+        <p class="text-[10px] leading-4 sm:text-xs text-blue-100 uppercase tracking-[0.12em] sm:tracking-[0.18em]">
           SMCC Admission and Scholarship Office
         </p>
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
           <h1 class="text-white text-sm sm:text-base font-semibold leading-tight">
             Institutional Scholarship Grants
           </h1>
-          <span class="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-white/10 text-[10px] sm:text-[11px] text-blue-50">
+          <span class="inline-flex max-w-full items-center gap-1 rounded-full bg-white/10 px-2 py-[2px] text-[10px] sm:text-[11px] text-blue-50">
             Step 1 of 3
           </span>
         </div>
-        <p class="text-[10px] sm:text-xs text-blue-100">
+        <p class="mt-1 text-[10px] leading-4 sm:text-xs text-blue-100">
           View ISG List and Requirements
         </p>
       </div>
@@ -550,8 +605,7 @@ if (empty($_SESSION["from_index"])) {
       </div>
     </section>
 
-
-
+    
     <!-- ============ 1. STUDENT ASSISTANT ============ -->
     <section
       class="bg-white/95 backdrop-blur rounded-3xl shadow-xl border border-[#cddfff] overflow-hidden transition hover:shadow-2xl hover:-translate-y-0.5"

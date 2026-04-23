@@ -109,6 +109,27 @@ function trackingProgressStep(string $status): int
     return 2;
 }
 
+function trackingCanUpdateSubmission(string $status): bool
+{
+    $key = strtolower(trim($status));
+    return $key === "" || $key === "pending";
+}
+
+function trackingUpdateLockMessage(string $status): string
+{
+    $key = strtolower(trim($status));
+
+    if ($key === "approved") {
+        return "Submission updates are no longer available because your application has already moved forward from the initial review stage.";
+    }
+
+    if ($key === "rejected" || $key === "declined") {
+        return "Submission updates are no longer available because the application review has already been completed.";
+    }
+
+    return "Submission updates are no longer available because the scholarship office has already updated your application status.";
+}
+
 function trackingFormattedDate(?string $value): string
 {
     if (!is_string($value) || trim($value) === "") {
@@ -212,6 +233,8 @@ $statusText = $application ? trackingStatusLabel((string)($application["status"]
 $statusClass = $application ? trackingStatusBadgeClass((string)($application["status"] ?? "")) : "";
 $statusMessage = $application ? trackingStatusMessage((string)($application["status"] ?? "")) : "";
 $progressStep = $application ? trackingProgressStep((string)($application["status"] ?? "")) : 0;
+$canUpdateSubmission = $application ? trackingCanUpdateSubmission((string)($application["status"] ?? "")) : false;
+$updateLockMessage = $application ? trackingUpdateLockMessage((string)($application["status"] ?? "")) : "";
 $grantId = $application ? (int)($application["grant_id"] ?? 0) : 0;
 $grantLabel = $application ? ($grantNames[$grantId] ?? (string)($application["scholarship_type"] ?? "N/A")) : "";
 $requiredDocumentLabels = $application ? ($grantRequirements[$grantId] ?? []) : [];
@@ -498,6 +521,10 @@ if ($isStudentAssistantFlow) {
       <div class="rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
         Your submission was updated successfully. The latest application details and uploaded requirements are shown below.
       </div>
+    <?php elseif ($updateStatus === "locked"): ?>
+      <div class="rounded-[1.5rem] border border-yellow-200 bg-yellow-50 px-5 py-4 text-sm text-yellow-800">
+        Submission updates are no longer available because your application status has already been updated by the scholarship office.
+      </div>
     <?php endif; ?>
 
     <section class="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
@@ -727,7 +754,9 @@ if ($isStudentAssistantFlow) {
               <div>
                 <p class="text-[11px] font-semibold uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#0d8ddb]">Saved Application Form</p>
                 <h3 class="mt-2 text-xl font-extrabold text-[#052c6a]">Submitted application details</h3>
-                <p class="mt-2 text-sm leading-6 text-[#052c6a]/80">Review the exact form details on file. If the admin asks for corrections, use the single Update Submission button below to revise both the form and the uploaded documents.</p>
+                <p class="mt-2 text-sm leading-6 text-[#052c6a]/80">
+                  <?php echo htmlspecialchars($canUpdateSubmission ? "Review the exact form details on file. If the admin asks for corrections while your application is still pending, use the single Update Submission button below to revise both the form and the uploaded documents." : "Review the exact form details on file. This submission is now locked because the application status has already been updated."); ?>
+                </p>
               </div>
 
               <div class="mt-5 grid gap-4 lg:grid-cols-3">
@@ -779,7 +808,9 @@ if ($isStudentAssistantFlow) {
               <div>
                 <p class="text-[11px] font-semibold uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#0d8ddb]">Submitted Requirements</p>
                 <h3 class="mt-2 text-xl font-extrabold text-[#052c6a]">Uploaded documentary requirements</h3>
-                <p class="mt-2 text-sm leading-6 text-[#052c6a]/80">These are the files currently on record. Use the same Update Submission button below if you need to replace any document.</p>
+                <p class="mt-2 text-sm leading-6 text-[#052c6a]/80">
+                  <?php echo htmlspecialchars($canUpdateSubmission ? "These are the files currently on record. Use the same Update Submission button below if you need to replace any document while your application is still pending." : "These are the files currently on record. Document replacement is locked after the scholarship office updates the application status."); ?>
+                </p>
               </div>
 
               <?php if (empty($requiredDocumentLabels)): ?>
@@ -820,14 +851,20 @@ if ($isStudentAssistantFlow) {
               <?php endif; ?>
             </div>
 
-            <div class="flex justify-center">
-              <a
-                href="update-submission.php?reference=<?php echo urlencode((string)($application["reference_number"] ?? "")); ?>"
-                class="inline-flex items-center justify-center rounded-full bg-[#052c6a] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#0d8ddb]"
-              >
-                Update Submission
-              </a>
-            </div>
+            <?php if ($canUpdateSubmission): ?>
+              <div class="flex justify-center">
+                <a
+                  href="update-submission.php?reference=<?php echo urlencode((string)($application["reference_number"] ?? "")); ?>"
+                  class="inline-flex items-center justify-center rounded-full bg-[#052c6a] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#0d8ddb]"
+                >
+                  Update Submission
+                </a>
+              </div>
+            <?php else: ?>
+              <div class="rounded-[1.5rem] border border-[#d9e7ff] bg-white px-5 py-4 text-center text-sm leading-6 text-[#052c6a]/80">
+                <?php echo htmlspecialchars($updateLockMessage); ?>
+              </div>
+            <?php endif; ?>
           </div>
         <?php else: ?>
           <div class="flex h-full min-h-[20rem] sm:min-h-[24rem] flex-col justify-center rounded-[1.5rem] border border-rose-200 bg-rose-50 px-4 py-8 text-center sm:rounded-[1.75rem] sm:px-6 sm:py-10">

@@ -160,18 +160,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   </div>
 
   <!-- card -->
-  <div class="max-w-md w-full animate-card" id="admin">
+  <div class="max-w-sm w-full animate-card" id="admin">
 
-    <div class="relative p-10">
-      <div class="flex justify-center mb-7">
-        <img src="../img/SMCCNEWLOGO.png" class="w-28 h-28 logo-float rounded-full bg-white shadow-xl border-4 border-white">
+    <div class="relative p-8">
+      <div class="flex justify-center mb-5">
+        <img src="../img/SMCCNEWLOGO.png" class="w-24 h-24 logo-float rounded-full bg-white shadow-xl border-4 border-white">
       </div>
 
-      <h1 class="text-white text-3xl font-semibold text-center mb-6">
+      <h1 class="text-white text-2xl font-semibold text-center mb-5">
         Department Head Login
       </h1>
 
-      <form method="POST" class="space-y-6">
+      <form method="POST" class="space-y-5">
         <?php if ($loginError !== ""): ?>
           <div class="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             <?= htmlspecialchars($loginError) ?>
@@ -190,7 +190,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               name="head_username"
               type="text"
               placeholder="Enter username"
-              class="w-full pl-10 pr-4 py-3 rounded-lg border border-yellow-300/70 bg-white text-gray-900
+              class="w-full pl-10 pr-4 py-2.5 rounded-lg border border-yellow-300/70 bg-white text-gray-900
                      focus:ring-2 focus:ring-yellow-300 focus:border-yellow-300"
             />
           </div>
@@ -210,7 +210,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               name="head_password"
               type="password"
               placeholder="Enter password"
-              class="w-full pl-10 pr-10 py-3 rounded-lg border border-yellow-300/70 bg-white text-gray-900
+              class="w-full pl-10 pr-10 py-2.5 rounded-lg border border-yellow-300/70 bg-white text-gray-900
                      focus:ring-2 focus:ring-yellow-300 focus:border-yellow-300"
             />
 
@@ -227,7 +227,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         <!-- login button -->
         <button
-          class="w-full bg-yellow-400 hover:bg-yellow-300 text-blue-900 font-bold py-3 rounded-lg shadow-md transition"
+          class="w-full bg-yellow-400 hover:bg-yellow-300 text-blue-900 font-bold py-2.5 rounded-lg shadow-md transition"
           type="submit"
         >
           Log In
@@ -235,7 +235,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         <a
           href="../index.php"
-          class="block w-full text-center border border-white/45 text-white hover:bg-white/15 font-semibold py-3 rounded-lg transition"
+          class="block w-full text-center border border-white/45 text-white hover:bg-white/15 font-semibold py-2.5 rounded-lg transition"
         >
           <i class="fas fa-arrow-left mr-2"></i>Back to Home
         </a>
@@ -244,8 +244,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     </div>
 
     <!-- footer -->
-    <div class="bg-yellow-400 py-3 text-center text-blue-900 font-semibold text-sm rounded-b-3xl">
-      <p>SMCC Institutional Scholarship System</p>
+    <div class="bg-yellow-400 py-2 text-center text-blue-900 font-semibold text-sm rounded-b-3xl">
+      <p>SMCC Institutional Scholarship Management System</p>
     </div>
 
   </div>

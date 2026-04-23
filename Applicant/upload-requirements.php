@@ -153,13 +153,18 @@ $hasRequirements = $selected && !empty($selected["requirements"]);
     body {
       font-family: 'Roboto Slab', serif;
     }
+
+    .top-brand,
+    .top-brand * {
+      font-family: sans-serif;
+    }
   </style>
 </head>
 
 <body class="bg-gradient-to-b from-[#e0f2ff] via-white to-[#e0f2ff] min-h-screen font-sans">
 
   <!-- TOP BAR / BRAND -->
-  <header class="bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md">
+  <header class="top-brand sticky top-0 z-20 bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md">
     <div class="w-full flex items-center gap-3 px-4 sm:px-6 lg:px-10 py-3">
       <!-- LOGO -->
       <div class="flex items-center justify-center">
@@ -171,19 +176,19 @@ $hasRequirements = $selected && !empty($selected["requirements"]);
       </div>
 
       <!-- TEXT -->
-      <div class="flex-1">
-        <p class="text-[10px] sm:text-xs text-blue-100 uppercase tracking-[0.18em]">
+      <div class="flex-1 min-w-0">
+        <p class="text-[10px] leading-4 sm:text-xs text-blue-100 uppercase tracking-[0.12em] sm:tracking-[0.18em]">
           SMCC Admission and Scholarship Office
         </p>
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
           <h1 class="text-white text-sm sm:text-base font-semibold leading-tight">
             Institutional Scholarship Grants
           </h1>
-          <span class="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-white/10 text-[10px] sm:text-[11px] text-blue-50">
+          <span class="inline-flex max-w-full items-center gap-1 rounded-full bg-white/10 px-2 py-[2px] text-[10px] sm:text-[11px] text-blue-50">
             Step 3 of 3
           </span>
         </div>
-        <p class="text-[10px] sm:text-xs text-blue-100">
+        <p class="mt-1 text-[10px] leading-4 sm:text-xs text-blue-100">
           Upload Documentary Requirements
         </p>
       </div>

@@ -53,6 +53,27 @@ function updateFormatBirthDateForInput(string $value): string
   return "";
 }
 
+function updateCanModifySubmission(string $status): bool
+{
+  $key = strtolower(trim($status));
+  return $key === "" || $key === "pending";
+}
+
+function updateSubmissionLockMessage(string $status): string
+{
+  $key = strtolower(trim($status));
+
+  if ($key === "approved") {
+    return "This submission can no longer be updated because the application has already moved forward from the initial review stage.";
+  }
+
+  if ($key === "rejected" || $key === "declined") {
+    return "This submission can no longer be updated because the application review has already been completed.";
+  }
+
+  return "This submission can no longer be updated because the scholarship office has already changed the application status.";
+}
+
 function updateValidateContactNumber(array &$errors, array &$formData, string $field, string $label): void
 {
   $value = trim((string)($formData[$field] ?? ""));
@@ -216,6 +237,8 @@ $semesterOptions = ["1st Semester", "2nd Semester"];
 $genderOptions = ["Male", "Female", "Prefer not to say"];
 $allowedExt = ["pdf", "jpg", "jpeg", "png"];
 $formData = [];
+$submissionUpdatesAllowed = false;
+$submissionUpdateLockMessage = "";
 
 backfillMissingApplicationReferences($conn);
 
@@ -238,6 +261,8 @@ if (!$application) {
 
 if ($application) {
   $formData = mapApplicationToUpdateForm($application);
+  $submissionUpdatesAllowed = updateCanModifySubmission((string)($application["status"] ?? ""));
+  $submissionUpdateLockMessage = updateSubmissionLockMessage((string)($application["status"] ?? ""));
   $existingSchoolYear = trim((string)($application["school_year"] ?? ""));
   if ($existingSchoolYear !== "" && !in_array($existingSchoolYear, $schoolYearOptions, true)) {
     $schoolYearOptions[] = $existingSchoolYear;
@@ -258,6 +283,11 @@ if ($application) {
 }
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && $application) {
+  if (!$submissionUpdatesAllowed) {
+    header("Location: tracking-dashboard.php?reference=" . urlencode($referenceNumber) . "&update_status=locked");
+    exit;
+  }
+
   $grantId = (int)($application["grant_id"] ?? 0);
   $requirements = $grantRequirements[$grantId] ?? [];
   $grantRequiresUploads = !empty($requirements);
@@ -367,8 +397,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && $application) {
   }
 
   if (empty($errors)) {
-    $currentStatus = strtolower(trim((string)($application["status"] ?? "")));
-    $nextStatus = $currentStatus === "approved" ? "Approved" : "Pending";
+    $nextStatus = "Pending";
     $dateOfBirthForStorage = updateNormalizeBirthDateForStorage((string)$formData["dateOfBirth"]);
     $updateStmt = $conn->prepare(
       "UPDATE applications SET
@@ -542,15 +571,39 @@ $showStudentAssistantProgramSelect = updateUsesStudentAssistantPrograms($grantId
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { font-family: "IBM Plex Sans", sans-serif; background: linear-gradient(180deg, #e8f3ff 0%, #f8fbff 38%, #eef6ff 100%); }
+
+    .top-brand,
+    .top-brand * {
+      font-family: sans-serif;
+    }
   </style>
 </head>
 <body class="min-h-screen text-[#052c6a]">
-  <header class="bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md">
-    <div class="mx-auto flex w-full max-w-6xl items-center gap-3 px-4 py-3 sm:px-6 lg:px-8">
-      <img src="../img/SMCCNEWLOGO.png" alt="SMCC Logo" class="h-11 w-11 rounded-full border border-white bg-white object-cover shadow-md" />
-      <div class="flex-1">
-        <p class="text-[10px] uppercase tracking-[0.18em] text-blue-100 sm:text-xs">SMCC Admission and Scholarship Office</p>
-        <h1 class="text-sm font-semibold text-white sm:text-base">Update Submission</h1>
+  <header class="top-brand sticky top-0 z-20 bg-gradient-to-r from-[#052c6a] via-[#0d8ddb] to-[#1d4ed8] shadow-md">
+    <div class="w-full flex items-center gap-3 px-4 sm:px-6 lg:px-10 py-3">
+      <div class="flex items-center justify-center">
+        <img
+          src="../img/SMCCNEWLOGO.png"
+          alt="SMCC Logo"
+          class="w-10 h-10 sm:w-12 sm:h-12 rounded-full object-cover bg-white shadow-md border border-white"
+        />
+      </div>
+
+      <div class="flex-1 min-w-0">
+        <p class="text-[10px] leading-4 sm:text-xs text-blue-100 uppercase tracking-[0.12em] sm:tracking-[0.18em]">
+          SMCC Admission and Scholarship Office
+        </p>
+        <div class="mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
+          <h1 class="text-white text-sm sm:text-base font-semibold leading-tight">
+            Institutional Scholarship Grants
+          </h1>
+          <span class="inline-flex max-w-full items-center gap-1 rounded-full bg-white/10 px-2 py-[2px] text-[10px] sm:text-[11px] text-blue-50">
+            Update Submission
+          </span>
+        </div>
+        <p class="mt-1 text-[10px] leading-4 sm:text-xs text-blue-100">
+          Edit pending application details and uploaded requirements.
+        </p>
       </div>
     </div>
   </header>
@@ -577,6 +630,22 @@ $showStudentAssistantProgramSelect = updateUsesStudentAssistantPrograms($grantId
       <section class="rounded-[2rem] border border-[#cfe2ff] bg-white px-6 py-10 shadow-sm">
         <h2 class="text-2xl font-extrabold text-[#052c6a]">Application not available</h2>
         <p class="mt-3 max-w-xl text-sm leading-6 text-[#052c6a]/80">The reference number is missing or invalid. Open the applicant portal or the tracking dashboard and try again.</p>
+      </section>
+    <?php elseif (!$submissionUpdatesAllowed): ?>
+      <section class="rounded-[2rem] border border-[#cfe2ff] bg-white px-6 py-10 shadow-sm">
+        <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#0d8ddb]">Submission Locked</p>
+        <h2 class="mt-2 text-2xl font-extrabold text-[#052c6a]">Update submission is no longer available</h2>
+        <p class="mt-3 max-w-2xl text-sm leading-6 text-[#052c6a]/80">
+          <?php echo htmlspecialchars($submissionUpdateLockMessage); ?> You may still review your application details from the tracking dashboard.
+        </p>
+        <div class="mt-5 flex flex-col gap-2 sm:flex-row">
+          <a
+            href="tracking-dashboard.php?reference=<?php echo urlencode($referenceNumber); ?>"
+            class="inline-flex items-center justify-center rounded-full bg-[#052c6a] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#0d8ddb]"
+          >
+            Back to Tracking Dashboard
+          </a>
+        </div>
       </section>
     <?php else: ?>
       <section class="rounded-[2rem] border border-[#cfe2ff] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">

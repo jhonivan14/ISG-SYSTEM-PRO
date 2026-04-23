@@ -295,19 +295,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       </div>
 
       <!-- TEXT -->
-      <div class="flex-1">
-        <p class="text-[10px] sm:text-xs text-blue-100 uppercase tracking-[0.18em]">
+      <div class="flex-1 min-w-0">
+        <p class="text-[10px] leading-4 sm:text-xs text-blue-100 uppercase tracking-[0.12em] sm:tracking-[0.18em]">
           SMCC Admission and Scholarship Office
         </p>
-        <div class="flex flex-wrap items-center gap-2">
+        <div class="mt-1 flex flex-wrap items-center gap-1.5 sm:gap-2">
           <h1 class="text-white text-sm sm:text-base font-semibold leading-tight">
             Institutional Scholarship Grants
           </h1>
-          <span class="inline-flex items-center gap-1 px-2 py-[2px] rounded-full bg-white/10 text-[10px] sm:text-[11px] text-blue-50">
+          <span class="inline-flex max-w-full items-center gap-1 rounded-full bg-white/10 px-2 py-[2px] text-[10px] sm:text-[11px] text-blue-50">
             Step 2 of 3
           </span>
         </div>
-        <p class="text-[10px] sm:text-xs text-blue-100">
+        <p class="mt-1 text-[10px] leading-4 sm:text-xs text-blue-100">
           Application Form for Institutional Scholars / Grantees
         </p>
       </div>
