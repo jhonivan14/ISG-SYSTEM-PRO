@@ -8,10 +8,12 @@ function read_post_field($key) {
   return isset($_POST[$key]) ? trim($_POST[$key]) : "";
 }
 
+// normalize the contact number by removing all non-digit characters and trimming whitespace
 function normalize_contact_number($value) {
   return preg_replace('/\D+/', '', trim((string)$value));
 }
 
+// normalize birth date to ISO format (Y-m-d) if possible, otherwise return empty string
 function normalize_birth_date_for_storage($value) {
   $value = trim((string)$value);
   if ($value === "") {
@@ -31,6 +33,7 @@ function normalize_birth_date_for_storage($value) {
   return "";
 }
 
+// format birth date for input field by converting from ISO format (Y-m-d) to the same format, or return empty string if invalid
 function format_birth_date_for_input($value) {
   $value = trim((string)$value);
   if ($value === "") {
@@ -50,6 +53,7 @@ function format_birth_date_for_input($value) {
   return "";
 }
 
+// Validate input numbers into 11 digit only
 function validate_contact_number(&$errors, $field, $label) {
   $value = read_post_field($field);
   if ($value === "") {
@@ -64,6 +68,7 @@ function validate_contact_number(&$errors, $field, $label) {
   }
 }
 
+// Validate birth date to ensure it's a valid date and can be normalized to ISO format
 function validate_birth_date(&$errors, $field, $label) {
   $value = read_post_field($field);
   if ($value === "") {
@@ -79,6 +84,7 @@ function validate_birth_date(&$errors, $field, $label) {
   $_POST[$field] = $normalizedValue;
 }
 
+// Automatic niya i-determine ang scholarship type based sa grant ID:
 function infer_scholarship_type($grantId) {
   if ($grantId === 1) {
     return "Student Assistance";
@@ -96,6 +102,7 @@ function infer_scholarship_type($grantId) {
   return "";
 }
 
+// Mo-decide kung ang program/course field dapat dropdown ba para Student Assistant programs.
 function uses_student_assistant_program_options($grantId, $scholarshipType) {
   return $grantId === 1 || $scholarshipType === "Student Assistance";
 }

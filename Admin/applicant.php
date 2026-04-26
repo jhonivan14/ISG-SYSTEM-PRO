@@ -101,7 +101,7 @@ if ($selectedSemester !== "") {
 }
 
 $pendingApplicants = [];
-$pendingQuery = "SELECT id, created_at, applicant_name, program_course, grant_id, status
+$pendingQuery = "SELECT id, created_at, applicant_name, program_course,reference_number, grant_id, status
   FROM applications
   WHERE (status IS NULL
     OR TRIM(status) = ''
@@ -133,6 +133,7 @@ if ($stmt = $conn->prepare($pendingQuery)) {
       "submitted_at" => $submittedAt,
       "name" => $row["applicant_name"] ?? "",
       "program_course" => $row["program_course"] ?? "",
+      "reference_number" => $row["reference_number"] ?? "",
       "grant" => $grantLabel,
         "status" => $status,
       ];
@@ -174,7 +175,7 @@ unset($applicant);
 $pendingCount = count($pendingApplicants);
 
 $declinedApplicants = [];
-$declinedQuery = "SELECT id, created_at, applicant_name, program_course, grant_id, status
+$declinedQuery = "SELECT id, created_at, applicant_name, program_course, reference_number, grant_id, status
   FROM applications
   WHERE LOWER(TRIM(status)) IN ('declined', 'rejected')";
 if (!empty($filterClauses)) {
@@ -204,6 +205,7 @@ if ($stmt = $conn->prepare($declinedQuery)) {
       "submitted_at" => $submittedAt,
       "name" => $row["applicant_name"] ?? "",
       "program_course" => $row["program_course"] ?? "",
+      "reference_number" => $row["reference_number"] ?? "",
       "grant" => $grantLabel,
         "status" => $status,
       ];
@@ -618,6 +620,11 @@ if ($stmt = $conn->prepare($declinedQuery)) {
                     <th
                       class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
                     >
+                      Reference_number
+                    </th>
+                    <th
+                      class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]"
+                    >
                       ISG Grant
                     </th>
                     <th
@@ -657,6 +664,11 @@ if ($stmt = $conn->prepare($declinedQuery)) {
                           class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
                         >
                           <?= htmlspecialchars($applicant["program_course"]) ?>
+                        </td>
+                        <td
+                          class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
+                        >
+                          <?= htmlspecialchars($applicant["reference_number"]) ?>
                         </td>
                         <td
                           class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]"
@@ -713,6 +725,9 @@ if ($stmt = $conn->prepare($declinedQuery)) {
                       Program / Course
                     </th>
                     <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
+                      Reference_number
+                    </th>
+                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
                       ISG Grant
                     </th>
                     <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
@@ -741,6 +756,9 @@ if ($stmt = $conn->prepare($declinedQuery)) {
                         </td>
                         <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
                           <?= htmlspecialchars($applicant["program_course"]) ?>
+                        </td>
+                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["reference_number"]) ?>
                         </td>
                         <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
                           <?= htmlspecialchars($applicant["grant"]) ?>

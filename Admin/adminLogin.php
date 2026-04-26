@@ -16,24 +16,38 @@ if (adminIsAuthenticated()) {
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $username = trim((string)($_POST["admin_username"] ?? ""));
   $password = trim((string)($_POST["admin_password"] ?? ""));
- 
- if ($username === "" || $password === "") {
+
+  if ($username === "" || $password === "") {
     $loginError = "Please enter your username and password.";
   } else {
-    // For demonstration, we will just check against hardcoded credentials.
-    // In a real application, you would query the database here.
-    if ($username === "admin" && $password === "admin_123") {
-      $_SESSION["admin_username"] = $username;
-      $_SESSION["admin_name"] = $username;
-      $loginRedirectTarget = adminConsumeRedirectTarget("adminDashboard.php");
-      $loginRedirectPath = (string)parse_url($loginRedirectTarget, PHP_URL_PATH);
-      if (basename($loginRedirectPath) === "adminDashboard.php") {
-        $loginRedirectTarget .= strpos($loginRedirectTarget, "?") === false ? "?login=success" : "&login=success";
+    $stmt = $conn->prepare("SELECT full_name, password FROM admin WHERE username = ? LIMIT 1");
+    if ($stmt) {
+      $stmt->bind_param("s", $username);
+      $stmt->execute();
+      $result = $stmt->get_result();
+      $row = $result ? $result->fetch_assoc() : null;
+      $stmt->close();
+
+      $storedPassword = trim((string)($row["password"] ?? ""));
+      if ($row && $password === $storedPassword) {
+        $displayName = trim((string)($row["full_name"] ?? ""));
+        if ($displayName === "") {
+          $displayName = $username;
+        }
+        $_SESSION["admin_username"] = $username;
+        $_SESSION["admin_name"] = $displayName;
+        $loginRedirectTarget = adminConsumeRedirectTarget("adminDashboard.php");
+        $loginRedirectPath = (string)parse_url($loginRedirectTarget, PHP_URL_PATH);
+        if (basename($loginRedirectPath) === "adminDashboard.php") {
+          $loginRedirectTarget .= strpos($loginRedirectTarget, "?") === false ? "?login=success" : "&login=success";
+        }
+        header("Location: " . $loginRedirectTarget);
+        exit();
       }
-      header("Location: " . $loginRedirectTarget);
-      exit();
-    } else {
+
       $loginError = "Invalid username or password.";
+    } else {
+      $loginError = "Login error. Please try again.";
     }
   }
 }
