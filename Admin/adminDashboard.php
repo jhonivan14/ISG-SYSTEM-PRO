@@ -5,18 +5,12 @@
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once '../db.php';
+require_once __DIR__ . "/includes/school-term-filter.php";
 
 $showLoginSuccess = isset($_GET["login"]) && trim((string)$_GET["login"]) === "success";
 $dashboardAdminName = trim((string)($_SESSION["admin_name"] ?? $_SESSION["admin_username"] ?? "Admin"));
 
-$currentYear = (int)date("Y");
-$currentMonth = (int)date("n");
-$currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
-$currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
-$requestedDashboardSchoolYear = trim((string)($_GET["school_year"] ?? ""));
-$dashboardSchoolYear = $requestedDashboardSchoolYear !== "" && strtolower($requestedDashboardSchoolYear) !== "all"
-  ? $requestedDashboardSchoolYear
-  : $currentSchoolYear;
+$dashboardSchoolYear = $displaySchoolYear;
 $totalScholarsCount = 0;
 $registeredPanelistsCount = 0;
 $registeredHeadOfficesCount = 0;
@@ -43,6 +37,10 @@ $dashboardGrantId = array_key_exists($requestedDashboardGrantId, $dashboardGrant
 $dashboardGrantLabel = $dashboardGrantId > 0
   ? $dashboardGrantLabels[$dashboardGrantId]
   : "All Grants and Discounts";
+$dashboardRefreshParams = ["school_year" => $dashboardSchoolYear];
+if ($dashboardGrantId > 0) {
+  $dashboardRefreshParams["grant_id"] = $dashboardGrantId;
+}
 
 // Helper: build a stable scholar key so repeated source rows are counted only once.
 
@@ -161,6 +159,13 @@ if ($pendingStmt) {
 $chartYears = [];
 $barData = [];
 $lineData = [];
+$grantCategoryLabels = [
+  "student_assistance" => "Student Assistance",
+  "academic" => "Academic",
+  "kabayani" => "Kabayani",
+  "others" => "Others",
+];
+$grantCategoryCounts = array_fill_keys(array_keys($grantCategoryLabels), 0);
 
 $yearSql = "
   SELECT DISTINCT school_year
@@ -287,6 +292,37 @@ if ($lineStmt) {
   $lineStmt->close();
 }
 
+$grantCategorySql = "
+  SELECT
+    CASE
+      WHEN grant_id = 1 THEN 'student_assistance'
+      WHEN grant_id = 2 THEN 'academic'
+      WHEN grant_id IN (4, 5) THEN 'kabayani'
+      ELSE 'others'
+    END AS grant_category,
+    COUNT(*) AS total
+  FROM applications
+  WHERE TRIM(COALESCE(school_year, '')) = ?
+  GROUP BY grant_category
+";
+$grantCategoryStmt = $conn->prepare($grantCategorySql);
+if ($grantCategoryStmt) {
+  $grantCategoryStmt->bind_param("s", $dashboardSchoolYear);
+  if ($grantCategoryStmt->execute()) {
+    $result = $grantCategoryStmt->get_result();
+    if ($result instanceof mysqli_result) {
+      while ($row = $result->fetch_assoc()) {
+        $categoryKey = (string)($row["grant_category"] ?? "others");
+        if (array_key_exists($categoryKey, $grantCategoryCounts)) {
+          $grantCategoryCounts[$categoryKey] = (int)($row["total"] ?? 0);
+        }
+      }
+      $result->free();
+    }
+  }
+  $grantCategoryStmt->close();
+}
+
 $firstSemCounts = [];
 $secondSemCounts = [];
 $lineApplicants = [];
@@ -297,6 +333,13 @@ foreach ($chartYears as $year) {
   $lineApplicants[] = $lineData[$year]["total"] ?? 0;
   $lineQualified[] = $lineData[$year]["qualified"] ?? 0;
 }
+$grantCategoryChartLabels = [];
+$grantCategoryChartCounts = [];
+foreach ($grantCategoryLabels as $categoryKey => $categoryLabel) {
+  $grantCategoryChartLabels[] = $categoryLabel;
+  $grantCategoryChartCounts[] = $grantCategoryCounts[$categoryKey] ?? 0;
+}
+$grantCategoryTotal = array_sum($grantCategoryChartCounts);
 ?>
 
 <html lang="en">
@@ -654,24 +697,24 @@ foreach ($chartYears as $year) {
         </section>
 
         <!-- Charts -->
-        <section class="px-4 sm:px-6 space-y-6 mt-4">
+        <section class="px-4 sm:px-6 space-y-4 mt-3">
           <div class="print-only border-b border-slate-300 pb-3">
             <h1 class="text-2xl font-bold text-slate-800">Statistical Report</h1>
             <p class="text-sm text-slate-500 mt-1">
-              <?php echo htmlspecialchars($dashboardGrantLabel); ?>
+              <?php echo htmlspecialchars($dashboardGrantLabel); ?> for S.Y. <?php echo htmlspecialchars($dashboardSchoolYear); ?>
             </p>
           </div>
 
-          <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm no-print">
-            <form method="get" action="adminDashboard.php" class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div class="flex flex-col gap-1 min-w-[260px]">
-                <label class="text-xs font-semibold uppercase tracking-wide text-slate-600" for="dashboardGrantFilter">
+          <div class="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm no-print">
+            <form method="get" action="adminDashboard.php" class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+              <div class="flex flex-col gap-1 lg:max-w-[420px] lg:flex-1">
+                <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-600" for="dashboardGrantFilter">
                   Grant / Discount Filter
                 </label>
                 <select
                   id="dashboardGrantFilter"
                   name="grant_id"
-                  class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                  class="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
                   onchange="this.form.submit()"
                 >
                   <option value="">All grants and discounts</option>
@@ -681,22 +724,35 @@ foreach ($chartYears as $year) {
                     </option>
                   <?php endforeach; ?>
                 </select>
-                <p class="text-[11px] text-slate-500">
-                  Filter the charts by applicant grant or discount category.
-                </p>
               </div>
-              <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($dashboardSchoolYear); ?>" />
-              <div class="flex flex-wrap items-center gap-2">
+              <div class="flex flex-wrap items-end gap-2 lg:justify-end">
+                <div class="flex flex-col gap-1">
+                  <label class="text-[11px] font-semibold uppercase tracking-wide text-slate-600" for="dashboardSchoolYearFilter">
+                    School Year
+                  </label>
+                  <select
+                    id="dashboardSchoolYearFilter"
+                    name="school_year"
+                    class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
+                    onchange="this.form.submit()"
+                  >
+                    <?php foreach ($schoolYearOptions as $schoolYearOption): ?>
+                      <option value="<?php echo htmlspecialchars($schoolYearOption); ?>" <?php echo $dashboardSchoolYear === $schoolYearOption ? "selected" : ""; ?>>
+                        <?php echo htmlspecialchars($schoolYearOption); ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
                 <a
-                  href="adminDashboard.php?school_year=<?php echo urlencode($dashboardSchoolYear); ?>"
-                  class="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  href="adminDashboard.php?<?php echo htmlspecialchars(http_build_query($dashboardRefreshParams)); ?>"
+                  class="inline-flex items-center rounded-full border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   Refresh
                 </a>
                 <button
                   type="button"
                   onclick="window.print()"
-                  class="inline-flex items-center gap-2 rounded-full border border-[#052c6a] bg-[#052c6a] px-4 py-2 text-xs font-semibold text-white hover:bg-[#041f4f]"
+                  class="inline-flex items-center gap-2 rounded-full border border-[#052c6a] bg-[#052c6a] px-3 py-2 text-xs font-semibold text-white hover:bg-[#041f4f]"
                 >
                   <i class="fas fa-print text-[11px]"></i>
                   <span>Print Report</span>
@@ -705,18 +761,58 @@ foreach ($chartYears as $year) {
             </form>
           </div>
 
-          <!-- Applicants Statistical Report (Bar Chart) -->
-          <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4 print-panel">
-            <div class="mb-2">
-              <div class="text-[#052c6a] text-sm font-semibold">
-                Applicants Statistical Report
+          <div class="grid gap-6 xl:grid-cols-2">
+            <!-- Grant Category Distribution (Pie Chart) -->
+            <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4 print-panel">
+              <div class="mb-3">
+                <div class="text-[#052c6a] text-sm font-semibold">
+                  Applications by Grant Category
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">
+                  Based on applications submitted for S.Y. <?php echo htmlspecialchars($dashboardSchoolYear); ?>.
+                </p>
               </div>
-              <p class="text-[11px] text-slate-500 mt-1">
-                Grant filter: <?php echo htmlspecialchars($dashboardGrantLabel); ?>
-              </p>
+              <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_220px] 2xl:items-center">
+                <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80 bg-white">
+                  <?php if ($grantCategoryTotal > 0): ?>
+                    <canvas id="grantCategoryPieChart" class="w-full h-full"></canvas>
+                  <?php else: ?>
+                    <div class="flex h-full items-center justify-center px-4 text-center text-sm text-slate-500">
+                      No application data for this school year.
+                    </div>
+                  <?php endif; ?>
+                </div>
+                <div class="grid gap-2 text-sm sm:grid-cols-2 2xl:grid-cols-1">
+                  <?php foreach ($grantCategoryLabels as $categoryKey => $categoryLabel): ?>
+                    <?php
+                      $categoryCount = $grantCategoryCounts[$categoryKey] ?? 0;
+                      $categoryPercent = $grantCategoryTotal > 0 ? ($categoryCount / $grantCategoryTotal) * 100 : 0;
+                    ?>
+                    <div class="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2">
+                      <span class="font-semibold text-[#052c6a]"><?php echo htmlspecialchars($categoryLabel); ?></span>
+                      <span class="text-right text-xs text-slate-500">
+                        <span class="block font-bold text-[#0d8ddb]"><?php echo htmlspecialchars(number_format($categoryCount)); ?></span>
+                        <?php echo htmlspecialchars(number_format($categoryPercent, 1)); ?>%
+                      </span>
+                    </div>
+                  <?php endforeach; ?>
+                </div>
+              </div>
             </div>
-            <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
-              <canvas id="applicantsBarChart" class="w-full h-full"></canvas>
+
+            <!-- Applicants Statistical Report (Bar Chart) -->
+            <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4 print-panel">
+              <div class="mb-2">
+                <div class="text-[#052c6a] text-sm font-semibold">
+                  Applicants Statistical Report
+                </div>
+                <p class="text-[11px] text-slate-500 mt-1">
+                  Grant filter: <?php echo htmlspecialchars($dashboardGrantLabel); ?>
+                </p>
+              </div>
+              <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
+                <canvas id="applicantsBarChart" class="w-full h-full"></canvas>
+              </div>
             </div>
           </div>
 
@@ -775,6 +871,50 @@ foreach ($chartYears as $year) {
         const barLabels = <?php echo json_encode($chartYears); ?>;
         const firstSem = <?php echo json_encode($firstSemCounts); ?>;
         const secondSem = <?php echo json_encode($secondSemCounts); ?>;
+        const pieLabels = <?php echo json_encode($grantCategoryChartLabels); ?>;
+        const pieData = <?php echo json_encode($grantCategoryChartCounts); ?>;
+
+        const pieCtx = document.getElementById("grantCategoryPieChart");
+        if (pieCtx && window.Chart) {
+          new Chart(pieCtx, {
+            type: "pie",
+            data: {
+              labels: pieLabels,
+              datasets: [
+                {
+                  data: pieData,
+                  backgroundColor: [brandBlue, brandYellow, "#16a34a", "#94a3b8"],
+                  borderColor: "#ffffff",
+                  borderWidth: 2,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  position: "bottom",
+                  labels: {
+                    color: brandNavy,
+                    boxWidth: 12,
+                    padding: 14,
+                  },
+                },
+                tooltip: {
+                  callbacks: {
+                    label: (context) => {
+                      const total = context.dataset.data.reduce((sum, value) => sum + Number(value || 0), 0);
+                      const value = Number(context.parsed || 0);
+                      const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
+                      return `${context.label}: ${value} (${percentage}%)`;
+                    },
+                  },
+                },
+              },
+            },
+          });
+        }
 
         const barCtx = document.getElementById("applicantsBarChart");
         if (barCtx && window.Chart) {
