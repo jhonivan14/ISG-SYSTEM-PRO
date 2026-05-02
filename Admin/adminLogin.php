@@ -150,7 +150,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     <div class="relative p-8">
       <div class="flex justify-center mb-5">
-        <img src="../img/SMCCNEWLOGO.png" class="w-24 h-24 logo-float rounded-full bg-white shadow-xl border-4 border-white">
+        <img src="../img/SMCCNEWLOGO.png" alt="SMCC logo" class="w-24 h-24 logo-float rounded-full bg-white shadow-xl border-4 border-white">
       </div>
 
       <h1 class="text-white text-2xl font-semibold text-center mb-5">
@@ -235,6 +235,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       <p>SMCC Institutional Scholarship Management System</p>
     </div>
   </div>
+
+  <footer class="fixed bottom-4 left-0 right-0 z-10 px-4 text-center text-[11px] leading-[1.35] text-white/50 sm:text-[12px]">
+    <p>&copy; 2026 Saint Michael College of Caraga | All Rights Reserved</p>
+    <p>Tabanao, Jhon Ivan.</p>
+    <p>Adviser: Rea Mie A. Omas-as</p>
+    <p>CCIS</p>
+  </footer>
 
   
 
