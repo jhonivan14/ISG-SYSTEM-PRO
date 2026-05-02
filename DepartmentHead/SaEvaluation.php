@@ -448,6 +448,7 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
     <title>Student Assistants&#39; Evaluation Form</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
@@ -560,11 +561,11 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='my-sas.php'">
+            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='my-sas.php'">
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
-            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='show-evaluation.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='show-evaluation.php'">
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>
@@ -708,16 +709,6 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                 </table>
             </div>
 
-            <?php if ($saveSuccess !== ""): ?>
-              <div class="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                <?= htmlspecialchars($saveSuccess) ?>
-              </div>
-            <?php endif; ?>
-            <?php if ($saveError !== ""): ?>
-              <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <?= htmlspecialchars($saveError) ?>
-              </div>
-            <?php endif; ?>
             <?php if (!$isEvaluationWindowOpen && $loadError === ""): ?>
               <div class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 Evaluation window is closed. Previous entries stay visible, but you cannot submit changes right now.
@@ -1066,7 +1057,35 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
     </div>
 
     <script>
+      const departmentEvaluationToastMessage = <?= json_encode($saveSuccess !== "" ? $saveSuccess : $saveError, JSON_UNESCAPED_SLASHES) ?>;
+      const departmentEvaluationToastType = <?= json_encode($saveSuccess !== "" ? "success" : ($saveError !== "" ? "error" : ""), JSON_UNESCAPED_SLASHES) ?>;
+
+      function showDepartmentEvaluationToast() {
+        if (!departmentEvaluationToastMessage) {
+          return;
+        }
+
+        if (typeof Swal === "undefined") {
+          window.alert(departmentEvaluationToastMessage);
+          return;
+        }
+
+        Swal.fire({
+          toast: true,
+          position: "top-end",
+          showConfirmButton: false,
+          icon: departmentEvaluationToastType === "error" ? "error" : "success",
+          title: departmentEvaluationToastMessage,
+          timer: departmentEvaluationToastType === "error" ? 4200 : 3200,
+          timerProgressBar: true,
+          background: departmentEvaluationToastType === "error" ? "#fef2f2" : "#f0fdf4",
+          color: departmentEvaluationToastType === "error" ? "#991b1b" : "#166534",
+        });
+      }
+
       document.addEventListener("DOMContentLoaded", () => {
+        showDepartmentEvaluationToast();
+
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
         if (toggleBtn && sidebar) {

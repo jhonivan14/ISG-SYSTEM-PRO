@@ -728,7 +728,7 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
                                 class="remarks-content inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#0d8ddb] shadow-sm hover:bg-[#0d8ddb] hover:text-white"
                               >
                                 <i class="fas fa-eye"></i>
-                                <span>View</span>
+                                <span>View Eval.</span>
                               </button>
                             <?php else: ?>
                               <span class="remarks-content text-[11px] text-slate-400">No evaluation yet</span>

@@ -80,6 +80,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <title>Change Password</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
@@ -265,18 +266,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             <h1 class="text-lg font-semibold text-[#052c6a]">Change Password</h1>
             <p class="text-xs text-[#052c6a]">Update your head of office account password.</p>
 
-            <?php if ($passwordError !== ""): ?>
-              <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <?= htmlspecialchars($passwordError) ?>
-              </div>
-            <?php endif; ?>
-
-            <?php if ($passwordMessage !== ""): ?>
-              <div class="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                <?= htmlspecialchars($passwordMessage) ?>
-              </div>
-            <?php endif; ?>
-
             <form method="POST" class="mt-6 grid gap-4 md:grid-cols-3">
               <div>
                 <label class="text-xs font-semibold text-[#052c6a]" for="current-password">Current Password</label>
@@ -323,7 +312,35 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     </div>
 
     <script>
+      const passwordToastMessage = <?= json_encode($passwordMessage !== "" ? $passwordMessage : $passwordError, JSON_UNESCAPED_SLASHES) ?>;
+      const passwordToastType = <?= json_encode($passwordMessage !== "" ? "success" : ($passwordError !== "" ? "error" : ""), JSON_UNESCAPED_SLASHES) ?>;
+
+      function showPasswordToast() {
+        if (!passwordToastMessage) {
+          return;
+        }
+
+        if (typeof Swal === "undefined") {
+          window.alert(passwordToastMessage);
+          return;
+        }
+
+        Swal.fire({
+          toast: true,
+          position: "top-end",
+          showConfirmButton: false,
+          icon: passwordToastType === "error" ? "error" : "success",
+          title: passwordToastMessage,
+          timer: passwordToastType === "error" ? 4200 : 3200,
+          timerProgressBar: true,
+          background: passwordToastType === "error" ? "#fef2f2" : "#f0fdf4",
+          color: passwordToastType === "error" ? "#991b1b" : "#166534",
+        });
+      }
+
       document.addEventListener("DOMContentLoaded", () => {
+        showPasswordToast();
+
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
 

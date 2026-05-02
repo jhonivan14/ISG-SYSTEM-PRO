@@ -620,6 +620,7 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
     <title>List of Qualified</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
@@ -992,16 +993,6 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
             </div>
           </div>
 
-          <?php if ($officeSaveMessage !== ""): ?>
-            <div class="no-print mb-4 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $officeSaveMessageType === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"; ?>">
-              <?php echo htmlspecialchars($officeSaveMessage); ?>
-            </div>
-          <?php endif; ?>
-          <?php if ($orientationScheduleNotice !== ""): ?>
-            <div class="no-print mb-4 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $orientationScheduleNoticeType === "success" ? "border-green-200 bg-green-50 text-green-700" : ($orientationScheduleNoticeType === "warning" ? "border-yellow-200 bg-yellow-50 text-yellow-800" : "border-red-200 bg-red-50 text-red-700"); ?>">
-              <?php echo htmlspecialchars($orientationScheduleNotice); ?>
-            </div>
-          <?php endif; ?>
           <?php if ($officeOptionsError !== "" || empty($officeOptions)): ?>
             <div class="no-print mb-4 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-xs font-semibold text-yellow-800">
               <?php echo htmlspecialchars($officeOptionsError !== "" ? $officeOptionsError : "No registered head office found yet."); ?>
@@ -1215,7 +1206,45 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
     </div>
 
     <script>
+      const officeSaveMessage = <?php echo json_encode($officeSaveMessage, JSON_UNESCAPED_SLASHES); ?>;
+      const officeSaveMessageType = <?php echo json_encode($officeSaveMessageType, JSON_UNESCAPED_SLASHES); ?>;
+      const orientationScheduleNotice = <?php echo json_encode($orientationScheduleNotice, JSON_UNESCAPED_SLASHES); ?>;
+      const orientationScheduleNoticeType = <?php echo json_encode($orientationScheduleNoticeType, JSON_UNESCAPED_SLASHES); ?>;
+
+      function showQualifiedToast(message, type, queryParams) {
+        if (!message) {
+          return;
+        }
+
+        const cleanUrl = new URL(window.location.href);
+        queryParams.forEach((queryParam) => {
+          cleanUrl.searchParams.delete(queryParam);
+        });
+        window.history.replaceState({}, document.title, cleanUrl.toString());
+
+        if (typeof Swal === "undefined") {
+          window.alert(message);
+          return;
+        }
+
+        const toastIcon = type === "error" ? "error" : (type === "warning" ? "warning" : "success");
+        Swal.fire({
+          toast: true,
+          position: "top-end",
+          showConfirmButton: false,
+          icon: toastIcon,
+          title: message,
+          timer: type === "error" ? 4200 : 3200,
+          timerProgressBar: true,
+          background: type === "error" ? "#fef2f2" : (type === "warning" ? "#fffbeb" : "#f0fdf4"),
+          color: type === "error" ? "#991b1b" : (type === "warning" ? "#92400e" : "#166534"),
+        });
+      }
+
       document.addEventListener("DOMContentLoaded", () => {
+        showQualifiedToast(officeSaveMessage, officeSaveMessageType, ["office_save"]);
+        showQualifiedToast(orientationScheduleNotice, orientationScheduleNoticeType, ["open_orientation"]);
+
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
         const orientationModal = document.getElementById("orientationScheduleModal");
@@ -1313,8 +1342,6 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
-
-
 
 
 

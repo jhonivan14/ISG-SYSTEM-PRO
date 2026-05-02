@@ -1022,6 +1022,9 @@ if (($conn ?? null) instanceof mysqli) {
     }
     $manualProgramYear = trim((string)($_POST["manual_program_year"] ?? ""));
     $manualAssignedOffice = trim((string)($_POST["manual_assigned_office"] ?? ""));
+    if (strcasecmp($manualGrantApplied, "Student Assistant") !== 0) {
+      $manualAssignedOffice = "";
+    }
     if ($manualAssignedOffice !== "" && !in_array($manualAssignedOffice, $assignedOfficeOptions, true)) {
       $manualAssignedOffice = "";
     }
@@ -1765,18 +1768,6 @@ if (($conn ?? null) instanceof mysqli) {
                 </div>
               </div>
 
-              <?php if ($autoImportMessage !== ""): ?>
-                <div class="mt-3 rounded-lg border px-3 py-2 text-xs font-semibold <?php echo $autoImportType === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"; ?>">
-                  <?php echo htmlspecialchars($autoImportMessage); ?>
-                </div>
-              <?php endif; ?>
-
-              <?php if ($actionNoticeMessage !== ""): ?>
-                <div class="mt-3 rounded-lg border px-3 py-2 text-xs font-semibold <?php echo $actionNoticeType === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"; ?>">
-                  <?php echo htmlspecialchars($actionNoticeMessage); ?>
-                </div>
-              <?php endif; ?>
-
               <form class="mt-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between" method="get" action="institutional-scholars.php">
                 <div class="flex flex-wrap gap-2">
                   <input type="hidden" name="active_category" value="<?php echo htmlspecialchars($activeCategoryParam); ?>" />
@@ -1850,6 +1841,7 @@ if (($conn ?? null) instanceof mysqli) {
                         <div>
                           <label class="mb-1 block text-[11px] font-semibold text-slate-700">Scholarship Grant</label>
                           <select
+                            id="manualGrantApplied"
                             name="manual_grant_applied"
                             class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
                             required
@@ -1883,6 +1875,7 @@ if (($conn ?? null) instanceof mysqli) {
                         <div>
                           <label class="mb-1 block text-[11px] font-semibold text-slate-700">Assigned Office</label>
                           <select
+                            id="manualAssignedOffice"
                             name="manual_assigned_office"
                             class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
                             <?php echo empty($assignedOfficeOptions) ? "disabled" : ""; ?>
@@ -1897,6 +1890,7 @@ if (($conn ?? null) instanceof mysqli) {
                           <?php if (empty($assignedOfficeOptions)): ?>
                             <p class="mt-1 text-[11px] text-slate-500">No active head office available yet.</p>
                           <?php endif; ?>
+                          
                         </div>
                         <div>
                           <label class="mb-1 block text-[11px] font-semibold text-slate-700">Semester</label>
@@ -2082,6 +2076,10 @@ if (($conn ?? null) instanceof mysqli) {
       const initialActiveCategory = <?php echo json_encode($activeCategoryParam); ?>;
       const serverScholarRecords = <?php echo json_encode($serverScholarRecords, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const availableAssignedOffices = <?php echo json_encode($assignedOfficeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const autoImportMessage = <?php echo json_encode($autoImportMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const autoImportType = <?php echo json_encode($autoImportType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const actionNoticeMessage = <?php echo json_encode($actionNoticeMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const actionNoticeType = <?php echo json_encode($actionNoticeType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
 
       const categoryConfig = {
         official: {
@@ -2120,6 +2118,35 @@ if (($conn ?? null) instanceof mysqli) {
           .replace(/>/g, "&gt;")
           .replace(/\"/g, "&quot;")
           .replace(/'/g, "&#39;");
+      }
+
+      function showScholarToast(message, type, queryParams) {
+        if (!message) {
+          return;
+        }
+
+        const currentUrl = new URL(window.location.href);
+        queryParams.forEach((queryParam) => {
+          currentUrl.searchParams.delete(queryParam);
+        });
+        window.history.replaceState({}, document.title, currentUrl.toString());
+
+        if (typeof Swal === "undefined") {
+          window.alert(message);
+          return;
+        }
+
+        Swal.fire({
+          toast: true,
+          position: "top-end",
+          showConfirmButton: false,
+          icon: type === "error" ? "error" : "success",
+          title: message,
+          timer: type === "error" ? 4200 : 3200,
+          timerProgressBar: true,
+          background: type === "error" ? "#fef2f2" : "#f0fdf4",
+          color: type === "error" ? "#991b1b" : "#166534",
+        });
       }
 
       function getCategoryRecords(category) {
@@ -2902,6 +2929,27 @@ if (($conn ?? null) instanceof mysqli) {
         const form = document.getElementById("manualAddForm");
         const importForm = document.getElementById("importScholarForm");
         const returnCategoryInputs = document.querySelectorAll('input[name="return_active_category"]');
+        const manualGrantSelect = document.getElementById("manualGrantApplied");
+        const manualAssignedOfficeSelect = document.getElementById("manualAssignedOffice");
+        const manualAssignedOfficeHelp = document.getElementById("manualAssignedOfficeHelp");
+        const hasAssignedOfficeOptions = <?php echo empty($assignedOfficeOptions) ? "false" : "true"; ?>;
+
+        const syncManualAssignedOffice = () => {
+          if (!manualGrantSelect || !manualAssignedOfficeSelect) return;
+
+          const isStudentAssistant = manualGrantSelect.value.trim().toLowerCase() === "student assistant";
+          manualAssignedOfficeSelect.disabled = !isStudentAssistant || !hasAssignedOfficeOptions;
+          manualAssignedOfficeSelect.classList.toggle("bg-slate-100", !isStudentAssistant);
+          manualAssignedOfficeSelect.classList.toggle("text-slate-400", !isStudentAssistant);
+          manualAssignedOfficeSelect.classList.toggle("cursor-not-allowed", !isStudentAssistant);
+
+          if (!isStudentAssistant) {
+            manualAssignedOfficeSelect.value = "";
+          }
+          if (manualAssignedOfficeHelp) {
+            manualAssignedOfficeHelp.classList.toggle("hidden", isStudentAssistant);
+          }
+        };
 
         const closeModal = () => {
           if (!modal) return;
@@ -2925,6 +2973,10 @@ if (($conn ?? null) instanceof mysqli) {
         }
         if (cancelButton) {
           cancelButton.addEventListener("click", closeModal);
+        }
+        if (manualGrantSelect) {
+          manualGrantSelect.addEventListener("change", syncManualAssignedOffice);
+          syncManualAssignedOffice();
         }
         if (modal) {
           modal.addEventListener("click", (event) => {
@@ -3006,6 +3058,8 @@ if (($conn ?? null) instanceof mysqli) {
           currentUrl.searchParams.delete("applicant_id");
           window.history.replaceState({}, document.title, currentUrl.toString());
         }
+        showScholarToast(autoImportMessage, autoImportType, ["source", "applicant_id"]);
+        showScholarToast(actionNoticeMessage, actionNoticeType, ["scholar_notice", "scholar_notice_message"]);
 
         normalizeGrantLabels();
 

@@ -224,6 +224,7 @@ if ($headOfficeResult) {
     <title>Accounts</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
@@ -489,23 +490,6 @@ if ($headOfficeResult) {
               </div>
             </div>
 
-            <?php if ($accountMessage !== ""): ?>
-              <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                <?= htmlspecialchars($accountMessage) ?>
-              </div>
-            <?php endif; ?>
-
-            <?php if ($resetError !== ""): ?>
-              <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <?= htmlspecialchars($resetError) ?>
-              </div>
-            <?php endif; ?>
-
-            <?php if ($resetMessage !== ""): ?>
-              <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                <?= htmlspecialchars($resetMessage) ?>
-              </div>
-            <?php endif; ?>
           </div>
         </section>
 
@@ -895,8 +879,52 @@ if ($headOfficeResult) {
     </div>
 
     <script>
+      const accountToastMessages = [
+        {
+          message: <?= json_encode($accountMessage, JSON_UNESCAPED_SLASHES) ?>,
+          type: "success",
+        },
+        {
+          message: <?= json_encode($resetMessage, JSON_UNESCAPED_SLASHES) ?>,
+          type: "success",
+        },
+        {
+          message: <?= json_encode($resetError, JSON_UNESCAPED_SLASHES) ?>,
+          type: "error",
+        },
+      ].filter((item) => item.message);
+
+      function showAccountToast(message, type) {
+        if (!message) {
+          return;
+        }
+
+        if (typeof Swal === "undefined") {
+          window.alert(message);
+          return;
+        }
+
+        Swal.fire({
+          toast: true,
+          position: "top-end",
+          showConfirmButton: false,
+          icon: type === "error" ? "error" : "success",
+          title: message,
+          timer: type === "error" ? 4200 : 3200,
+          timerProgressBar: true,
+          background: type === "error" ? "#fef2f2" : "#f0fdf4",
+          color: type === "error" ? "#991b1b" : "#166534",
+        });
+      }
+
       // Sidebar toggle for mobile
       document.addEventListener("DOMContentLoaded", () => {
+        accountToastMessages.forEach((item, index) => {
+          window.setTimeout(() => {
+            showAccountToast(item.message, item.type);
+          }, index * 250);
+        });
+
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
         // Restore modal state after validation errors and wire sidebar plus modal interactions.

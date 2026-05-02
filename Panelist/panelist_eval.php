@@ -140,6 +140,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <title>Panelist Evaluation Sheet</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link
         href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
         rel="stylesheet"
@@ -290,19 +291,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
 
             <form method="post" class="px-8 py-10 space-y-10">
-                <?php if ($save_success): ?>
-                    <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-                        <?php echo htmlspecialchars($save_success); ?>
-                    </div>
-                <?php endif; ?>
                 <?php if ($loadError !== ""): ?>
                     <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                         <?php echo htmlspecialchars($loadError); ?>
-                    </div>
-                <?php endif; ?>
-                <?php if ($save_error): ?>
-                    <div class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                        <?php echo htmlspecialchars($save_error); ?>
                     </div>
                 <?php endif; ?>
                 <section class="grid gap-6 md:grid-cols-3">
@@ -597,7 +588,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </main>
     </div>
     <script>
+        const evaluationToastMessage = <?php echo json_encode($save_success ?: $save_error, JSON_UNESCAPED_SLASHES); ?>;
+        const evaluationToastType = <?php echo json_encode($save_success ? "success" : ($save_error ? "error" : ""), JSON_UNESCAPED_SLASHES); ?>;
+
+        function showEvaluationToast() {
+            if (!evaluationToastMessage) {
+                return;
+            }
+
+            if (typeof Swal === "undefined") {
+                window.alert(evaluationToastMessage);
+                return;
+            }
+
+            Swal.fire({
+                toast: true,
+                position: "top-end",
+                showConfirmButton: false,
+                icon: evaluationToastType === "error" ? "error" : "success",
+                title: evaluationToastMessage,
+                timer: evaluationToastType === "error" ? 4200 : 3200,
+                timerProgressBar: true,
+                background: evaluationToastType === "error" ? "#fef2f2" : "#f0fdf4",
+                color: evaluationToastType === "error" ? "#991b1b" : "#166534",
+            });
+        }
+
         (function () {
+            showEvaluationToast();
+
             const sidebar = document.getElementById('sidebar');
             const toggleBtn = document.getElementById('sidebarToggle');
             if (toggleBtn && sidebar) {

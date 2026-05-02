@@ -471,6 +471,7 @@ if (!empty($rankRows)) {
     <title>Applicants Rank</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Times+New+Roman&display=swap" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" />
     <style>
@@ -980,12 +981,6 @@ if (!empty($rankRows)) {
             </div>
           </div>
 
-      <?php if ($rankSaveMessage !== ""): ?>
-        <div class="no-print mb-4 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $rankSaveMessageType === "success" ? "border-green-200 bg-green-50 text-green-700" : ($rankSaveMessageType === "warning" ? "border-yellow-200 bg-yellow-50 text-yellow-800" : "border-red-200 bg-red-50 text-red-700"); ?>">
-          <?php echo htmlspecialchars($rankSaveMessage); ?>
-        </div>
-      <?php endif; ?>
-
           <form id="rankInputsForm" method="post">
             <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($selectedSchoolYear); ?>" />
             <input type="hidden" name="semester" value="<?php echo htmlspecialchars($selectedSemester); ?>" />
@@ -1084,6 +1079,8 @@ if (!empty($rankRows)) {
       // Client-side ranking engine: recalculate weighted totals, ranks, and remarks as the form changes.
       const rows = <?php echo json_encode($rankRows, JSON_UNESCAPED_SLASHES); ?>;
       const remarkOptions = <?php echo json_encode(array_values($rankRemarkOptions), JSON_UNESCAPED_SLASHES); ?>;
+      const rankSaveMessage = <?php echo json_encode($rankSaveMessage, JSON_UNESCAPED_SLASHES); ?>;
+      const rankSaveMessageType = <?php echo json_encode($rankSaveMessageType, JSON_UNESCAPED_SLASHES); ?>;
       const truncateToTwoDecimals = (value) => {
         if (!Number.isFinite(value)) {
           return null;
@@ -1335,11 +1332,58 @@ if (!empty($rankRows)) {
         });
       }
 
+      function showRankSavePopup() {
+        if (!rankSaveMessage) {
+          return;
+        }
+
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("rank_save");
+        window.history.replaceState({}, document.title, cleanUrl.toString());
+
+        const popupConfig = {
+          success: {
+            icon: "success",
+            title: "Ranking inputs saved.",
+            confirmButtonColor: "#16a34a",
+          },
+          warning: {
+            icon: "warning",
+            title: rankSaveMessage,
+            confirmButtonColor: "#d97706",
+          },
+          error: {
+            icon: "error",
+            title: rankSaveMessage,
+            confirmButtonColor: "#dc2626",
+          },
+        };
+        const config = popupConfig[rankSaveMessageType] || popupConfig.success;
+
+        if (typeof Swal === "undefined") {
+          window.alert(rankSaveMessage);
+          return;
+        }
+
+        Swal.fire({
+          toast: true,
+          position: "top-end",
+          showConfirmButton: false,
+          icon: config.icon,
+          title: config.title,
+          timer: 2600,
+          timerProgressBar: true,
+          background: rankSaveMessageType === "error" ? "#fef2f2" : (rankSaveMessageType === "warning" ? "#fffbeb" : "#f0fdf4"),
+          color: rankSaveMessageType === "error" ? "#991b1b" : (rankSaveMessageType === "warning" ? "#92400e" : "#166534"),
+        });
+      }
+
       document.addEventListener("DOMContentLoaded", () => {
         renderRankRows();
         setupTermText();
         setupSidebar();
         markActiveSidebarItem();
+        showRankSavePopup();
       });
     </script>
   </body>

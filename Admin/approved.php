@@ -1044,7 +1044,7 @@ unset($applicant);
             const destination =
               grantId === 1
                 ? "Interview Evaluation and Applicant Ranks"
-                : "Institutional Scholars";
+                : "Official Institutional Scholars";
 
             const shouldContinue = window.confirm(
               `Confirm ${applicantName}? This will route the applicant to ${destination}.`
