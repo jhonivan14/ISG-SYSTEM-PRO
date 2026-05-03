@@ -9,6 +9,10 @@ $success = false;
 $applicationId = null;
 $referenceNumber = null;
 $referenceWarning = "";
+$requirements = [];
+$files = null;
+$allowedExt = ["pdf", "jpg", "jpeg", "png"];
+$uploadDir = "";
 
 function draft_value($draft, $key) {
   return isset($draft[$key]) ? $draft[$key] : "";
@@ -153,7 +157,6 @@ if (empty($errors)) {
 if (empty($errors) && $grantRequiresUploads) {
   $requirements = $_POST["requirements"] ?? [];
   $files = $_FILES["files"] ?? null;
-  $allowedExt = ["pdf", "jpg", "jpeg", "png"];
 
   if (!$files || !isset($files["name"]) || !is_array($files["name"])) {
     $errors[] = "Missing uploaded files.";

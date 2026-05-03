@@ -110,7 +110,7 @@ function uses_student_assistant_program_options($grantId, $scholarshipType) {
 $grantNames = [
   1 => "Student Assistant",
   2 => "Academic Scholarship Program",
-  3 => "Executive Student Government (ESG) President Scholarship Program",
+  3 => "(ESG) President Scholarship Program",
   4 => "Kabayani Scholarship Program",
   5 => "Kabayani Loyalty Grant",
   6 => "Discount for Persons with Disability (PWD)",
@@ -118,9 +118,9 @@ $grantNames = [
   8 => "Discount for Sibling of Employees",
   9 => "Sibling Discount",
   10 => "DXSM-FM Grant",
-  11 => "Michaelinian Mirror Grant (Editor-in-Chief)",
-  12 => "Grant for the Dependents of a Lot Donor",
-  13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
+  11 => "Michaelinian Mirror Grant (EIC)",
+  12 => "Dependents of a Lot Donor",
+  13 => "Dependents of a Board of Trustees Member",
   14 => "SMCC Alumni Discount",
   15 => "Michaelinian Stakeholders Grant",
 ];

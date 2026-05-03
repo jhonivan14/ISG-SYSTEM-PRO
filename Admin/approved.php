@@ -46,6 +46,40 @@ $grantLabels = [
   14 => "SMCC Alumni Discount",
 ];
 
+$messageToastMessage = "";
+$messageToastType = "";
+$panelistToastMessage = "";
+$panelistToastType = "";
+if (isset($_GET["message_status"])) {
+  $messageStatus = (string)$_GET["message_status"];
+  $messageError = $_SESSION["message_error"] ?? "";
+  unset($_SESSION["message_error"]);
+
+  if ($messageStatus === "sent") {
+    $messageToastMessage = "Message sent successfully.";
+    $messageToastType = "success";
+  } elseif ($messageStatus === "error") {
+    $messageToastMessage = $messageError !== "" ? (string)$messageError : "Failed to send message. Please try again.";
+    $messageToastType = "error";
+  }
+}
+if (isset($_GET["panelist_status"])) {
+  $panelistStatus = (string)$_GET["panelist_status"];
+  $panelistError = $_SESSION["panelist_error"] ?? "";
+  $panelistSentCount = (int)($_SESSION["panelist_sent_count"] ?? 0);
+  unset($_SESSION["panelist_sent_count"], $_SESSION["panelist_error"]);
+
+  if ($panelistStatus === "sent") {
+    $panelistToastMessage = $panelistSentCount > 0
+      ? "Sent to panelist successfully ({$panelistSentCount})."
+      : "Sent to panelist successfully.";
+    $panelistToastType = "success";
+  } elseif ($panelistStatus === "error") {
+    $panelistToastMessage = $panelistError !== "" ? (string)$panelistError : "Failed to send to panelist. Please try again.";
+    $panelistToastType = "error";
+  }
+}
+
 // Handle scholar confirmation requests before the approved-applicants list is assembled.
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["confirm_applicant_id"])) {
@@ -231,6 +265,7 @@ unset($applicant);
     <title>Approved Applicants</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
@@ -537,52 +572,6 @@ unset($applicant);
             <?php if ($confirmStatus === "error"): ?>
               <div class="mb-3 rounded-lg border border-red-400 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
                 <?= htmlspecialchars($confirmError !== "" ? $confirmError : "Unable to confirm applicant.") ?>
-              </div>
-            <?php endif; ?>
-          <?php endif; ?>
-          <?php if (isset($_GET["message_status"])): ?>
-            <?php
-              $status = $_GET["message_status"];
-              $isSuccess = $status === "sent";
-              $isError = $status === "error";
-              $errorMessage = $_SESSION["message_error"] ?? "";
-              unset($_SESSION["message_error"]);
-            ?>
-            <?php if ($isSuccess || $isError): ?>
-              <div class="mb-3 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $isSuccess ? "border-green-400 bg-green-50 text-green-700" : "border-red-400 bg-red-50 text-red-700"; ?>">
-                <?php
-                  if ($isSuccess) {
-                    echo "Message sent successfully.";
-                  } else {
-                    $fallback = "Failed to send message. Please try again.";
-                    echo $errorMessage !== "" ? htmlspecialchars($errorMessage) : $fallback;
-                  }
-                ?>
-              </div>
-            <?php endif; ?>
-          <?php endif; ?>
-          <?php if (isset($_GET["panelist_status"])): ?>
-            <?php
-              $status = $_GET["panelist_status"];
-              $isSuccess = $status === "sent";
-              $isError = $status === "error";
-              $errorMessage = $_SESSION["panelist_error"] ?? "";
-              $sentCount = (int)($_SESSION["panelist_sent_count"] ?? 0);
-              unset($_SESSION["panelist_sent_count"]);
-              unset($_SESSION["panelist_error"]);
-            ?>
-            <?php if ($isSuccess || $isError): ?>
-              <div class="mb-3 rounded-lg border px-4 py-3 text-xs font-semibold <?php echo $isSuccess ? "border-green-400 bg-green-50 text-green-700" : "border-red-400 bg-red-50 text-red-700"; ?>">
-                <?php
-                  if ($isSuccess) {
-                    echo $sentCount > 0
-                      ? "Sent to panelist successfully (" . htmlspecialchars((string)$sentCount) . ")."
-                      : "Sent to panelist successfully.";
-                  } else {
-                    $fallback = "Failed to send to panelist. Please try again.";
-                    echo $errorMessage !== "" ? htmlspecialchars($errorMessage) : $fallback;
-                  }
-                ?>
               </div>
             <?php endif; ?>
           <?php endif; ?>
@@ -898,8 +887,45 @@ unset($applicant);
     </div>
 
     <script>
+      const messageToastMessage = <?= json_encode($messageToastMessage, JSON_UNESCAPED_SLASHES) ?>;
+      const messageToastType = <?= json_encode($messageToastType, JSON_UNESCAPED_SLASHES) ?>;
+      const panelistToastMessage = <?= json_encode($panelistToastMessage, JSON_UNESCAPED_SLASHES) ?>;
+      const panelistToastType = <?= json_encode($panelistToastType, JSON_UNESCAPED_SLASHES) ?>;
+
+      function showApprovedToast(message, type, queryParams) {
+        if (!message) {
+          return;
+        }
+
+        const cleanUrl = new URL(window.location.href);
+        queryParams.forEach((queryParam) => {
+          cleanUrl.searchParams.delete(queryParam);
+        });
+        window.history.replaceState({}, document.title, cleanUrl.toString());
+
+        if (typeof Swal === "undefined") {
+          window.alert(message);
+          return;
+        }
+
+        Swal.fire({
+          toast: true,
+          position: "top-end",
+          showConfirmButton: false,
+          icon: type === "error" ? "error" : "success",
+          title: message,
+          timer: type === "error" ? 4200 : 3200,
+          timerProgressBar: true,
+          background: type === "error" ? "#fef2f2" : "#f0fdf4",
+          color: type === "error" ? "#991b1b" : "#166534",
+        });
+      }
+
       // Sidebar toggle for mobile
       document.addEventListener("DOMContentLoaded", () => {
+        showApprovedToast(messageToastMessage, messageToastType, ["message_status"]);
+        showApprovedToast(panelistToastMessage, panelistToastType, ["panelist_status"]);
+
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
 

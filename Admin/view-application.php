@@ -214,6 +214,12 @@ foreach ($uploadedRequirements as $upload) {
       .header-right { display: flex; flex-direction: column; gap: 0.2rem; align-items: center; }
       .header-right img { width: 100px; height: 80px; object-fit: contain; }
       .data-value { font-family: Arial, sans-serif; }
+      .specify-line {
+        display: inline;
+        line-height: 1.45;
+        overflow-wrap: anywhere;
+        word-break: normal;
+      }
       @media print {
         body { background: #ffffff; margin: 0 !important; }
         #sidebar { display: none !important; }
@@ -257,14 +263,10 @@ foreach ($uploadedRequirements as $upload) {
         .print-area .header-left-text p { font-size: 9pt !important; }
         .print-area .specify-line {
           border-bottom: 1px solid #000 !important;
-          display: inline-block !important;
+          display: inline !important;
           min-height: 12px !important;
-        }
-        .print-area .specify-line input {
-          width: 100% !important;
-          border: 0 !important;
-          outline: 0 !important;
-          background: transparent !important;
+          overflow-wrap: anywhere !important;
+          word-break: normal !important;
         }
         .print-area .certify-text { margin-bottom: 0.35rem !important; }
         .print-area .footer-print {
@@ -518,8 +520,8 @@ foreach ($uploadedRequirements as $upload) {
                       </label>
                       <label class="text-xs pl-6 pt-0.5">
                         Please specify:
-                        <span class="specify-line inline-block border-b border-black w-36">
-                          <input type="text" readonly value="<?= htmlspecialchars(app_value($application, "kabayani_specify")) ?>" />
+                        <span class="specify-line border-b border-black min-w-[9rem]">
+                          <?= htmlspecialchars(app_value($application, "kabayani_specify")) ?>
                         </span>
                       </label>
                     </div>
@@ -534,8 +536,8 @@ foreach ($uploadedRequirements as $upload) {
                       </label>
                       <label class="text-xs pl-6 pt-0.5">
                         Please specify:
-                        <span class="specify-line inline-block border-b border-black w-44">
-                          <input type="text" readonly value="<?= htmlspecialchars(app_value($application, "others_specify")) ?>" />
+                        <span class="specify-line border-b border-black min-w-[11rem]">
+                          <?= htmlspecialchars(app_value($application, "others_specify")) ?>
                         </span>
                       </label>
                     </div>

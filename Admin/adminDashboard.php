@@ -388,8 +388,15 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
       }
 
       @media print {
+        @page {
+          size: letter portrait;
+          margin: 10mm;
+        }
+        html,
         body {
           background: #ffffff !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
         }
         #sidebar,
         .page-header,
@@ -401,17 +408,71 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
           padding-top: 0 !important;
           background: #ffffff !important;
         }
+        .dashboard-report-section {
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+        }
+        .dashboard-chart-grid {
+          display: block !important;
+        }
         .print-panel {
           box-shadow: none !important;
           border-color: #cbd5e1 !important;
           background: #ffffff !important;
+          border-radius: 2px !important;
+          margin: 0 0 10px 0 !important;
+          padding: 10px !important;
           break-inside: avoid;
+          page-break-inside: avoid;
         }
         .print-only {
           display: block !important;
         }
+        .print-only h1 {
+          font-size: 18px !important;
+          line-height: 1.2 !important;
+        }
+        .print-only p,
+        .print-panel p {
+          font-size: 10px !important;
+          line-height: 1.25 !important;
+        }
+        .print-panel .text-sm {
+          font-size: 12px !important;
+          line-height: 1.25 !important;
+        }
+        .chart-box {
+          align-items: center !important;
+          display: flex !important;
+          height: 170px !important;
+          justify-content: center !important;
+          overflow: hidden !important;
+          width: 100% !important;
+        }
+        .pie-report-layout {
+          display: block !important;
+        }
+        .pie-chart-box {
+          height: 240px !important;
+          margin: 0 auto !important;
+          max-width: 360px !important;
+          width: 360px !important;
+        }
+        .grant-category-summary {
+          display: grid !important;
+          gap: 5px !important;
+          grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          margin-top: 8px !important;
+        }
+        .grant-category-summary > div {
+          padding: 5px 8px !important;
+        }
         canvas {
-          max-height: 420px !important;
+          display: block !important;
+          margin: 0 auto !important;
+          max-height: 100% !important;
+          max-width: 100% !important;
         }
       }
       .print-only {
@@ -697,7 +758,7 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
         </section>
 
         <!-- Charts -->
-        <section class="px-4 sm:px-6 space-y-4 mt-3">
+        <section class="dashboard-report-section px-4 sm:px-6 space-y-4 mt-3">
           <div class="print-only border-b border-slate-300 pb-3">
             <h1 class="text-2xl font-bold text-slate-800">Statistical Report</h1>
             <p class="text-sm text-slate-500 mt-1">
@@ -761,7 +822,7 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
             </form>
           </div>
 
-          <div class="grid gap-6 xl:grid-cols-2">
+          <div class="dashboard-chart-grid grid gap-6 xl:grid-cols-2">
             <!-- Grant Category Distribution (Pie Chart) -->
             <div class="bg-gray-50 border border-[#0d8ddb] rounded p-4 print-panel">
               <div class="mb-3">
@@ -772,8 +833,8 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
                   Based on applications submitted for S.Y. <?php echo htmlspecialchars($dashboardSchoolYear); ?>.
                 </p>
               </div>
-              <div class="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_220px] 2xl:items-center">
-                <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80 bg-white">
+              <div class="pie-report-layout grid gap-4 2xl:grid-cols-[minmax(0,1fr)_220px] 2xl:items-center">
+                <div class="chart-box pie-chart-box border-2 border-[#0d8ddb] rounded h-64 md:h-80 bg-white">
                   <?php if ($grantCategoryTotal > 0): ?>
                     <canvas id="grantCategoryPieChart" class="w-full h-full"></canvas>
                   <?php else: ?>
@@ -782,7 +843,7 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
                     </div>
                   <?php endif; ?>
                 </div>
-                <div class="grid gap-2 text-sm sm:grid-cols-2 2xl:grid-cols-1">
+                <div class="grant-category-summary grid gap-2 text-sm sm:grid-cols-2 2xl:grid-cols-1">
                   <?php foreach ($grantCategoryLabels as $categoryKey => $categoryLabel): ?>
                     <?php
                       $categoryCount = $grantCategoryCounts[$categoryKey] ?? 0;
@@ -810,7 +871,7 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
                   Grant filter: <?php echo htmlspecialchars($dashboardGrantLabel); ?>
                 </p>
               </div>
-              <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
+              <div class="chart-box border-2 border-[#0d8ddb] rounded h-64 md:h-80">
                 <canvas id="applicantsBarChart" class="w-full h-full"></canvas>
               </div>
             </div>
@@ -826,7 +887,7 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
                 Grant filter: <?php echo htmlspecialchars($dashboardGrantLabel); ?>
               </p>
             </div>
-            <div class="border-2 border-[#0d8ddb] rounded h-64 md:h-80">
+            <div class="chart-box border-2 border-[#0d8ddb] rounded h-64 md:h-80">
               <canvas id="trendLineChart" class="w-full h-full"></canvas>
             </div>
           </div>
@@ -865,6 +926,7 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
       // handy RGBA for brand colors
       const purpleBlueFill = "rgba(106, 110, 230, 0.9)";
       const tealBlueFill = "rgba(65, 155, 180, 0.9)";
+      const dashboardCharts = [];
 
       document.addEventListener("DOMContentLoaded", () => {
         // === BAR CHART: grouped by YEAR with 1st & 2nd Sem per year ===
@@ -876,7 +938,7 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
 
         const pieCtx = document.getElementById("grantCategoryPieChart");
         if (pieCtx && window.Chart) {
-          new Chart(pieCtx, {
+          const pieChart = new Chart(pieCtx, {
             type: "pie",
             data: {
               labels: pieLabels,
@@ -914,11 +976,12 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
               },
             },
           });
+          dashboardCharts.push({ chart: pieChart, printWidth: 340, printHeight: 220 });
         }
 
         const barCtx = document.getElementById("applicantsBarChart");
         if (barCtx && window.Chart) {
-          new Chart(barCtx, {
+          const barChart = new Chart(barCtx, {
             type: "bar",
             data: {
               labels: barLabels,
@@ -963,12 +1026,13 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
               },
             },
           });
+          dashboardCharts.push({ chart: barChart, printWidth: 650, printHeight: 170 });
         }
 
         // === LINE CHART (yearly trend) ===
         const trendCtx = document.getElementById("trendLineChart");
         if (trendCtx && window.Chart) {
-          new Chart(trendCtx, {
+          const trendChart = new Chart(trendCtx, {
             type: "line",
             data: {
               labels: <?php echo json_encode($chartYears); ?>,
@@ -1015,7 +1079,20 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
               },
             },
           });
+          dashboardCharts.push({ chart: trendChart, printWidth: 650, printHeight: 170 });
         }
+      });
+
+      window.addEventListener("beforeprint", () => {
+        dashboardCharts.forEach(({ chart, printWidth, printHeight }) => {
+          chart.resize(printWidth, printHeight);
+        });
+      });
+
+      window.addEventListener("afterprint", () => {
+        dashboardCharts.forEach(({ chart }) => {
+          chart.resize();
+        });
       });
     </script>
   <script>
