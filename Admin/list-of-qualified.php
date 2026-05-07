@@ -231,9 +231,9 @@ unset(
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) {
   $postAction = trim((string)($_POST["form_action"] ?? "save_offices"));
-  $postedSchoolYear = trim((string)($_POST["school_year"] ?? $selectedSchoolYear));
-  $postedSemester = trim((string)($_POST["semester"] ?? $selectedSemester));
-  $postedBatch = trim((string)($_POST["batch"] ?? $selectedBatch));
+  $postedSchoolYear = trim((string)($_POST["school_year"] ?? $activeSchoolYearFilter));
+  $postedSemester = trim((string)($_POST["semester"] ?? $activeSemesterFilter));
+  $postedBatch = trim((string)($_POST["batch"] ?? $activeBatchFilter));
   $postedOrientationDate = trim((string)($_POST["orientation_date"] ?? ""));
   $postedOrientationTime = trim((string)($_POST["orientation_time"] ?? ""));
   $postedOrientationVenue = trim((string)($_POST["orientation_venue"] ?? ""));
@@ -528,19 +528,19 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
   $params = [];
   $types = "";
 
-  if ($selectedSchoolYear !== "") {
+  if ($activeSchoolYearFilter !== "") {
     $whereClauses[] = "a.school_year = ?";
-    $params[] = $selectedSchoolYear;
+    $params[] = $activeSchoolYearFilter;
     $types .= "s";
   }
-  if ($selectedSemester !== "") {
+  if ($activeSemesterFilter !== "") {
     $whereClauses[] = "a.semester = ?";
-    $params[] = $selectedSemester;
+    $params[] = $activeSemesterFilter;
     $types .= "s";
   }
-  if ($selectedBatch !== "" && $hasBatchColumn) {
+  if ($activeBatchFilter !== "" && $hasBatchColumn) {
     $whereClauses[] = "a.batch = ?";
-    $params[] = $selectedBatch;
+    $params[] = $activeBatchFilter;
     $types .= "s";
   }
 
@@ -919,9 +919,9 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
                   aria-label="Select academic year"
                   onchange="this.form.submit()"
                 >
-                  <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                  <option value="" <?php echo $rawSelectedSchoolYear !== null && $activeSchoolYearFilter === "" ? "selected" : ""; ?>>All School Years</option>
                   <?php foreach ($schoolYearOptions as $option): ?>
-                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSchoolYearFilter === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
                     </option>
                   <?php endforeach; ?>
@@ -933,9 +933,9 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
                   aria-label="Select semester"
                   onchange="this.form.submit()"
                 >
-                  <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                  <option value="" <?php echo $activeSemesterFilter === "" ? "selected" : ""; ?>>All Semesters</option>
                   <?php foreach ($semesterOptions as $option): ?>
-                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSemesterFilter === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
                     </option>
                   <?php endforeach; ?>
@@ -947,14 +947,14 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
                   aria-label="Select batch"
                   onchange="this.form.submit()"
                 >
-                  <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
+                  <option value="" <?php echo $activeBatchFilter === "" ? "selected" : ""; ?>>All Batches</option>
                   <?php foreach ($batchOptions as $option): ?>
-                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeBatchFilter === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
                     </option>
                   <?php endforeach; ?>
                 </select>
-                <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
+                <?php if ($rawSelectedSchoolYear !== null || $rawSelectedSemester !== null || $rawSelectedBatch !== null): ?>
                   <a
                     href="list-of-qualified.php"
                     class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
@@ -1001,9 +1001,9 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
 
           <form id="qualifiedOfficeForm" method="post">
             <input type="hidden" name="form_action" value="save_offices" />
-            <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($selectedSchoolYear); ?>" />
-            <input type="hidden" name="semester" value="<?php echo htmlspecialchars($selectedSemester); ?>" />
-            <input type="hidden" name="batch" value="<?php echo htmlspecialchars($selectedBatch); ?>" />
+            <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($activeSchoolYearFilter); ?>" />
+            <input type="hidden" name="semester" value="<?php echo htmlspecialchars($activeSemesterFilter); ?>" />
+            <input type="hidden" name="batch" value="<?php echo htmlspecialchars($activeBatchFilter); ?>" />
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6 paper">
             <div class="w-full mx-auto paper-wrap">
               <header>
@@ -1030,7 +1030,7 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
 
               <section class="text-center mb-4">
                 <h2 class="font-bold text-base">List of Qualified Applicants for Student Assistance Scholarship Program</h2>
-                <p class="font-semibold text-sm" id="termText"><?php echo htmlspecialchars($displaySemester); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
+                <p class="font-semibold text-sm" id="termText"><?php echo htmlspecialchars($activeSemesterFilter !== "" ? $activeSemesterFilter : "All Semesters"); ?>, S.Y. <?php echo htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years"); ?></p>
                 <p class="font-semibold text-sm" id="batchText"><?php echo htmlspecialchars($displayBatch); ?></p>
               </section>
 
@@ -1134,9 +1134,9 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
             </div>
             <form method="post" class="px-4 py-3 space-y-3">
               <input type="hidden" name="form_action" value="schedule_orientation" />
-              <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($selectedSchoolYear); ?>" />
-              <input type="hidden" name="semester" value="<?php echo htmlspecialchars($selectedSemester); ?>" />
-              <input type="hidden" name="batch" value="<?php echo htmlspecialchars($selectedBatch); ?>" />
+              <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($activeSchoolYearFilter); ?>" />
+              <input type="hidden" name="semester" value="<?php echo htmlspecialchars($activeSemesterFilter); ?>" />
+              <input type="hidden" name="batch" value="<?php echo htmlspecialchars($activeBatchFilter); ?>" />
               <div>
                 <label class="block text-xs font-semibold text-[#052c6a] mb-1">Qualified Applicants</label>
                 <input
@@ -1261,8 +1261,8 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
 
         if (academicYearSelect && semesterSelect && termText) {
           const updateTermText = () => {
-            const semester = semesterSelect.value || "1st Semester";
-            const schoolYear = academicYearSelect.value || "<?php echo htmlspecialchars($currentSchoolYear, ENT_QUOTES); ?>";
+            const semester = semesterSelect.value || "All Semesters";
+            const schoolYear = academicYearSelect.value || "All School Years";
             termText.textContent = `${semester}, S.Y. ${schoolYear}`;
           };
           academicYearSelect.addEventListener("change", updateTermText);
@@ -1342,9 +1342,3 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
-
-
-
-
-
-

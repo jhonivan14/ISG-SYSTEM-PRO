@@ -107,6 +107,12 @@ function isgIncrementSchoolYear(string $schoolYear, string $fallback): string
   return $nextStart . "-" . ($nextStart + 1);
 }
 
+function isgBuildOpenableNextSchoolYear(int $year, int $month): string
+{
+  $targetStartYear = $month >= 3 ? $year : $year - 1;
+  return $targetStartYear . "-" . ($targetStartYear + 1);
+}
+
 function isgSchoolYearAvailableForRenewal(array $schoolYearOptions, string $targetSchoolYear): bool
 {
   $targetValue = trim($targetSchoolYear);
@@ -839,7 +845,60 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
   return $records;
 }
 
+$nextSchoolYearToOpen = isgBuildOpenableNextSchoolYear((int)date("Y"), (int)date("n"));
+$isNextSchoolYearOpen = $nextSchoolYearToOpen !== "" && in_array($nextSchoolYearToOpen, $schoolYearOptions, true);
+$rawInstitutionalSchoolYearParam = array_key_exists("school_year", $_GET)
+  ? trim((string)$_GET["school_year"])
+  : null;
+$showAllInstitutionalSchoolYears = $rawInstitutionalSchoolYearParam !== null
+  && strtolower($rawInstitutionalSchoolYearParam) === "all";
+$activeInstitutionalSchoolYear = $showAllInstitutionalSchoolYears
+  ? ""
+  : ($selectedSchoolYear !== "" ? $selectedSchoolYear : $displaySchoolYear);
+
 if (($conn ?? null) instanceof mysqli) {
+  if (($_SERVER["REQUEST_METHOD"] ?? "") === "POST" && (string)($_POST["form_action"] ?? "") === "open_next_school_year") {
+    $requestedSchoolYear = $nextSchoolYearToOpen;
+    $returnActiveCategory = strtolower(trim((string)($_POST["return_active_category"] ?? $activeCategoryParam)));
+    if (!in_array($returnActiveCategory, $validScholarCategories, true)) {
+      $returnActiveCategory = "official";
+    }
+    $returnSemester = trim((string)($_POST["return_semester"] ?? ""));
+
+    $openedBy = trim((string)($_SESSION["admin_username"] ?? $_SESSION["admin_name"] ?? ""));
+    $openResult = function_exists("schoolTermOpenSchoolYear")
+      ? schoolTermOpenSchoolYear($conn, $requestedSchoolYear, $openedBy)
+      : "error";
+
+    $openSuccess = false;
+    if ($openResult === "opened") {
+      $openSuccess = true;
+      $openMessage = "School Year " . $requestedSchoolYear . " is now open.";
+    } elseif ($openResult === "exists") {
+      $openSuccess = true;
+      $openMessage = "School Year " . $requestedSchoolYear . " is already open.";
+    } elseif ($openResult === "invalid") {
+      $openMessage = "Invalid school year format.";
+    } else {
+      $openMessage = "Unable to open the next school year right now.";
+    }
+
+    $redirectParams = [
+      "active_category" => $returnActiveCategory,
+      "scholar_notice" => $openSuccess ? "success" : "error",
+      "scholar_notice_message" => $openMessage,
+    ];
+    if ($openSuccess && $requestedSchoolYear !== "") {
+      $redirectParams["school_year"] = $requestedSchoolYear;
+    }
+    if ($returnSemester !== "") {
+      $redirectParams["semester"] = $returnSemester;
+    }
+
+    header("Location: institutional-scholars.php?" . http_build_query($redirectParams));
+    exit;
+  }
+
   $assignedOfficeMap = [];
   $addAssignedOfficeOption = static function (array &$map, string $value): void {
     $office = trim($value);
@@ -1768,6 +1827,13 @@ if (($conn ?? null) instanceof mysqli) {
                 </div>
               </div>
 
+              <form id="openNextSchoolYearForm" method="post" action="institutional-scholars.php" class="hidden">
+                <input type="hidden" name="form_action" value="open_next_school_year" />
+                <input type="hidden" name="next_school_year" value="<?php echo htmlspecialchars($nextSchoolYearToOpen); ?>" />
+                <input type="hidden" name="return_active_category" value="<?php echo htmlspecialchars($activeCategoryParam); ?>" />
+                <input type="hidden" name="return_semester" value="<?php echo htmlspecialchars($selectedSemester); ?>" />
+              </form>
+
               <form class="mt-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between" method="get" action="institutional-scholars.php">
                 <div class="flex flex-wrap gap-2">
                   <input type="hidden" name="active_category" value="<?php echo htmlspecialchars($activeCategoryParam); ?>" />
@@ -1777,9 +1843,9 @@ if (($conn ?? null) instanceof mysqli) {
                     aria-label="Select academic year"
                     onchange="this.form.submit()"
                   >
-                    <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                    <option value="all" <?php echo $showAllInstitutionalSchoolYears ? "selected" : ""; ?>>All School Years</option>
                     <?php foreach ($schoolYearOptions as $option): ?>
-                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                      <option value="<?php echo htmlspecialchars($option); ?>" <?php echo !$showAllInstitutionalSchoolYears && $activeInstitutionalSchoolYear === $option ? "selected" : ""; ?>>
                         <?php echo htmlspecialchars($option); ?>
                       </option>
                     <?php endforeach; ?>
@@ -1797,7 +1863,7 @@ if (($conn ?? null) instanceof mysqli) {
                       </option>
                     <?php endforeach; ?>
                   </select>
-                  <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+                  <?php if ($showAllInstitutionalSchoolYears || $selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
                     <a
                       href="institutional-scholars.php?active_category=<?php echo urlencode($activeCategoryParam); ?>"
                       class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
@@ -1806,13 +1872,24 @@ if (($conn ?? null) instanceof mysqli) {
                     </a>
                   <?php endif; ?>
                 </div>
-                <button
-                  type="button"
-                  id="openManualAddModal"
-                  class="inline-flex items-center justify-center rounded-full bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a7fc8] lg:ml-auto"
-                >
-                  Add Record
-                </button>
+                <div class="flex flex-wrap gap-2 lg:ml-auto">
+                  <button
+                    type="submit"
+                    form="openNextSchoolYearForm"
+                    class="inline-flex items-center justify-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold shadow-sm <?php echo $isNextSchoolYearOpen ? 'cursor-not-allowed border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700'; ?>"
+                    <?php echo $isNextSchoolYearOpen ? "disabled" : ""; ?>
+                  >
+                    <i class="fas fa-calendar-plus"></i>
+                    <span><?php echo $isNextSchoolYearOpen ? "Next SY Open" : "Open Next SY"; ?> <?php echo htmlspecialchars($nextSchoolYearToOpen); ?></span>
+                  </button>
+                  <button
+                    type="button"
+                    id="openManualAddModal"
+                    class="inline-flex items-center justify-center rounded-full bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a7fc8]"
+                  >
+                    Add Record
+                  </button>
+                </div>
               </form>
 
               <div id="manualAddModal" class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 px-3 py-6">
@@ -1987,28 +2064,6 @@ if (($conn ?? null) instanceof mysqli) {
                 class="mt-3 hidden rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800"
               ></div>
 
-              <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 mt-4 text-xs">
-                <div class="rounded-lg border border-[#dbeafe] bg-[#eff6ff] px-3 py-2">
-                  <p class="text-[#1e3a8a] font-semibold">Official Scholars</p>
-                  <p id="count-official" class="text-lg font-bold text-[#052c6a]">0</p>
-                </div>
-                <div class="rounded-lg border border-[#dcfce7] bg-[#f0fdf4] px-3 py-2">
-                  <p class="text-[#166534] font-semibold">Student Assistant</p>
-                  <p id="count-student-assistant" class="text-lg font-bold text-[#14532d]">0</p>
-                </div>
-                <div class="rounded-lg border border-[#fae8ff] bg-[#fdf4ff] px-3 py-2">
-                  <p class="text-[#86198f] font-semibold">Kabayani</p>
-                  <p id="count-kabayani" class="text-lg font-bold text-[#701a75]">0</p>
-                </div>
-                <div class="rounded-lg border border-[#fef9c3] bg-[#fefce8] px-3 py-2">
-                  <p class="text-[#854d0e] font-semibold">Academic</p>
-                  <p id="count-academic" class="text-lg font-bold text-[#713f12]">0</p>
-                </div>
-                <div class="rounded-lg border border-[#fee2e2] bg-[#fef2f2] px-3 py-2">
-                  <p class="text-[#991b1b] font-semibold">Others</p>
-                  <p id="count-others" class="text-lg font-bold text-[#7f1d1d]">0</p>
-                </div>
-              </div>
             </div>
 
             <div class="bg-white rounded-xl shadow-sm border border-[#e5e7eb] overflow-hidden flex-1 flex flex-col min-h-[420px]">
@@ -2061,15 +2116,12 @@ if (($conn ?? null) instanceof mysqli) {
 
     <script>
       // Client-side store for scholar tabs, renewal flows, modal state, and table rendering.
-      const selectedSchoolYear = <?php echo json_encode($selectedSchoolYear); ?>;
+      const selectedSchoolYear = <?php echo json_encode($activeInstitutionalSchoolYear); ?>;
       const selectedSemester = <?php echo json_encode($selectedSemester); ?>;
       const displaySchoolYear = <?php echo json_encode($displaySchoolYear); ?>;
       const displaySemester = <?php echo json_encode($displaySemester); ?>;
       const currentSchoolYear = <?php echo json_encode($currentSchoolYear); ?>;
-      const nextSchoolYear = <?php
-        $currentStartYear = (int)substr((string)$currentSchoolYear, 0, 4);
-        echo json_encode(($currentStartYear + 1) . "-" . ($currentStartYear + 2));
-      ?>;
+      const nextSchoolYear = <?php echo json_encode($nextSchoolYearToOpen); ?>;
       const availableSchoolYears = <?php echo json_encode(array_values(array_unique($schoolYearOptions)), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const activeFilterSchoolYear = String(selectedSchoolYear || displaySchoolYear || "").trim();
       const activeFilterSemester = String(selectedSemester || displaySemester || "").trim();
@@ -2319,11 +2371,17 @@ if (($conn ?? null) instanceof mysqli) {
           }
         });
 
-        document.getElementById("count-official").textContent = counts.official;
-        document.getElementById("count-student-assistant").textContent = counts.student_assistant;
-        document.getElementById("count-kabayani").textContent = counts.kabayani;
-        document.getElementById("count-academic").textContent = counts.academic;
-        document.getElementById("count-others").textContent = counts.others;
+        const countElements = {
+          official: document.getElementById("count-official"),
+          student_assistant: document.getElementById("count-student-assistant"),
+          kabayani: document.getElementById("count-kabayani"),
+          academic: document.getElementById("count-academic"),
+          others: document.getElementById("count-others")
+        };
+
+        Object.entries(countElements).forEach(([category, element]) => {
+          if (element) element.textContent = counts[category];
+        });
       }
 
       function normalizeScholarStatus(rawStatus) {
@@ -2415,7 +2473,7 @@ if (($conn ?? null) instanceof mysqli) {
         }
 
         const range = getRecordAcademicYearRange(record);
-        const firstRenewStart = new Date(range.startYear, 11, 1); // Dec 1, start year
+        const firstRenewStart = new Date(range.startYear, 9, 1); // Oct 1, start year
         const firstDeadline = new Date(range.startYear, 11, 31); // Dec 31, start year
         const secondRenewStart = new Date(range.endYear, 4, 1); // May 1, end year
         const secondDeadline = new Date(range.endYear, 4, 31); // May 31, end year

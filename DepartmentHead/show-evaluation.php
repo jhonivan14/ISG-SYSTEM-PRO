@@ -24,6 +24,66 @@ $selectedSemester = trim((string)($_GET["semester"] ?? ""));
 $schoolYearOptions = [];
 $semesterOptions = ["1st Semester", "2nd Semester"];
 
+function departmentHeadNormalizeSchoolYear(string $schoolYear): string
+{
+  $value = trim($schoolYear);
+  if (!preg_match('/^(\d{4})\s*-\s*(\d{4})$/', $value, $matches)) {
+    return "";
+  }
+
+  $startYear = (int)$matches[1];
+  $endYear = (int)$matches[2];
+  if ($endYear !== $startYear + 1) {
+    return "";
+  }
+
+  return $startYear . "-" . $endYear;
+}
+
+function departmentHeadSortSchoolYears(array &$schoolYears): void
+{
+  $schoolYears = array_values(array_unique(array_filter($schoolYears, static function ($schoolYear): bool {
+    return trim((string)$schoolYear) !== "";
+  })));
+
+  usort($schoolYears, static function (string $left, string $right): int {
+    if (preg_match('/^(\d{4})/', $left, $leftMatch) && preg_match('/^(\d{4})/', $right, $rightMatch)) {
+      return ((int)$rightMatch[1]) <=> ((int)$leftMatch[1]);
+    }
+    return strcmp($right, $left);
+  });
+}
+
+function departmentHeadLoadOpenedSchoolYears(mysqli $conn): array
+{
+  $schoolYears = [];
+  $tableResult = $conn->query("SHOW TABLES LIKE 'school_years'");
+  $hasSchoolYearsTable = $tableResult instanceof mysqli_result && $tableResult->num_rows > 0;
+  if ($tableResult instanceof mysqli_result) {
+    $tableResult->free();
+  }
+
+  if (!$hasSchoolYearsTable) {
+    return $schoolYears;
+  }
+
+  $result = $conn->query("SELECT school_year FROM school_years ORDER BY school_year ASC");
+  if ($result instanceof mysqli_result) {
+    while ($row = $result->fetch_assoc()) {
+      $value = departmentHeadNormalizeSchoolYear((string)($row["school_year"] ?? ""));
+      if ($value !== "") {
+        $schoolYears[] = $value;
+      }
+    }
+    $result->free();
+  }
+
+  departmentHeadSortSchoolYears($schoolYears);
+  return $schoolYears;
+}
+
+$schoolYearOptions = departmentHeadLoadOpenedSchoolYears($conn);
+
 if ($headOffice === "" && $headUsername !== "") {
   $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
   if ($officeStmt) {
@@ -93,12 +153,7 @@ if ($headOffice === "") {
       $filterOptionStmt->close();
     }
 
-    usort($schoolYearOptions, static function (string $left, string $right): int {
-      if (preg_match('/^(\d{4})/', $left, $leftMatch) && preg_match('/^(\d{4})/', $right, $rightMatch)) {
-        return ((int)$rightMatch[1]) <=> ((int)$leftMatch[1]);
-      }
-      return strcmp($right, $left);
-    });
+    departmentHeadSortSchoolYears($schoolYearOptions);
     if ($selectedSchoolYear !== "" && !in_array($selectedSchoolYear, $schoolYearOptions, true)) {
       array_unshift($schoolYearOptions, $selectedSchoolYear);
     }

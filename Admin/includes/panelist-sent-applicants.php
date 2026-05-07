@@ -15,6 +15,9 @@ if (!(($conn ?? null) instanceof mysqli)) {
 $selectedSchoolYear = isset($selectedSchoolYear) ? (string)$selectedSchoolYear : "";
 $selectedSemester = isset($selectedSemester) ? (string)$selectedSemester : "";
 $selectedBatch = isset($selectedBatch) ? (string)$selectedBatch : "";
+$panelistFilterSchoolYear = isset($activeSchoolYearFilter) ? (string)$activeSchoolYearFilter : $selectedSchoolYear;
+$panelistFilterSemester = isset($activeSemesterFilter) ? (string)$activeSemesterFilter : $selectedSemester;
+$panelistFilterBatch = isset($activeBatchFilter) ? (string)$activeBatchFilter : $selectedBatch;
 
 $hasBatchColumn = false;
 $batchColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'batch'");
@@ -34,19 +37,19 @@ if ($tableResult instanceof mysqli_result && $tableResult->num_rows > 0) {
   $params = [];
   $types = "";
 
-  if ($selectedSchoolYear !== "") {
+  if ($panelistFilterSchoolYear !== "") {
     $whereClauses[] = "a.school_year = ?";
-    $params[] = $selectedSchoolYear;
+    $params[] = $panelistFilterSchoolYear;
     $types .= "s";
   }
-  if ($selectedSemester !== "") {
+  if ($panelistFilterSemester !== "") {
     $whereClauses[] = "a.semester = ?";
-    $params[] = $selectedSemester;
+    $params[] = $panelistFilterSemester;
     $types .= "s";
   }
-  if ($selectedBatch !== "" && $hasBatchColumn) {
+  if ($panelistFilterBatch !== "" && $hasBatchColumn) {
     $whereClauses[] = "a.batch = ?";
-    $params[] = $selectedBatch;
+    $params[] = $panelistFilterBatch;
     $types .= "s";
   }
 

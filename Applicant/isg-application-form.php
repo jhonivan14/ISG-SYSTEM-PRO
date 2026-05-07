@@ -107,6 +107,67 @@ function uses_student_assistant_program_options($grantId, $scholarshipType) {
   return $grantId === 1 || $scholarshipType === "Student Assistance";
 }
 
+function application_form_normalize_school_year($schoolYear) {
+  $value = trim((string)$schoolYear);
+  if (!preg_match('/^(\d{4})\s*-\s*(\d{4})$/', $value, $matches)) {
+    return "";
+  }
+
+  $startYear = (int)$matches[1];
+  $endYear = (int)$matches[2];
+  if ($endYear !== $startYear + 1) {
+    return "";
+  }
+
+  return $startYear . "-" . $endYear;
+}
+
+function application_form_sort_school_years(&$schoolYears) {
+  $schoolYears = array_values(array_unique(array_filter($schoolYears, function ($schoolYear) {
+    return trim((string)$schoolYear) !== "";
+  })));
+
+  usort($schoolYears, function ($a, $b) {
+    $aYear = (int)substr((string)$a, 0, 4);
+    $bYear = (int)substr((string)$b, 0, 4);
+    if ($aYear === $bYear) {
+      return strcmp((string)$a, (string)$b);
+    }
+    return $aYear <=> $bYear;
+  });
+}
+
+function application_form_load_open_school_years($conn) {
+  $schoolYears = [];
+  if (!($conn instanceof mysqli)) {
+    return $schoolYears;
+  }
+
+  $tableResult = $conn->query("SHOW TABLES LIKE 'school_years'");
+  $hasSchoolYearsTable = $tableResult instanceof mysqli_result && $tableResult->num_rows > 0;
+  if ($tableResult instanceof mysqli_result) {
+    $tableResult->free();
+  }
+
+  if (!$hasSchoolYearsTable) {
+    return $schoolYears;
+  }
+
+  $result = $conn->query("SELECT school_year FROM school_years ORDER BY school_year ASC");
+  if ($result instanceof mysqli_result) {
+    while ($row = $result->fetch_assoc()) {
+      $value = application_form_normalize_school_year($row["school_year"] ?? "");
+      if ($value !== "") {
+        $schoolYears[] = $value;
+      }
+    }
+    $result->free();
+  }
+
+  application_form_sort_school_years($schoolYears);
+  return $schoolYears;
+}
+
 $grantNames = [
   1 => "Student Assistant",
   2 => "Academic Scholarship Program",
@@ -145,7 +206,10 @@ $currentYear = (int)date("Y");
 $currentMonth = (int)date("n");
 $currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
 $currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
-$schoolYearOptions = [$currentSchoolYear];
+$schoolYearOptions = application_form_load_open_school_years($conn);
+if (empty($schoolYearOptions)) {
+  $schoolYearOptions = [$currentSchoolYear];
+}
 $currentGrantId = (int)($_POST["grant_id"] ?? $_GET["grant"] ?? 0);
 $currentGrantTitle = $grantNames[$currentGrantId] ?? "";
 $selectedScholarshipType = read_post_field("scholarshipType");
@@ -158,6 +222,9 @@ if ($othersSpecifyValue === "" && $effectiveScholarshipType === "Others" && $cur
   $othersSpecifyValue = $currentGrantTitle;
 }
 $selectedSchoolYear = read_post_field("schoolYear");
+if ($selectedSchoolYear !== "" && !in_array($selectedSchoolYear, $schoolYearOptions, true)) {
+  array_unshift($schoolYearOptions, $selectedSchoolYear);
+}
 $selectedSemester = read_post_field("semester");
 $dateOfBirthInputValue = format_birth_date_for_input(read_post_field("dateOfBirth"));
  

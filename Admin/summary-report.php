@@ -56,14 +56,14 @@ if (($conn ?? null) instanceof mysqli) {
     $params = [];
     $paramTypes = "";
 
-    if ($selectedSchoolYear !== "") {
+    if ($activeSchoolYearFilter !== "") {
       $whereClauses[] = "TRIM(COALESCE(school_year, '')) = ?";
-      $params[] = $selectedSchoolYear;
+      $params[] = $activeSchoolYearFilter;
       $paramTypes .= "s";
     }
-    if ($selectedSemester !== "") {
+    if ($activeSemesterFilter !== "") {
       $whereClauses[] = "TRIM(COALESCE(semester, '')) = ?";
-      $params[] = $selectedSemester;
+      $params[] = $activeSemesterFilter;
       $paramTypes .= "s";
     }
 
@@ -137,7 +137,7 @@ if (!empty($summaryRecords)) {
   });
 }
 
-$headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySemester;
+$headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "All Semesters";
 ?>
 <html lang="en">
   <head>
@@ -584,9 +584,9 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
             aria-label="Select academic year"
             onchange="this.form.submit()"
           >
-            <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+            <option value="" <?php echo $rawSelectedSchoolYear !== null && $activeSchoolYearFilter === "" ? "selected" : ""; ?>>All School Years</option>
             <?php foreach ($schoolYearOptions as $option): ?>
-              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSchoolYearFilter === $option ? "selected" : ""; ?>>
                 <?php echo htmlspecialchars($option); ?>
               </option>
             <?php endforeach; ?>
@@ -597,9 +597,9 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
             aria-label="Select semester"
             onchange="this.form.submit()"
           >
-            <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+            <option value="" <?php echo $activeSemesterFilter === "" ? "selected" : ""; ?>>All Semesters</option>
             <?php foreach ($semesterOptions as $option): ?>
-              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSemesterFilter === $option ? "selected" : ""; ?>>
                 <?php echo htmlspecialchars($option); ?>
               </option>
             <?php endforeach; ?>
@@ -613,7 +613,7 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
             <i class="fas fa-print text-[11px]"></i>
             <span>Print</span>
           </button>
-          <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+          <?php if ($rawSelectedSchoolYear !== null || $rawSelectedSemester !== null): ?>
             <a
               href="summary-report.php"
               class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
@@ -658,7 +658,7 @@ $headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : $displaySe
             <div class="thin-rule my-1"></div>
             <section class="text-center mb-4">
               <h2 class="font-bold text-base">STUDENT ASSISTANTS' EVALUATION SUMMARY REPORT</h2>
-              <p class="font-semibold text-sm"><?php echo htmlspecialchars($headerSemesterLabel); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
+              <p class="font-semibold text-sm"><?php echo htmlspecialchars($headerSemesterLabel); ?>, S.Y. <?php echo htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years"); ?></p>
             </section>
 
             <div class="overflow-x-auto mb-6">

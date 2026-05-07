@@ -3,8 +3,10 @@
 // Trace: build term filters -> load applicant groups -> categorize counts -> render tables -> filter/sidebar scripts.
 
 require_once __DIR__ . "/includes/admin-auth.php";
+
 adminRequireLogin();
 require_once '../db.php';
+require_once __DIR__ . "/includes/school-term-filter.php";
 $categoryDefinitions = [
   [
     "label" => "Student Assistant",
@@ -45,58 +47,17 @@ $grantLabels = [
   14 => "SMCC Alumni Discount",
 ];
 
-$currentYear = (int)date("Y");
-$currentMonth = (int)date("n");
-$currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
-$currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
-$schoolYearOptions = [];
-
-$schoolYearResult = $conn->query("SELECT DISTINCT school_year FROM applications WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''");
-if ($schoolYearResult) {
-  while ($row = $schoolYearResult->fetch_assoc()) {
-    $value = trim((string)($row["school_year"] ?? ""));
-    if ($value !== "") {
-      $schoolYearOptions[] = $value;
-    }
-  }
-  $schoolYearResult->free();
-}
-
-if (!in_array($currentSchoolYear, $schoolYearOptions, true)) {
-  $schoolYearOptions[] = $currentSchoolYear;
-}
-
-$schoolYearOptions = array_values(array_unique($schoolYearOptions));
-usort($schoolYearOptions, function ($a, $b) {
-  $aYear = (int)substr($a, 0, 4);
-  $bYear = (int)substr($b, 0, 4);
-  if ($aYear === $bYear) {
-    return strcmp($a, $b);
-  }
-  return $aYear <=> $bYear;
-});
-$semesterOptions = ["1st Semester", "2nd Semester"];
-
-$selectedSchoolYear = isset($_GET["school_year"]) ? trim((string)$_GET["school_year"]) : "";
-$selectedSemester = isset($_GET["semester"]) ? trim((string)$_GET["semester"]) : "";
-if ($selectedSchoolYear !== "" && !in_array($selectedSchoolYear, $schoolYearOptions, true)) {
-  array_unshift($schoolYearOptions, $selectedSchoolYear);
-}
-if ($selectedSemester !== "" && !in_array($selectedSemester, $semesterOptions, true)) {
-  array_unshift($semesterOptions, $selectedSemester);
-}
-
 $filterClauses = [];
 $filterParams = [];
 $filterTypes = "";
-if ($selectedSchoolYear !== "") {
+if ($activeSchoolYearFilter !== "") {
   $filterClauses[] = "school_year = ?";
-  $filterParams[] = $selectedSchoolYear;
+  $filterParams[] = $activeSchoolYearFilter;
   $filterTypes .= "s";
 }
-if ($selectedSemester !== "") {
+if ($activeSemesterFilter !== "") {
   $filterClauses[] = "semester = ?";
-  $filterParams[] = $selectedSemester;
+  $filterParams[] = $activeSemesterFilter;
   $filterTypes .= "s";
 }
 
@@ -540,9 +501,9 @@ if ($stmt = $conn->prepare($declinedQuery)) {
             aria-label="Select academic year"
             onchange="this.form.submit()"
           >
-            <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+            <option value="" <?php echo $rawSelectedSchoolYear !== null && $activeSchoolYearFilter === "" ? "selected" : ""; ?>>All School Years</option>
             <?php foreach ($schoolYearOptions as $option): ?>
-              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSchoolYearFilter === $option ? "selected" : ""; ?>>
                 <?php echo htmlspecialchars($option); ?>
               </option>
             <?php endforeach; ?>
@@ -553,14 +514,14 @@ if ($stmt = $conn->prepare($declinedQuery)) {
             aria-label="Select semester"
             onchange="this.form.submit()"
           >
-            <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+            <option value="" <?php echo $activeSemesterFilter === "" ? "selected" : ""; ?>>All Semesters</option>
             <?php foreach ($semesterOptions as $option): ?>
-              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+              <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSemesterFilter === $option ? "selected" : ""; ?>>
                 <?php echo htmlspecialchars($option); ?>
               </option>
             <?php endforeach; ?>
           </select>
-          <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
+          <?php if ($rawSelectedSchoolYear !== null || $rawSelectedSemester !== null): ?>
             <a
               href="applicant.php"
               class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"

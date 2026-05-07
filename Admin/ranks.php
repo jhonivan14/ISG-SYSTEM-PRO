@@ -107,9 +107,9 @@ if (($conn ?? null) instanceof mysqli) {
 // Save manual exam, grades, and remarks inputs before recomputing the displayed ranking table.
 
 if ($_SERVER["REQUEST_METHOD"] === "POST" && ($conn ?? null) instanceof mysqli) {
-  $postedSchoolYear = trim((string)($_POST["school_year"] ?? $selectedSchoolYear ?? ""));
-  $postedSemester = trim((string)($_POST["semester"] ?? $selectedSemester ?? ""));
-  $postedBatch = trim((string)($_POST["batch"] ?? $selectedBatch ?? ""));
+  $postedSchoolYear = trim((string)($_POST["school_year"] ?? $activeSchoolYearFilter ?? ""));
+  $postedSemester = trim((string)($_POST["semester"] ?? $activeSemesterFilter ?? ""));
+  $postedBatch = trim((string)($_POST["batch"] ?? $activeBatchFilter ?? ""));
   $postedApplicantIds = isset($_POST["applicant_ids"]) && is_array($_POST["applicant_ids"])
     ? array_values(array_unique(array_map("intval", $_POST["applicant_ids"])))
     : [];
@@ -916,9 +916,9 @@ if (!empty($rankRows)) {
                   aria-label="Select academic year"
                   onchange="this.form.submit()"
                 >
-                  <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                  <option value="" <?php echo $rawSelectedSchoolYear !== null && $activeSchoolYearFilter === "" ? "selected" : ""; ?>>All School Years</option>
                   <?php foreach ($schoolYearOptions as $option): ?>
-                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSchoolYearFilter === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
                     </option>
                   <?php endforeach; ?>
@@ -930,9 +930,9 @@ if (!empty($rankRows)) {
                   aria-label="Select semester"
                   onchange="this.form.submit()"
                 >
-                  <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                  <option value="" <?php echo $activeSemesterFilter === "" ? "selected" : ""; ?>>All Semesters</option>
                   <?php foreach ($semesterOptions as $option): ?>
-                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSemesterFilter === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
                     </option>
                   <?php endforeach; ?>
@@ -944,14 +944,14 @@ if (!empty($rankRows)) {
                   aria-label="Select batch"
                   onchange="this.form.submit()"
                 >
-                  <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
+                  <option value="" <?php echo $activeBatchFilter === "" ? "selected" : ""; ?>>All Batches</option>
                   <?php foreach ($batchOptions as $option): ?>
-                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeBatchFilter === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
                     </option>
                   <?php endforeach; ?>
                 </select>
-                <?php if ($selectedSchoolYear !== "" || $selectedSemester !== "" || $selectedBatch !== ""): ?>
+                <?php if ($rawSelectedSchoolYear !== null || $rawSelectedSemester !== null || $rawSelectedBatch !== null): ?>
                   <a
                     href="ranks.php"
                     class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
@@ -982,9 +982,9 @@ if (!empty($rankRows)) {
           </div>
 
           <form id="rankInputsForm" method="post">
-            <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($selectedSchoolYear); ?>" />
-            <input type="hidden" name="semester" value="<?php echo htmlspecialchars($selectedSemester); ?>" />
-            <input type="hidden" name="batch" value="<?php echo htmlspecialchars($selectedBatch); ?>" />
+            <input type="hidden" name="school_year" value="<?php echo htmlspecialchars($activeSchoolYearFilter); ?>" />
+            <input type="hidden" name="semester" value="<?php echo htmlspecialchars($activeSemesterFilter); ?>" />
+            <input type="hidden" name="batch" value="<?php echo htmlspecialchars($activeBatchFilter); ?>" />
           <div class="paper w-full bg-white border border-slate-300 shadow-xl print:shadow-none print:border-0">
             <div class="document-header">
               <div class="header-top">
@@ -1009,7 +1009,7 @@ if (!empty($rankRows)) {
             </div>
             <div class="text-center mt-3">
               <p class="text-[12px]">Student Assistance Scholarship Program (SASP) Applicants' Rank</p>
-              <p class="text-[12px]" id="termText"><?php echo htmlspecialchars($displaySemester); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
+              <p class="text-[12px]" id="termText"><?php echo htmlspecialchars($activeSemesterFilter !== "" ? $activeSemesterFilter : "All Semesters"); ?>, S.Y. <?php echo htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years"); ?></p>
               <p class="text-[12px]" id="batchText"><?php echo htmlspecialchars($displayBatch); ?></p>
             </div>
             <div class="overflow-x-auto mt-3">
@@ -1280,8 +1280,8 @@ if (!empty($rankRows)) {
         if (!academicYearSelect || !semesterSelect || !termText) return;
 
         const updateTermText = () => {
-          const semester = semesterSelect.value || "1st Semester";
-          const schoolYear = academicYearSelect.value || "<?php echo htmlspecialchars($currentSchoolYear, ENT_QUOTES); ?>";
+          const semester = semesterSelect.value || "All Semesters";
+          const schoolYear = academicYearSelect.value || "All School Years";
           termText.textContent = `${semester}, S.Y. ${schoolYear}`;
         };
 

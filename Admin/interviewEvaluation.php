@@ -150,12 +150,12 @@ if (($conn ?? null) instanceof mysqli && !empty($panelistSentApplicants)) {
   }
 }
 
-$headerSemesterLabel = $selectedSemester !== "" ? $selectedSemester : "All Semesters";
+$headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "All Semesters";
 $fromApproved = isset($_GET["source"]) && strtolower((string)$_GET["source"]) === "approved";
 $nextRoute = isset($_GET["next"]) ? strtolower(trim((string)$_GET["next"])) : "";
 $routeApplicantId = (int)($_GET["applicant_id"] ?? 0);
 $showProceedToRanks = $fromApproved && $nextRoute === "ranks";
-$showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasSemesterFilter;
+$showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== null || $hasSemesterFilter;
 ?>
 <html lang="en">
   <head>
@@ -606,9 +606,9 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
                   aria-label="Select academic year"
                   onchange="this.form.submit()"
                 >
-                  <option value="" <?php echo $selectedSchoolYear === "" ? "selected" : ""; ?>>All School Years</option>
+                  <option value="" <?php echo $rawSelectedSchoolYear !== null && $activeSchoolYearFilter === "" ? "selected" : ""; ?>>All School Years</option>
                   <?php foreach ($schoolYearOptions as $option): ?>
-                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSchoolYear === $option ? "selected" : ""; ?>>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSchoolYearFilter === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
                     </option>
                   <?php endforeach; ?>
@@ -620,9 +620,9 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
                   aria-label="Select semester"
                   onchange="this.form.submit()"
                 >
-                  <option value="" <?php echo $selectedSemester === "" ? "selected" : ""; ?>>All Semesters</option>
+                  <option value="" <?php echo $activeSemesterFilter === "" ? "selected" : ""; ?>>All Semesters</option>
                   <?php foreach ($semesterOptions as $option): ?>
-                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSemesterFilter === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
                     </option>
                   <?php endforeach; ?>
@@ -634,9 +634,9 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
                   aria-label="Select batch"
                   onchange="this.form.submit()"
                 >
-                  <option value="" <?php echo $selectedBatch === "" ? "selected" : ""; ?>>All Batches</option>
+                  <option value="" <?php echo $activeBatchFilter === "" ? "selected" : ""; ?>>All Batches</option>
                   <?php foreach ($batchOptions as $option): ?>
-                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedBatch === $option ? "selected" : ""; ?>>
+                    <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeBatchFilter === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
                     </option>
                   <?php endforeach; ?>
@@ -690,7 +690,7 @@ $showClearFilters = $selectedSchoolYear !== "" || $selectedBatch !== "" || $hasS
 
               <section class="text-center mb-4">
                 <h2 class="font-bold text-base">Student Assistance Applicants' Interview Result</h2>
-                <p class="font-semibold text-sm"><?php echo htmlspecialchars($headerSemesterLabel); ?>, S.Y. <?php echo htmlspecialchars($displaySchoolYear); ?></p>
+                <p class="font-semibold text-sm"><?php echo htmlspecialchars($headerSemesterLabel); ?>, S.Y. <?php echo htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years"); ?></p>
                 <p class="font-semibold text-sm"><?php echo htmlspecialchars($displayBatch); ?></p>
               </section>
 

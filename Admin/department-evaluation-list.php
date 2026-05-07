@@ -6,14 +6,15 @@ require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once __DIR__ . "/includes/school-term-filter.php";
 
+$openedSchoolYearOptions = $schoolYearOptions;
 $rawSelectedSchoolYear = array_key_exists("school_year", $_GET)
   ? trim((string)$_GET["school_year"])
   : null;
 $rawSelectedSemester = array_key_exists("semester", $_GET)
   ? trim((string)$_GET["semester"])
   : null;
-$activeSchoolYearFilter = $rawSelectedSchoolYear === null ? $currentSchoolYear : $selectedSchoolYear;
-$activeSemesterFilter = $rawSelectedSemester === null ? $currentSemester : $selectedSemester;
+$activeSchoolYearFilter = $rawSelectedSchoolYear === null ? $displaySchoolYear : $selectedSchoolYear;
+$activeSemesterFilter = $rawSelectedSemester === null ? "" : $selectedSemester;
 
 $assistantEvaluationRecords = [];
 $isEvaluationWindowOpen = false;
@@ -135,7 +136,7 @@ if (($conn ?? null) instanceof mysqli) {
   }
 
   if ($hasInstitutionalTable) {
-    $schoolYearOptions = [];
+    $schoolYearOptions = $openedSchoolYearOptions;
     $semesterOptions = [];
     $assistantTermResult = $conn->query("
       SELECT DISTINCT
@@ -774,7 +775,7 @@ if (!empty($evaluationWindowActionParams)) {
                       aria-label="Select semester"
                       onchange="this.form.submit()"
                     >
-                      <option value="" <?php echo $rawSelectedSemester !== null && $activeSemesterFilter === "" ? "selected" : ""; ?>>All Semesters</option>
+                      <option value="" <?php echo $activeSemesterFilter === "" ? "selected" : ""; ?>>All Semesters</option>
                       <?php foreach ($semesterOptions as $option): ?>
                         <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $activeSemesterFilter === $option ? "selected" : ""; ?>>
                           <?php echo htmlspecialchars($option); ?>
