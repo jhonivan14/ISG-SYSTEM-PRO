@@ -64,6 +64,7 @@ $manualGrantDefaultsByCategory = [
 $manualDefaultGrant = $manualGrantDefaultsByCategory[$activeCategoryParam] ?? "";
 
 $serverScholarRecords = array_fill_keys($validScholarCategories, []);
+$terminatedScholarRecords = [];
 $assignedOfficeOptions = [];
 $noticeTypeParam = strtolower(trim((string)($_GET["scholar_notice"] ?? "")));
 if (($noticeTypeParam === "success" || $noticeTypeParam === "error") && isset($_GET["scholar_notice_message"])) {
@@ -233,6 +234,9 @@ function isgEnsureInstitutionalScholarTable(mysqli $conn): bool
       renewal_scope VARCHAR(40) NOT NULL DEFAULT '',
       second_semester_renewed TINYINT(1) NOT NULL DEFAULT 0,
       contract_ended TINYINT(1) NOT NULL DEFAULT 0,
+      termination_reason TEXT NULL,
+      terminated_at DATETIME DEFAULT NULL,
+      terminated_by VARCHAR(100) DEFAULT NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       UNIQUE KEY uniq_isr_category_source (category, source_application_id),
@@ -260,7 +264,10 @@ function isgEnsureInstitutionalScholarTable(mysqli $conn): bool
     "renewal_scope" => "VARCHAR(40) NOT NULL DEFAULT '' AFTER renewal_status",
     "second_semester_renewed" => "TINYINT(1) NOT NULL DEFAULT 0 AFTER renewal_scope",
     "contract_ended" => "TINYINT(1) NOT NULL DEFAULT 0 AFTER second_semester_renewed",
-    "created_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER contract_ended",
+    "termination_reason" => "TEXT NULL AFTER contract_ended",
+    "terminated_at" => "DATETIME DEFAULT NULL AFTER termination_reason",
+    "terminated_by" => "VARCHAR(100) DEFAULT NULL AFTER terminated_at",
+    "created_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER terminated_by",
     "updated_at" => "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at",
   ];
   foreach ($columnDefinitions as $column => $definition) {
@@ -321,12 +328,12 @@ function isgUpsertScholarRecord(mysqli $conn, string $category, array $record): 
         (source_application_id, category, scholar_id, grant_applied, full_name, program_year, assigned_office, semester, academic_year, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
-        scholar_id = VALUES(scholar_id),
-        grant_applied = VALUES(grant_applied),
-        full_name = VALUES(full_name),
-        program_year = VALUES(program_year),
-        assigned_office = VALUES(assigned_office),
-        updated_at = CURRENT_TIMESTAMP
+        scholar_id = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(scholar_id), scholar_id),
+        grant_applied = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(grant_applied), grant_applied),
+        full_name = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(full_name), full_name),
+        program_year = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(program_year), program_year),
+        assigned_office = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(assigned_office), assigned_office),
+        updated_at = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', CURRENT_TIMESTAMP, updated_at)
     ";
     $stmt = $conn->prepare($insertSql);
     if (!$stmt) {
@@ -355,11 +362,11 @@ function isgUpsertScholarRecord(mysqli $conn, string $category, array $record): 
       (source_application_id, category, scholar_id, grant_applied, full_name, program_year, assigned_office, semester, academic_year, status)
     VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
-      grant_applied = VALUES(grant_applied),
-      full_name = VALUES(full_name),
-      program_year = VALUES(program_year),
-      assigned_office = VALUES(assigned_office),
-      updated_at = CURRENT_TIMESTAMP
+      grant_applied = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(grant_applied), grant_applied),
+      full_name = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(full_name), full_name),
+      program_year = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(program_year), program_year),
+      assigned_office = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(assigned_office), assigned_office),
+      updated_at = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', CURRENT_TIMESTAMP, updated_at)
   ";
   $stmt = $conn->prepare($insertSql);
   if (!$stmt) {
@@ -764,7 +771,10 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
       renewal_status,
       renewal_scope,
       second_semester_renewed,
-      contract_ended
+      contract_ended,
+      termination_reason,
+      terminated_at,
+      terminated_by
     FROM institutional_scholar_records
     ORDER BY id DESC
   ");
@@ -791,6 +801,9 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
       "renewal_scope" => trim((string)($row["renewal_scope"] ?? "")),
       "second_semester_renewed" => (int)($row["second_semester_renewed"] ?? 0) === 1,
       "contract_ended" => (int)($row["contract_ended"] ?? 0) === 1,
+      "termination_reason" => trim((string)($row["termination_reason"] ?? "")),
+      "terminated_at" => trim((string)($row["terminated_at"] ?? "")),
+      "terminated_by" => trim((string)($row["terminated_by"] ?? "")),
       "__category" => $category,
     ];
 
@@ -841,6 +854,66 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
     });
     $records[$categoryKey] = $categoryRecords;
   }
+
+  return $records;
+}
+
+function isgLoadTerminatedScholarRecords(mysqli $conn): array
+{
+  $records = [];
+
+  $result = $conn->query("
+    SELECT
+      id,
+      scholar_id,
+      grant_applied,
+      full_name,
+      program_year,
+      assigned_office,
+      semester,
+      academic_year,
+      status,
+      termination_reason,
+      terminated_by,
+      terminated_at,
+      updated_at
+    FROM institutional_scholar_records
+    WHERE COALESCE(contract_ended, 0) = 1
+      OR LOWER(TRIM(COALESCE(status, ''))) IN ('contract_ended', 'terminated')
+    ORDER BY COALESCE(terminated_at, updated_at) DESC, id DESC
+  ");
+  if (!($result instanceof mysqli_result)) {
+    return $records;
+  }
+
+  while ($row = $result->fetch_assoc()) {
+    $statusValue = strtolower(trim((string)($row["status"] ?? "")));
+    $records[] = [
+      "id" => 0,
+      "scholar_record_id" => (int)($row["id"] ?? 0),
+      "scholar_id" => trim((string)($row["scholar_id"] ?? "")),
+      "grant_applied" => trim((string)($row["grant_applied"] ?? "")),
+      "full_name" => trim((string)($row["full_name"] ?? "")),
+      "program_year" => trim((string)($row["program_year"] ?? "")),
+      "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
+      "semester" => trim((string)($row["semester"] ?? "")),
+      "academic_year" => trim((string)($row["academic_year"] ?? "")),
+      "action_type" => $statusValue === "terminated" ? "terminated" : "end_contract",
+      "reason" => trim((string)($row["termination_reason"] ?? "")),
+      "created_by" => trim((string)($row["terminated_by"] ?? "")),
+      "created_at" => trim((string)(($row["terminated_at"] ?? "") !== "" ? $row["terminated_at"] : ($row["updated_at"] ?? ""))),
+    ];
+  }
+  $result->free();
+
+  usort($records, static function (array $left, array $right): int {
+    $leftTime = strtotime((string)($left["created_at"] ?? "")) ?: 0;
+    $rightTime = strtotime((string)($right["created_at"] ?? "")) ?: 0;
+    if ($leftTime === $rightTime) {
+      return ((int)($right["scholar_record_id"] ?? 0)) <=> ((int)($left["scholar_record_id"] ?? 0));
+    }
+    return $rightTime <=> $leftTime;
+  });
 
   return $records;
 }
@@ -1264,10 +1337,11 @@ if (($conn ?? null) instanceof mysqli) {
   }
 
   $requestedAction = strtolower(trim((string)($_GET["scholar_action"] ?? "")));
-  if ($hasScholarStorage && ($requestedAction === "renew" || $requestedAction === "end_contract" || $requestedAction === "change_office")) {
+  if ($hasScholarStorage && ($requestedAction === "renew" || $requestedAction === "end_contract" || $requestedAction === "terminate" || $requestedAction === "change_office")) {
     $targetScholarRecordId = (int)($_GET["id"] ?? ($_GET["scholar_record_id"] ?? 0));
     $renewalScope = trim((string)($_GET["renewal_scope"] ?? ""));
     $targetAssignedOffice = trim((string)($_GET["new_assigned_office"] ?? ""));
+    $terminationReason = trim((string)($_GET["termination_reason"] ?? ""));
 
     $actionSuccess = false;
     $actionMessage = "Unable to process scholar action.";
@@ -1284,8 +1358,12 @@ if (($conn ?? null) instanceof mysqli) {
       )";
       $targetRecordSql = "
         SELECT
+          id,
           scholar_id,
+          grant_applied,
           full_name,
+          program_year,
+          assigned_office,
           semester,
           academic_year
         FROM institutional_scholar_records
@@ -1441,16 +1519,46 @@ if (($conn ?? null) instanceof mysqli) {
             SET
               contract_ended = 1,
               status = 'contract_ended',
+              termination_reason = NULL,
+              terminated_at = NOW(),
+              terminated_by = ?,
               updated_at = CURRENT_TIMESTAMP
             WHERE $whereSql
           ";
           $endStmt = $conn->prepare($endSql);
           if ($endStmt) {
-            isgBindParams($endStmt, $whereTypes, $whereParams);
+            $actionBy = trim((string)($_SESSION["admin_username"] ?? $_SESSION["admin_name"] ?? "Admin"));
+            isgBindParams($endStmt, "s" . $whereTypes, array_merge([$actionBy], $whereParams));
             $actionSuccess = $endStmt->execute();
             $endStmt->close();
             if ($actionSuccess) {
               $actionMessage = "Scholar contract ended.";
+            }
+          }
+        } elseif ($requestedAction === "terminate") {
+          if ($terminationReason === "") {
+            $actionMessage = "Termination reason is required.";
+          } else {
+            $terminateSql = "
+              UPDATE institutional_scholar_records
+              SET
+                contract_ended = 1,
+                status = 'terminated',
+                termination_reason = ?,
+                terminated_at = NOW(),
+                terminated_by = ?,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE $whereSql
+            ";
+            $terminateStmt = $conn->prepare($terminateSql);
+            if ($terminateStmt) {
+              $actionBy = trim((string)($_SESSION["admin_username"] ?? $_SESSION["admin_name"] ?? "Admin"));
+              isgBindParams($terminateStmt, "ss" . $whereTypes, array_merge([$terminationReason, $actionBy], $whereParams));
+              $actionSuccess = $terminateStmt->execute();
+              $terminateStmt->close();
+              if ($actionSuccess) {
+                $actionMessage = "Scholar terminated.";
+              }
             }
           }
         } elseif ($requestedAction === "change_office") {
@@ -1568,6 +1676,7 @@ if (($conn ?? null) instanceof mysqli) {
       $redirectParams["scholar_record_id"],
       $redirectParams["renewal_scope"],
       $redirectParams["new_assigned_office"],
+      $redirectParams["termination_reason"],
       $redirectParams["scholar_notice"],
       $redirectParams["scholar_notice_message"]
     );
@@ -1579,6 +1688,7 @@ if (($conn ?? null) instanceof mysqli) {
 
   if ($hasScholarStorage) {
     $serverScholarRecords = isgLoadScholarRecords($conn, $validScholarCategories);
+    $terminatedScholarRecords = isgLoadTerminatedScholarRecords($conn);
   }
 }
 ?>
@@ -2077,16 +2187,45 @@ if (($conn ?? null) instanceof mysqli) {
                   </span>
                 </div>
 
-                <div class="mt-4 flex flex-wrap gap-2">
-                  <button type="button" data-category="official" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-transparent bg-[#052c6a] text-white shadow-sm">Official Scholars</button>
-                  <button type="button" data-category="student_assistant" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-[#e2e8f0] bg-white text-[#334155]">Student Assistant</button>
-                  <button type="button" data-category="kabayani" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-[#e2e8f0] bg-white text-[#334155]">Kabayani</button>
-                  <button type="button" data-category="academic" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-[#e2e8f0] bg-white text-[#334155]">Academic</button>
-                  <button type="button" data-category="others" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-[#e2e8f0] bg-white text-[#334155]">Others</button>
+                <div class="mt-4 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div class="flex flex-wrap gap-2">
+                    <button type="button" data-category="official" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-transparent bg-[#052c6a] text-white shadow-sm">Official Scholars</button>
+                    <button type="button" data-category="student_assistant" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-[#e2e8f0] bg-white text-[#334155]">Student Assistant</button>
+                    <button type="button" data-category="kabayani" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-[#e2e8f0] bg-white text-[#334155]">Kabayani</button>
+                    <button type="button" data-category="academic" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-[#e2e8f0] bg-white text-[#334155]">Academic</button>
+                    <button type="button" data-category="others" class="category-btn px-3 py-2 rounded-lg text-xs font-semibold border border-[#e2e8f0] bg-white text-[#334155]">Others</button>
+                  </div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <div id="scholarSearchWrap">
+                      <label class="sr-only" for="scholarSearchInput">Search scholar records</label>
+                      <input
+                        id="scholarSearchInput"
+                        type="search"
+                        class="w-72 rounded-lg border border-[#e2e8f0] bg-white px-3 py-2 text-xs font-semibold text-[#334155] shadow-sm focus:border-[#0d8ddb] focus:outline-none"
+                        placeholder="Search records..."
+                      />
+                    </div>
+                    <div id="terminatedSearchWrap" class="hidden">
+                      <label class="sr-only" for="terminatedSearchInput">Search terminated records</label>
+                      <input
+                        id="terminatedSearchInput"
+                        type="search"
+                        class="w-56 rounded-lg border border-[#e2e8f0] bg-white px-3 py-2 text-xs font-semibold text-[#334155] shadow-sm focus:border-[#0d8ddb] focus:outline-none"
+                        placeholder="Search records..."
+                      />
+                    </div>
+                    <button type="button" data-category="terminated_records" id="terminatedRecordsToggle" class="category-btn inline-flex items-center gap-2 rounded-lg border border-[#dc2626] bg-white px-4 py-2 text-xs font-semibold text-[#dc2626] shadow-sm transition-colors hover:bg-[#fef2f2] hover:border-[#b91c1c] focus:outline-none focus:ring-2 focus:ring-[#fecaca]">
+                      <i class="fas fa-archive text-[11px]"></i>
+                      <span id="terminatedRecordsToggleLabel">Show Terminated/Ended Contracts</span>
+                    </button>
+                  </div>
                 </div>
               </div>
 
               <div class="px-4 sm:px-6 py-4 overflow-x-auto flex-1">
+                <div id="terminatedTableTitle" class="hidden mb-4">
+                  <h3 class="text-2xl font-bold text-[#991b1b]">Ended Contract / Terminated</h3>
+                </div>
                 <table class="table-zebra min-w-full text-xs border border-[#dbe2ea] rounded-lg overflow-hidden">
                   <thead class="bg-gradient-to-r from-[#052c6a] to-[#0d8ddb] text-white">
                     <tr>
@@ -2098,7 +2237,7 @@ if (($conn ?? null) instanceof mysqli) {
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Semester</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Academic Year</th>
                       <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Status</th>
-                      <th class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Action</th>
+                      <th id="actionReasonHeader" class="text-left font-semibold px-3 py-2 border-b border-[#0f172a]/20">Action</th>
                     </tr>
                   </thead>
                   <tbody id="scholarRows" class="divide-y divide-[#e5e7eb] bg-white">
@@ -2127,11 +2266,14 @@ if (($conn ?? null) instanceof mysqli) {
       const activeFilterSemester = String(selectedSemester || displaySemester || "").trim();
       const initialActiveCategory = <?php echo json_encode($activeCategoryParam); ?>;
       const serverScholarRecords = <?php echo json_encode($serverScholarRecords, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const terminatedScholarRecords = <?php echo json_encode($terminatedScholarRecords, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const availableAssignedOffices = <?php echo json_encode($assignedOfficeOptions, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const autoImportMessage = <?php echo json_encode($autoImportMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const autoImportType = <?php echo json_encode($autoImportType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const actionNoticeMessage = <?php echo json_encode($actionNoticeMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const actionNoticeType = <?php echo json_encode($actionNoticeType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      let scholarSearchTerm = "";
+      let terminatedSearchTerm = "";
 
       const categoryConfig = {
         official: {
@@ -2148,11 +2290,23 @@ if (($conn ?? null) instanceof mysqli) {
         },
         others: {
           label: "Others"
+        },
+        terminated_records: {
+          label: "Terminated / Ended Contracts"
         }
       };
+      let previousScholarCategory = categoryConfig[initialActiveCategory] && initialActiveCategory !== "terminated_records"
+        ? initialActiveCategory
+        : "official";
 
       const scholarStore = {};
       Object.keys(categoryConfig).forEach((category) => {
+        if (category === "terminated_records") {
+          scholarStore[category] = Array.isArray(terminatedScholarRecords)
+            ? terminatedScholarRecords.map((record) => ({ ...record }))
+            : [];
+          return;
+        }
         const records = serverScholarRecords && typeof serverScholarRecords === "object"
           ? serverScholarRecords[category]
           : [];
@@ -2403,6 +2557,9 @@ if (($conn ?? null) instanceof mysqli) {
         if (["contract ended", "contract_ended", "end contract", "ended contract"].includes(value)) {
           return "contract_ended";
         }
+        if (["terminated", "terminate"].includes(value)) {
+          return "terminated";
+        }
         return "";
       }
 
@@ -2463,6 +2620,14 @@ if (($conn ?? null) instanceof mysqli) {
         const explicitStatus = normalizeScholarStatus(
           record && typeof record === "object" ? (record.status || record.scholar_status || "") : ""
         );
+        if (explicitStatus === "terminated") {
+          return {
+            statusKey: "terminated",
+            nextScope: "",
+            renewEnabled: false,
+            reason: "Scholar already terminated."
+          };
+        }
         if (explicitStatus === "contract_ended" || (record && record.contract_ended === true)) {
           return {
             statusKey: "contract_ended",
@@ -2594,7 +2759,10 @@ if (($conn ?? null) instanceof mysqli) {
           return '<span class="inline-flex items-center rounded-full bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 text-[10px] font-semibold">Renewed</span>';
         }
         if (statusKey === "contract_ended") {
-          return '<span class="inline-flex items-center rounded-full bg-slate-100 text-slate-700 border border-slate-300 px-2 py-0.5 text-[10px] font-semibold">Contract Ended</span>';
+          return '<span class="inline-flex items-center rounded-full bg-slate-100 text-slate-700 border border-slate-300 px-2 py-0.5 text-[10px] font-semibold">End Contract</span>';
+        }
+        if (statusKey === "terminated") {
+          return '<span class="inline-flex items-center rounded-full bg-red-50 text-red-700 border border-red-200 px-2 py-0.5 text-[10px] font-semibold">Terminated</span>';
         }
         if (statusKey === "for_renewal" || statusKey === "expired") {
           return '<span class="inline-flex items-center rounded-full bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 text-[10px] font-semibold">For Renewal</span>';
@@ -2602,7 +2770,7 @@ if (($conn ?? null) instanceof mysqli) {
         return '<span class="inline-flex items-center rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold">Official Scholar</span>';
       }
 
-      function submitScholarAction(action, record, renewalScope = "", newAssignedOffice = "") {
+      function submitScholarAction(action, record, renewalScope = "", newAssignedOffice = "", terminationReason = "") {
         if (!record || typeof record !== "object") return;
 
         const url = new URL(window.location.href);
@@ -2634,12 +2802,19 @@ if (($conn ?? null) instanceof mysqli) {
           url.searchParams.delete("new_assigned_office");
         }
 
+        const normalizedTerminationReason = String(terminationReason || "").trim();
+        if (action === "terminate" && normalizedTerminationReason !== "") {
+          url.searchParams.set("termination_reason", normalizedTerminationReason);
+        } else {
+          url.searchParams.delete("termination_reason");
+        }
+
         url.searchParams.set("active_category", activeCategory);
         window.location.href = url.toString();
       }
 
       function shouldShowAssignedOfficeColumn(category) {
-        return category === "student_assistant" || category === "official";
+        return category === "student_assistant" || category === "official" || category === "terminated_records";
       }
 
       function renderRenewalTermNotice() {
@@ -2759,6 +2934,47 @@ if (($conn ?? null) instanceof mysqli) {
         });
       }
 
+      function showTerminatePrompt(category, recordKey) {
+        const record = getRecordByKey(category, recordKey);
+        if (!record) return;
+
+        if (typeof Swal === "undefined") {
+          const reason = window.prompt("Reason for termination:");
+          if (reason === null) return;
+          const normalizedReason = String(reason || "").trim();
+          if (normalizedReason === "") {
+            window.alert("Termination reason is required.");
+            return;
+          }
+          submitScholarAction("terminate", record, "", "", normalizedReason);
+          return;
+        }
+
+        Swal.fire({
+          title: "Terminate Scholar",
+          text: "Enter the reason for termination.",
+          input: "textarea",
+          inputPlaceholder: "Reason for termination",
+          inputAttributes: {
+            "aria-label": "Reason for termination"
+          },
+          icon: "warning",
+          showCancelButton: true,
+          confirmButtonText: "Terminate",
+          cancelButtonText: "Cancel",
+          confirmButtonColor: "#dc2626",
+          inputValidator: (value) => {
+            if (String(value || "").trim() === "") {
+              return "Termination reason is required.";
+            }
+            return undefined;
+          }
+        }).then((result) => {
+          if (!result.isConfirmed) return;
+          submitScholarAction("terminate", record, "", "", String(result.value || "").trim());
+        });
+      }
+
       function showChangeAssignedOfficePrompt(category, recordKey) {
         const record = getRecordByKey(category, recordKey);
         if (!record) return;
@@ -2824,10 +3040,26 @@ if (($conn ?? null) instanceof mysqli) {
         const config = categoryConfig[category];
         const tableBody = document.getElementById("scholarRows");
         const assignedOfficeHeader = document.getElementById("assignedOfficeHeader");
+        const actionReasonHeader = document.getElementById("actionReasonHeader");
+        const scholarSearchWrap = document.getElementById("scholarSearchWrap");
+        const terminatedSearchWrap = document.getElementById("terminatedSearchWrap");
+        const terminatedTableTitle = document.getElementById("terminatedTableTitle");
         const showAssignedOffice = shouldShowAssignedOfficeColumn(category);
         const columnCount = showAssignedOffice ? 9 : 8;
         if (assignedOfficeHeader) {
           assignedOfficeHeader.classList.toggle("hidden", !showAssignedOffice);
+        }
+        if (actionReasonHeader) {
+          actionReasonHeader.textContent = category === "terminated_records" ? "Reason" : "Action";
+        }
+        if (scholarSearchWrap) {
+          scholarSearchWrap.classList.toggle("hidden", category === "terminated_records");
+        }
+        if (terminatedSearchWrap) {
+          terminatedSearchWrap.classList.toggle("hidden", category !== "terminated_records");
+        }
+        if (terminatedTableTitle) {
+          terminatedTableTitle.classList.toggle("hidden", category !== "terminated_records");
         }
         const records = getCategoryRecords(category);
         const filteredRecords = records
@@ -2835,6 +3067,44 @@ if (($conn ?? null) instanceof mysqli) {
           .filter((record) => {
           const recordYear = String(record.academic_year || "").trim();
           const recordSemester = String(record.semester || "").trim();
+          const normalizedStatus = normalizeScholarStatus(record.status || record.scholar_status || "");
+          if (category !== "terminated_records" && (record.contract_ended === true || normalizedStatus === "contract_ended" || normalizedStatus === "terminated")) {
+            return false;
+          }
+          if (category !== "terminated_records" && scholarSearchTerm !== "") {
+            const haystack = [
+              record.scholar_id,
+              record.grant_applied,
+              record.full_name,
+              record.program_year,
+              record.assigned_office,
+              record.semester,
+              record.academic_year,
+              record.status,
+              resolveGrantApplied(category, record)
+            ].map((value) => String(value || "").toLowerCase()).join(" ");
+            if (!haystack.includes(scholarSearchTerm)) {
+              return false;
+            }
+          }
+          if (category === "terminated_records" && terminatedSearchTerm !== "") {
+            const haystack = [
+              record.scholar_id,
+              record.grant_applied,
+              record.full_name,
+              record.program_year,
+              record.assigned_office,
+              record.semester,
+              record.academic_year,
+              record.action_type,
+              record.reason,
+              record.created_by,
+              record.created_at
+            ].map((value) => String(value || "").toLowerCase()).join(" ");
+            if (!haystack.includes(terminatedSearchTerm)) {
+              return false;
+            }
+          }
           const matchesYear = selectedSchoolYear === "" || recordYear === selectedSchoolYear;
           const matchesSemester = selectedSemester === "" || recordSemester === selectedSemester;
           return matchesYear && matchesSemester;
@@ -2853,6 +3123,34 @@ if (($conn ?? null) instanceof mysqli) {
             escapeHtml(config.label) +
             escapeHtml(filterSuffix) +
             "</td></tr>";
+          return;
+        }
+
+        if (category === "terminated_records") {
+          filteredRecords.forEach((record, index) => {
+            const actionType = String(record.action_type || "").trim().toLowerCase();
+            const statusKey = actionType === "terminated" ? "terminated" : "contract_ended";
+            const createdMeta = String(record.created_at || "").trim();
+            const createdBy = String(record.created_by || "").trim();
+            const reason = String(record.reason || "").trim();
+            const row = document.createElement("tr");
+            row.innerHTML =
+              '<td class="px-3 py-2">' + (index + 1) + "</td>" +
+              '<td class="px-3 py-2">' + escapeHtml(record.grant_applied) + "</td>" +
+              '<td class="px-3 py-2">' + escapeHtml(record.full_name) + "</td>" +
+              '<td class="px-3 py-2">' + escapeHtml(record.program_year) + "</td>" +
+              '<td class="px-3 py-2">' + escapeHtml(String(record.assigned_office || "").trim() !== "" ? record.assigned_office : "-") + "</td>" +
+              '<td class="px-3 py-2">' + escapeHtml(record.semester) + "</td>" +
+              '<td class="px-3 py-2">' + escapeHtml(record.academic_year) + "</td>" +
+              '<td class="px-3 py-2">' + getStatusBadgeHtml(statusKey) + "</td>" +
+              '<td class="px-3 py-2 min-w-[220px]">' +
+                '<div class="space-y-1">' +
+                  '<p class="font-semibold text-slate-700">' + escapeHtml(reason !== "" ? reason : "No reason provided.") + "</p>" +
+                  '<p class="text-[10px] text-slate-500">' + escapeHtml(createdMeta !== "" ? createdMeta : "") + (createdBy !== "" ? " by " + escapeHtml(createdBy) : "") + "</p>" +
+                "</div>" +
+              "</td>";
+            tableBody.appendChild(row);
+          });
           return;
         }
 
@@ -2891,6 +3189,10 @@ if (($conn ?? null) instanceof mysqli) {
             ? ' disabled title="Contract already ended." aria-disabled="true" '
             : "";
           const endContractDisabledClasses = isContractEnded ? "opacity-60 cursor-not-allowed" : "";
+          const terminateDisabledAttrs = isContractEnded
+            ? ' disabled title="Contract already ended." aria-disabled="true" '
+            : "";
+          const terminateDisabledClasses = isContractEnded ? "opacity-60 cursor-not-allowed" : "";
           const changeOfficeBtnHtml = (isStudentAssistantGrant && !isContractEnded)
             ? ('<button type="button" data-status-action="change_office" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors bg-white text-[#0d8ddb] border-[#7cc5ee] hover:bg-[#ebf7ff]">Edit</button>')
             : "";
@@ -2909,6 +3211,7 @@ if (($conn ?? null) instanceof mysqli) {
               '<div class="flex flex-wrap gap-1 min-w-[200px]">' +
                 '<button type="button" data-status-action="renew" data-next-scope="' + escapeHtml(renewTargetScope) + '" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors ' + renewBtnClasses + ' ' + renewalDisabledClasses + '"' + renewalDisabledAttrs + '>' + escapeHtml(renewLabel) + '</button>' +
                 '<button type="button" data-status-action="end_contract" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] bg-red-600 text-white font-semibold transition-colors ' + endContractBtnClasses + ' ' + endContractDisabledClasses + '"' + endContractDisabledAttrs + '>End Contract</button>' +
+                '<button type="button" data-status-action="terminate" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] bg-red-50 text-red-700 border-red-200 font-semibold transition-colors hover:bg-red-100 ' + terminateDisabledClasses + '"' + terminateDisabledAttrs + '>Terminate</button>' +
                 changeOfficeBtnHtml +
               "</div>" +
             "</td>";
@@ -2930,7 +3233,7 @@ if (($conn ?? null) instanceof mysqli) {
 
           const recordKey = String(button.getAttribute("data-record-key") || "").trim();
           const action = String(button.getAttribute("data-status-action") || "").trim();
-          if (recordKey === "" || (action !== "renew" && action !== "end_contract" && action !== "change_office")) return;
+          if (recordKey === "" || (action !== "renew" && action !== "end_contract" && action !== "terminate" && action !== "change_office")) return;
 
           if (action === "renew") {
             const nextScope = String(button.getAttribute("data-next-scope") || "").trim();
@@ -2940,6 +3243,11 @@ if (($conn ?? null) instanceof mysqli) {
 
           if (action === "end_contract") {
             showEndContractConfirm(activeCategory, recordKey);
+            return;
+          }
+
+          if (action === "terminate") {
+            showTerminatePrompt(activeCategory, recordKey);
             return;
           }
 
@@ -2953,6 +3261,22 @@ if (($conn ?? null) instanceof mysqli) {
       function setActiveCategoryButton(selectedCategory) {
         document.querySelectorAll(".category-btn").forEach((button) => {
           const isActive = button.dataset.category === selectedCategory;
+          const isTerminatedToggle = button.dataset.category === "terminated_records";
+          if (isTerminatedToggle) {
+            button.classList.toggle("bg-[#dc2626]", isActive);
+            button.classList.toggle("text-white", isActive);
+            button.classList.toggle("border-[#dc2626]", true);
+            button.classList.toggle("bg-white", !isActive);
+            button.classList.toggle("text-[#dc2626]", !isActive);
+            button.classList.toggle("hover:bg-[#b91c1c]", isActive);
+            button.classList.toggle("hover:border-[#b91c1c]", isActive);
+            button.classList.toggle("hover:bg-[#fef2f2]", !isActive);
+            const label = document.getElementById("terminatedRecordsToggleLabel");
+            if (label) {
+              label.textContent = isActive ? "Unshow Terminated/Ended Contracts" : "Show Terminated/Ended Contracts";
+            }
+            return;
+          }
           button.classList.toggle("bg-[#052c6a]", isActive);
           button.classList.toggle("text-white", isActive);
           button.classList.toggle("shadow-sm", isActive);
@@ -2962,17 +3286,45 @@ if (($conn ?? null) instanceof mysqli) {
           button.classList.toggle("border-[#e2e8f0]", !isActive);
         });
         document.querySelectorAll('input[name="return_active_category"]').forEach((input) => {
-          input.value = selectedCategory;
+          input.value = selectedCategory === "terminated_records" ? "official" : selectedCategory;
         });
       }
 
       function setupCategorySwitching() {
+        const scholarSearchInput = document.getElementById("scholarSearchInput");
+        if (scholarSearchInput) {
+          scholarSearchInput.addEventListener("input", () => {
+            scholarSearchTerm = String(scholarSearchInput.value || "").trim().toLowerCase();
+            if (activeCategory !== "terminated_records") {
+              renderTable(activeCategory);
+            }
+          });
+        }
+
+        const terminatedSearchInput = document.getElementById("terminatedSearchInput");
+        if (terminatedSearchInput) {
+          terminatedSearchInput.addEventListener("input", () => {
+            terminatedSearchTerm = String(terminatedSearchInput.value || "").trim().toLowerCase();
+            if (activeCategory === "terminated_records") {
+              renderTable(activeCategory);
+            }
+          });
+        }
+
         document.querySelectorAll(".category-btn").forEach((button) => {
           button.addEventListener("click", () => {
-            activeCategory = button.dataset.category;
+            const nextCategory = button.dataset.category;
+            if (nextCategory === "terminated_records" && activeCategory === "terminated_records") {
+              activeCategory = previousScholarCategory;
+            } else {
+              if (nextCategory === "terminated_records" && activeCategory !== "terminated_records") {
+                previousScholarCategory = activeCategory;
+              }
+              activeCategory = nextCategory;
+            }
             setActiveCategoryButton(activeCategory);
             document.querySelectorAll('input[name="active_category"]').forEach((input) => {
-              input.value = activeCategory;
+              input.value = activeCategory === "terminated_records" ? "official" : activeCategory;
             });
             renderTable(activeCategory);
           });
