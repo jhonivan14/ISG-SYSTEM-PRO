@@ -8,7 +8,6 @@ require_once '../db.php';
 require_once __DIR__ . "/includes/school-term-filter.php";
 
 $showLoginSuccess = isset($_GET["login"]) && trim((string)$_GET["login"]) === "success";
-$dashboardAdminName = trim((string)($_SESSION["admin_name"] ?? $_SESSION["admin_username"] ?? "Admin"));
 
 $dashboardSchoolYear = $displaySchoolYear;
 $totalScholarsCount = 0;
@@ -1125,26 +1124,10 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 <?php if ($showLoginSuccess): ?>
 <script>
-document.addEventListener("DOMContentLoaded", async () => {
+document.addEventListener("DOMContentLoaded", () => {
   const cleanUrl = new URL(window.location.href);
   cleanUrl.searchParams.delete("login");
   window.history.replaceState({}, document.title, cleanUrl.toString());
-
-  if (typeof Swal === "undefined") {
-    return;
-  }
-
-  await Swal.fire({
-    icon: "success",
-    title: "Welcome Admin",
-    text: <?= json_encode("Welcome, " . $dashboardAdminName . "!") ?>,
-    timer: 1800,
-    timerProgressBar: true,
-    showConfirmButton: false,
-    allowOutsideClick: false,
-    allowEscapeKey: false,
-    confirmButtonColor: "#052c6a"
-  });
 });
 </script>
 <?php endif; ?>

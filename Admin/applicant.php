@@ -521,6 +521,19 @@ if ($stmt = $conn->prepare($declinedQuery)) {
               </option>
             <?php endforeach; ?>
           </select>
+          <button
+            type="button"
+            class="inline-flex items-center gap-2 rounded-full border border-[#f44336] bg-white px-3 py-2 text-xs font-semibold text-[#f44336] shadow-sm transition hover:bg-[#f44336] hover:text-white"
+            data-applicant-view-toggle
+            aria-controls="pendingApplicantsSection declinedApplicantsSection"
+            aria-pressed="false"
+          >
+            <i class="fas fa-user-times" data-applicant-view-icon></i>
+            <span data-applicant-view-label>Declined Applicants</span>
+            <span class="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-[#ba2a2a]" data-applicant-view-count>
+              <?= htmlspecialchars((string)count($declinedApplicants)) ?>
+            </span>
+          </button>
           <?php if ($rawSelectedSchoolYear !== null || $rawSelectedSemester !== null): ?>
             <a
               href="applicant.php"
@@ -532,7 +545,7 @@ if ($stmt = $conn->prepare($declinedQuery)) {
         </form>
 
         <!-- Table -->
-        <section class="px-4 sm:px-6 pb-6 mt-4">
+        <section id="pendingApplicantsSection" class="px-4 sm:px-6 pb-6 mt-4">
           <div class="rounded-lg border border-[#0d8ddb] bg-white p-4 shadow-sm">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
@@ -601,7 +614,7 @@ if ($stmt = $conn->prepare($declinedQuery)) {
                 <tbody>
                   <?php if (empty($pendingApplicants)): ?>
                     <tr>
-                      <td colspan="6" class="py-3 text-center text-[#052c6a]">
+                      <td colspan="7" class="py-3 text-center text-[#052c6a]">
                         No pending applicants at the moment.
                       </td>
                     </tr>
@@ -663,13 +676,15 @@ if ($stmt = $conn->prepare($declinedQuery)) {
           </div>
         </section>
 
-        <section class="px-4 sm:px-6 pb-10 mt-2">
+        <section id="declinedApplicantsSection" class="hidden px-4 sm:px-6 pb-10 mt-2">
           <div class="rounded-lg border border-[#f44336] bg-white p-4 shadow-sm">
-            <div class="flex flex-col gap-2">
-              <p class="text-[#f44336] text-sm font-semibold">Declined Applicants</p>
-              <p class="text-xs text-[#052c6a]">
-                Showing <?= htmlspecialchars((string)count($declinedApplicants)) ?> declined applicants.
-              </p>
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p class="text-[#f44336] text-sm font-semibold">Declined Applicants</p>
+                <p class="text-xs text-[#052c6a]">
+                  Showing <?= htmlspecialchars((string)count($declinedApplicants)) ?> declined applicants.
+                </p>
+              </div>
             </div>
 
             <div class="mt-4 overflow-x-auto table-float table-float-danger">
@@ -702,7 +717,7 @@ if ($stmt = $conn->prepare($declinedQuery)) {
                 <tbody>
                   <?php if (empty($declinedApplicants)): ?>
                     <tr>
-                      <td colspan="6" class="py-3 text-center text-[#052c6a]">
+                      <td colspan="7" class="py-3 text-center text-[#052c6a]">
                         No declined applicants at the moment.
                       </td>
                     </tr>
@@ -777,7 +792,14 @@ if ($stmt = $conn->prepare($declinedQuery)) {
         // Pending applicant filters
         const filterButtons = document.querySelectorAll("[data-filter-category]");
         const applicantRows = document.querySelectorAll("[data-applicant-row]");
+        const pendingSection = document.getElementById("pendingApplicantsSection");
+        const declinedSection = document.getElementById("declinedApplicantsSection");
+        const applicantViewToggle = document.querySelector("[data-applicant-view-toggle]");
+        const applicantViewIcon = document.querySelector("[data-applicant-view-icon]");
+        const applicantViewLabel = document.querySelector("[data-applicant-view-label]");
+        const applicantViewCount = document.querySelector("[data-applicant-view-count]");
         let activeCategory = "";
+        let showingDeclined = false;
 
         const applyCategoryFilter = () => {
           applicantRows.forEach((row) => {
@@ -801,6 +823,36 @@ if ($stmt = $conn->prepare($declinedQuery)) {
         });
 
         applyCategoryFilter();
+
+        if (pendingSection && declinedSection && applicantViewToggle) {
+          const setApplicantView = (showDeclined) => {
+            showingDeclined = showDeclined;
+            pendingSection.classList.toggle("hidden", showDeclined);
+            declinedSection.classList.toggle("hidden", !showDeclined);
+            applicantViewToggle.setAttribute("aria-pressed", showDeclined ? "true" : "false");
+
+            if (applicantViewLabel) {
+              applicantViewLabel.textContent = showDeclined ? "Back" : "Declined Applicants";
+            }
+
+            if (applicantViewIcon) {
+              applicantViewIcon.className = showDeclined ? "fas fa-arrow-left" : "fas fa-user-times";
+            }
+
+            if (applicantViewCount) {
+              applicantViewCount.classList.toggle("hidden", showDeclined);
+            }
+
+            (showDeclined ? declinedSection : pendingSection).scrollIntoView({
+              behavior: "smooth",
+              block: "start"
+            });
+          };
+
+          applicantViewToggle.addEventListener("click", () => {
+            setApplicantView(!showingDeclined);
+          });
+        }
       });
     </script>
   <script>

@@ -561,6 +561,10 @@ if (!empty($rankRows)) {
         font: inherit;
         outline: none;
       }
+      .score-input::placeholder {
+        color: #64748b;
+        font-style: italic;
+      }
       .score-input::-webkit-outer-spin-button,
       .score-input::-webkit-inner-spin-button {
         -webkit-appearance: none;
@@ -1206,6 +1210,7 @@ if (!empty($rankRows)) {
                 max="100"
                 step="0.01"
                 value="${row.exRateInput}"
+                placeholder="input here"
                 class="score-input"
                 data-field="exRateInput"
                 data-row-index="${index}"
@@ -1222,6 +1227,7 @@ if (!empty($rankRows)) {
                 max="100"
                 step="0.01"
                 value="${row.grRateInput}"
+                placeholder="input here"
                 class="score-input"
                 data-field="grRateInput"
                 data-row-index="${index}"
