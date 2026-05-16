@@ -1,6 +1,4 @@
 <?php
-// Guide: Admin account maintenance page for panelist and head office users.
-// Trace: request validation -> create/reset account queries -> list rendering -> modal/sidebar scripts.
 
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
