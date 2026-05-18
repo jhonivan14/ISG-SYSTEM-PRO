@@ -7,6 +7,7 @@ require_once "../db.php";
 $resetMessage = "";
 $resetError = "";
 $accountMessage = "";
+$accountError = "";
 $panelistAccounts = [];
 $headOfficeAccounts = [];
 $panelistError = "";
@@ -27,7 +28,7 @@ $headOfficeFormData = [
   "status" => "active",
 ];
 
-// Handle password resets and account creation requests before loading the account tables.
+// Handle password resets, account updates, and account creation requests before loading the account tables.
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   if (isset($_POST["reset_account_password"])) {
@@ -77,6 +78,178 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       } else {
         $resetError = "Unable to reset the password.";
       }
+    }
+  } elseif (isset($_POST["update_account"])) {
+    $updateAccountType = trim((string)($_POST["update_account_type"] ?? ""));
+    $originalUsername = trim((string)($_POST["original_username"] ?? ""));
+    $newUsername = trim((string)($_POST["username"] ?? ""));
+    $status = strtolower(trim((string)($_POST["status"] ?? "active")));
+    $status = in_array($status, ["active", "inactive"], true) ? $status : "active";
+
+    if ($updateAccountType === "panelist") {
+      $fullName = trim((string)($_POST["full_name"] ?? ""));
+
+      if ($originalUsername === "" || $newUsername === "" || $fullName === "") {
+        $accountError = "Please complete all panelist fields.";
+      } else {
+        $oldFullName = "";
+        $oldFullNameCount = 0;
+        $checkStmt = $conn->prepare("SELECT full_name FROM panelists WHERE username = ? LIMIT 1");
+        if ($checkStmt) {
+          $checkStmt->bind_param("s", $originalUsername);
+          $checkStmt->execute();
+          $checkResult = $checkStmt->get_result();
+          $checkRow = $checkResult ? $checkResult->fetch_assoc() : null;
+          if ($checkRow) {
+            $oldFullName = trim((string)($checkRow["full_name"] ?? ""));
+          } else {
+            $accountError = "Panelist account not found.";
+          }
+          $checkStmt->close();
+        } else {
+          $accountError = "Unable to update the panelist account.";
+        }
+
+        if ($accountError === "" && $oldFullName !== "") {
+          $fullNameCountStmt = $conn->prepare("SELECT COUNT(*) AS total FROM panelists WHERE full_name = ?");
+          if ($fullNameCountStmt) {
+            $fullNameCountStmt->bind_param("s", $oldFullName);
+            $fullNameCountStmt->execute();
+            $fullNameCountResult = $fullNameCountStmt->get_result();
+            $fullNameCountRow = $fullNameCountResult ? $fullNameCountResult->fetch_assoc() : null;
+            $oldFullNameCount = (int)($fullNameCountRow["total"] ?? 0);
+            $fullNameCountStmt->close();
+          }
+        }
+
+        if ($accountError === "" && strcasecmp($newUsername, $originalUsername) !== 0) {
+          $duplicateStmt = $conn->prepare("SELECT id FROM panelists WHERE username = ? LIMIT 1");
+          if ($duplicateStmt) {
+            $duplicateStmt->bind_param("s", $newUsername);
+            $duplicateStmt->execute();
+            $duplicateStmt->store_result();
+            if ($duplicateStmt->num_rows > 0) {
+              $accountError = "Panelist username already exists.";
+            }
+            $duplicateStmt->close();
+          } else {
+            $accountError = "Unable to update the panelist account.";
+          }
+        }
+
+        if ($accountError === "") {
+          $updateStmt = $conn->prepare("UPDATE panelists SET username = ?, full_name = ?, status = ? WHERE username = ? LIMIT 1");
+          if ($updateStmt) {
+            $updateStmt->bind_param("ssss", $newUsername, $fullName, $status, $originalUsername);
+            if ($updateStmt->execute()) {
+              if ($newUsername !== $originalUsername) {
+                $queueTableResult = $conn->query("SHOW TABLES LIKE 'panelist_queue'");
+                if ($queueTableResult instanceof mysqli_result && $queueTableResult->num_rows > 0) {
+                  $queueUpdateStmt = $conn->prepare("UPDATE panelist_queue SET panelist_username = ? WHERE panelist_username = ?");
+                  if ($queueUpdateStmt) {
+                    $queueUpdateStmt->bind_param("ss", $newUsername, $originalUsername);
+                    $queueUpdateStmt->execute();
+                    $queueUpdateStmt->close();
+                  }
+                }
+                if ($queueTableResult instanceof mysqli_result) {
+                  $queueTableResult->free();
+                }
+              }
+
+              if ($oldFullName !== "" && $oldFullName !== $fullName && $oldFullNameCount === 1) {
+                $evaluationTableResult = $conn->query("SHOW TABLES LIKE 'interview_evaluations'");
+                if ($evaluationTableResult instanceof mysqli_result && $evaluationTableResult->num_rows > 0) {
+                  $evaluationUpdateStmt = $conn->prepare("UPDATE interview_evaluations SET interviewer_name = ? WHERE interviewer_name = ?");
+                  if ($evaluationUpdateStmt) {
+                    $evaluationUpdateStmt->bind_param("ss", $fullName, $oldFullName);
+                    $evaluationUpdateStmt->execute();
+                    $evaluationUpdateStmt->close();
+                  }
+                }
+                if ($evaluationTableResult instanceof mysqli_result) {
+                  $evaluationTableResult->free();
+                }
+              }
+
+              $accountMessage = "Panelist account updated.";
+            } else {
+              $accountError = "Unable to update the panelist account.";
+            }
+            $updateStmt->close();
+          } else {
+            $accountError = "Unable to update the panelist account.";
+          }
+        }
+      }
+    } elseif ($updateAccountType === "head_office") {
+      $name = trim((string)($_POST["name"] ?? ""));
+      $lastname = trim((string)($_POST["lastname"] ?? ""));
+      $office = trim((string)($_POST["office"] ?? ""));
+
+      if ($originalUsername === "" || $newUsername === "" || $name === "" || $lastname === "" || $office === "") {
+        $accountError = "Please complete all head of office fields.";
+      } else {
+        $checkStmt = $conn->prepare("SELECT id FROM head_offices WHERE username = ? LIMIT 1");
+        if ($checkStmt) {
+          $checkStmt->bind_param("s", $originalUsername);
+          $checkStmt->execute();
+          $checkStmt->store_result();
+          if ($checkStmt->num_rows === 0) {
+            $accountError = "Head of office account not found.";
+          }
+          $checkStmt->close();
+        } else {
+          $accountError = "Unable to update the head of office account.";
+        }
+
+        if ($accountError === "" && strcasecmp($newUsername, $originalUsername) !== 0) {
+          $duplicateStmt = $conn->prepare("SELECT id FROM head_offices WHERE username = ? LIMIT 1");
+          if ($duplicateStmt) {
+            $duplicateStmt->bind_param("s", $newUsername);
+            $duplicateStmt->execute();
+            $duplicateStmt->store_result();
+            if ($duplicateStmt->num_rows > 0) {
+              $accountError = "Head of office username already exists.";
+            }
+            $duplicateStmt->close();
+          } else {
+            $accountError = "Unable to update the head of office account.";
+          }
+        }
+
+        if ($accountError === "") {
+          $updateStmt = $conn->prepare("UPDATE head_offices SET username = ?, name = ?, lastname = ?, office = ?, status = ? WHERE username = ? LIMIT 1");
+          if ($updateStmt) {
+            $updateStmt->bind_param("ssssss", $newUsername, $name, $lastname, $office, $status, $originalUsername);
+            if ($updateStmt->execute()) {
+              if ($newUsername !== $originalUsername) {
+                $evaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
+                if ($evaluationTableResult instanceof mysqli_result && $evaluationTableResult->num_rows > 0) {
+                  $evaluationUpdateStmt = $conn->prepare("UPDATE department_head_evaluations SET head_username = ? WHERE head_username = ?");
+                  if ($evaluationUpdateStmt) {
+                    $evaluationUpdateStmt->bind_param("ss", $newUsername, $originalUsername);
+                    $evaluationUpdateStmt->execute();
+                    $evaluationUpdateStmt->close();
+                  }
+                }
+                if ($evaluationTableResult instanceof mysqli_result) {
+                  $evaluationTableResult->free();
+                }
+              }
+
+              $accountMessage = "Head of office account updated.";
+            } else {
+              $accountError = "Unable to update the head of office account.";
+            }
+            $updateStmt->close();
+          } else {
+            $accountError = "Unable to update the head of office account.";
+          }
+        }
+      }
+    } else {
+      $accountError = "Invalid account type.";
     }
   } elseif (isset($_POST["create_account"])) {
     $createAccountType = trim((string)($_POST["create_account_type"] ?? ""));
@@ -465,9 +638,9 @@ if ($headOfficeResult) {
           <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
             <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p class="text-[#0d8ddb] text-sm font-semibold">Account Passwords</p>
+                <p class="text-[#0d8ddb] text-sm font-semibold">Account Management</p>
                 <p class="text-xs text-[#052c6a]">
-                  View hashed passwords and reset credentials for panelists and head of offices.
+                  Manage profile details, status, and password resets for panelists and head of offices.
                 </p>
               </div>
               <div class="flex flex-wrap gap-2">
@@ -507,7 +680,7 @@ if ($headOfficeResult) {
                       <th class="border-r border-white/10 px-3 py-2">Full Name</th>
                       <th class="border-r border-white/10 px-3 py-2">Password Hash</th>
                       <th class="border-r border-white/10 px-3 py-2">Status</th>
-                      <th class="px-3 py-2">Action</th>
+                      <th class="px-3 py-2 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -533,7 +706,7 @@ if ($headOfficeResult) {
                             <?= htmlspecialchars((string)($account["status"] ?? "")) ?>
                           </td>
                           <td class="px-3 py-2">
-                            <form method="POST" class="flex flex-wrap items-center gap-2">
+                            <form method="POST" class="flex flex-wrap items-center justify-center gap-2">
                               <input type="hidden" name="account_type" value="panelist" />
                               <input
                                 type="hidden"
@@ -554,6 +727,16 @@ if ($headOfficeResult) {
                                 class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
                               >
                                 Reset
+                              </button>
+                              <button
+                                type="button"
+                                class="rounded-full bg-[#052c6a] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b3d86]"
+                                data-edit-panelist
+                                data-username="<?= htmlspecialchars((string)($account["username"] ?? "")) ?>"
+                                data-full-name="<?= htmlspecialchars((string)($account["full_name"] ?? "")) ?>"
+                                data-status="<?= htmlspecialchars((string)($account["status"] ?? "active")) ?>"
+                              >
+                                Edit
                               </button>
                             </form>
                           </td>
@@ -585,13 +768,13 @@ if ($headOfficeResult) {
                       <th class="border-r border-white/10 px-3 py-2">Office</th>
                       <th class="border-r border-white/10 px-3 py-2">Password Hash</th>
                       <th class="border-r border-white/10 px-3 py-2">Status</th>
-                      <th class="px-3 py-2">Action</th>
+                      <th class="px-3 py-2 text-center">Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     <?php if (empty($headOfficeAccounts)): ?>
                       <tr>
-                        <td colspan="6" class="px-3 py-3 text-center text-[#052c6a]">
+                        <td colspan="7" class="px-3 py-3 text-center text-[#052c6a]">
                           No head of office accounts found.
                         </td>
                       </tr>
@@ -617,7 +800,7 @@ if ($headOfficeResult) {
                             <?= htmlspecialchars((string)($account["status"] ?? "")) ?>
                           </td>
                           <td class="px-3 py-2">
-                            <form method="POST" class="flex flex-wrap items-center gap-2">
+                            <form method="POST" class="flex flex-wrap items-center justify-center gap-2">
                               <input type="hidden" name="account_type" value="head_office" />
                               <input
                                 type="hidden"
@@ -638,6 +821,18 @@ if ($headOfficeResult) {
                                 class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
                               >
                                 Reset
+                              </button>
+                              <button
+                                type="button"
+                                class="rounded-full bg-[#052c6a] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b3d86]"
+                                data-edit-head-office
+                                data-username="<?= htmlspecialchars((string)($account["username"] ?? "")) ?>"
+                                data-name="<?= htmlspecialchars((string)($account["name"] ?? "")) ?>"
+                                data-lastname="<?= htmlspecialchars((string)($account["lastname"] ?? "")) ?>"
+                                data-office="<?= htmlspecialchars((string)($account["office"] ?? "")) ?>"
+                                data-status="<?= htmlspecialchars((string)($account["status"] ?? "active")) ?>"
+                              >
+                                Edit
                               </button>
                             </form>
                           </td>
@@ -873,6 +1068,184 @@ if ($headOfficeResult) {
             </div>
           </div>
         </div>
+
+        <!-- Edit Panelist Modal -->
+        <div
+          id="editPanelistModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/60 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-panelist-modal-title"
+        >
+          <div class="absolute inset-0" data-close-modal="editPanelistModal"></div>
+          <div class="relative z-10 w-full max-w-2xl rounded-2xl border border-[#0d8ddb]/20 bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0d8ddb]">Accounts</p>
+                <h3 id="edit-panelist-modal-title" class="text-lg font-semibold text-[#052c6a]">Edit Panelist Account</h3>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                data-close-modal="editPanelistModal"
+              >
+                Close
+              </button>
+            </div>
+            <div class="px-6 py-5">
+              <form method="POST" class="grid gap-4 md:grid-cols-2">
+                <input type="hidden" name="update_account" value="1" />
+                <input type="hidden" name="update_account_type" value="panelist" />
+                <input type="hidden" name="original_username" id="edit-panelist-original-username" />
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-panelist-username">Username</label>
+                  <input
+                    id="edit-panelist-username"
+                    name="username"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-panelist-full-name">Full Name</label>
+                  <input
+                    id="edit-panelist-full-name"
+                    name="full_name"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-panelist-status">Status</label>
+                  <select
+                    id="edit-panelist-status"
+                    name="status"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+                <div class="md:col-span-2 flex flex-wrap justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    class="rounded-full border border-slate-300 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400 hover:text-slate-700"
+                    data-close-modal="editPanelistModal"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="rounded-full bg-[#0d8ddb] px-6 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow hover:bg-[#0b7bbf]"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Edit Head of Office Modal -->
+        <div
+          id="editHeadOfficeModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/60 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-head-office-modal-title"
+        >
+          <div class="absolute inset-0" data-close-modal="editHeadOfficeModal"></div>
+          <div class="relative z-10 w-full max-w-2xl rounded-2xl border border-[#0d8ddb]/20 bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0d8ddb]">Accounts</p>
+                <h3 id="edit-head-office-modal-title" class="text-lg font-semibold text-[#052c6a]">Edit Head of Office Account</h3>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                data-close-modal="editHeadOfficeModal"
+              >
+                Close
+              </button>
+            </div>
+            <div class="px-6 py-5">
+              <form method="POST" class="grid gap-4 md:grid-cols-2">
+                <input type="hidden" name="update_account" value="1" />
+                <input type="hidden" name="update_account_type" value="head_office" />
+                <input type="hidden" name="original_username" id="edit-head-office-original-username" />
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-head-office-username">Username</label>
+                  <input
+                    id="edit-head-office-username"
+                    name="username"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-head-office-name">Name</label>
+                  <input
+                    id="edit-head-office-name"
+                    name="name"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-head-office-lastname">Last Name</label>
+                  <input
+                    id="edit-head-office-lastname"
+                    name="lastname"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-head-office-office">Office</label>
+                  <input
+                    id="edit-head-office-office"
+                    name="office"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-head-office-status">Status</label>
+                  <select
+                    id="edit-head-office-status"
+                    name="status"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+                <div class="md:col-span-2 flex flex-wrap justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    class="rounded-full border border-slate-300 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400 hover:text-slate-700"
+                    data-close-modal="editHeadOfficeModal"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="rounded-full bg-[#0d8ddb] px-6 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow hover:bg-[#0b7bbf]"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
 
@@ -888,6 +1261,10 @@ if ($headOfficeResult) {
         },
         {
           message: <?= json_encode($resetError, JSON_UNESCAPED_SLASHES) ?>,
+          type: "error",
+        },
+        {
+          message: <?= json_encode($accountError, JSON_UNESCAPED_SLASHES) ?>,
           type: "error",
         },
       ].filter((item) => item.message);
@@ -960,6 +1337,48 @@ if ($headOfficeResult) {
             if (modalId) {
               setModalState(modalId, true);
             }
+          });
+        });
+
+        document.querySelectorAll("[data-edit-panelist]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const originalUsernameInput = document.getElementById("edit-panelist-original-username");
+            const usernameInput = document.getElementById("edit-panelist-username");
+            const fullNameInput = document.getElementById("edit-panelist-full-name");
+            const statusSelect = document.getElementById("edit-panelist-status");
+
+            if (!originalUsernameInput || !usernameInput || !fullNameInput || !statusSelect) {
+              return;
+            }
+
+            originalUsernameInput.value = button.dataset.username || "";
+            usernameInput.value = button.dataset.username || "";
+            fullNameInput.value = button.dataset.fullName || "";
+            statusSelect.value = button.dataset.status || "active";
+            setModalState("editPanelistModal", true);
+          });
+        });
+
+        document.querySelectorAll("[data-edit-head-office]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const originalUsernameInput = document.getElementById("edit-head-office-original-username");
+            const usernameInput = document.getElementById("edit-head-office-username");
+            const nameInput = document.getElementById("edit-head-office-name");
+            const lastnameInput = document.getElementById("edit-head-office-lastname");
+            const officeInput = document.getElementById("edit-head-office-office");
+            const statusSelect = document.getElementById("edit-head-office-status");
+
+            if (!originalUsernameInput || !usernameInput || !nameInput || !lastnameInput || !officeInput || !statusSelect) {
+              return;
+            }
+
+            originalUsernameInput.value = button.dataset.username || "";
+            usernameInput.value = button.dataset.username || "";
+            nameInput.value = button.dataset.name || "";
+            lastnameInput.value = button.dataset.lastname || "";
+            officeInput.value = button.dataset.office || "";
+            statusSelect.value = button.dataset.status || "active";
+            setModalState("editHeadOfficeModal", true);
           });
         });
 
