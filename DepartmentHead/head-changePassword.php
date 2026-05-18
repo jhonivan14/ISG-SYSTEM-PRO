@@ -37,7 +37,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       $storedHash = $row ? (string)($row["password_hash"] ?? "") : "";
       $verified = false;
       if ($storedHash !== "") {
-        if (strpos($storedHash, "$2y$") === 0 || strpos($storedHash, "$argon2") === 0) {
+        if (strpos($storedHash, "$2y$") === 0 || strpos($storedHash, '$argon2') === 0) {
           $verified = password_verify($currentPassword, $storedHash);
         } else {
           $verified = hash("sha256", $currentPassword) === $storedHash;

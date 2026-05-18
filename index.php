@@ -382,9 +382,6 @@ $_SESSION["from_index"] = true;
 </footer>
 
 <script>
-  // ============================================================
-  // ✨ ENHANCED PARTICLES CONFIG
-  // ============================================================
   particlesJS("particles-js", {
     "particles": {
       "number": {

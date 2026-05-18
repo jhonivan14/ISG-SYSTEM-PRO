@@ -708,8 +708,6 @@ if (!empty($evaluationWindowActionParams)) {
               <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                   <h2 class="text-lg font-semibold text-[#052c6a]">Student Assistants Evaluation List</h2>
-                  <p class="text-sm text-gray-600">Open or close the evaluation window to control when heads can submit forms for the current term.</p>
-                  <p class="text-xs text-gray-500 mt-1">Current assignment rows come from `institutional_scholar_records`, while previous-term filters are preserved from saved evaluation records.</p>
                   <p class="text-xs text-gray-500 mt-1">
                     Evaluation window:
                     <span
