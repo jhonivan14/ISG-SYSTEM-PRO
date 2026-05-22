@@ -22,6 +22,18 @@ function draft_int($draft, $key) {
   return isset($draft[$key]) ? (int)$draft[$key] : 0;
 }
 
+function ensure_applications_department_column(mysqli $conn): void {
+  $columnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'department'");
+  $hasDepartmentColumn = $columnResult instanceof mysqli_result && $columnResult->num_rows > 0;
+  if ($columnResult instanceof mysqli_result) {
+    $columnResult->free();
+  }
+
+  if (!$hasDepartmentColumn) {
+    $conn->query("ALTER TABLE applications ADD COLUMN department VARCHAR(100) DEFAULT NULL AFTER applicant_name");
+  }
+}
+
 $draft = $_SESSION["application_draft"] ?? null;
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
@@ -41,12 +53,15 @@ $noRequirementGrantIds = [15];
 $grantRequiresUploads = !in_array($grantId ?? 0, $noRequirementGrantIds, true);
 
 if (empty($errors)) {
+  ensure_applications_department_column($conn);
+
   $sql = "INSERT INTO applications (
     grant_id,
     scholarship_type,
     kabayani_specify,
     others_specify,
     applicant_name,
+    department,
     program_course,
     year_level,
     school_year,
@@ -72,7 +87,7 @@ if (empty($errors)) {
     father_occupation,
     created_at
   ) VALUES (
-    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
+    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW()
   )";
 
   if ($stmt = $conn->prepare($sql)) {
@@ -80,6 +95,7 @@ if (empty($errors)) {
     $kabayaniSpecify = draft_value($draft, "kabayani_specify");
     $othersSpecify = draft_value($draft, "others_specify");
     $applicantName = draft_value($draft, "applicant_name");
+    $department = draft_value($draft, "department");
     $programCourse = draft_value($draft, "program_course");
     $yearLevel = draft_value($draft, "year_level");
     $schoolYear = draft_value($draft, "school_year");
@@ -105,12 +121,13 @@ if (empty($errors)) {
     $fatherOccupation = draft_value($draft, "father_occupation");
 
     $stmt->bind_param(
-      "issssssssssisssissssisssssis",
+      "isssssssssssisssissssisssssis",
       $grantId,
       $scholarshipType,
       $kabayaniSpecify,
       $othersSpecify,
       $applicantName,
+      $department,
       $programCourse,
       $yearLevel,
       $schoolYear,

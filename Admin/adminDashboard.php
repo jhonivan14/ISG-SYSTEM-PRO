@@ -4,7 +4,7 @@
 
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
-require_once '../database/db.php';
+require_once '../db.php';
 require_once __DIR__ . "/includes/school-term-filter.php";
 
 $showLoginSuccess = isset($_GET["login"]) && trim((string)$_GET["login"]) === "success";
@@ -591,7 +591,7 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
               data-nav="accounts.php" onclick="window.location.href='accounts.php'"
             >
               <i class="fas fa-user-circle w-5"></i>
-              <span>Accounts</span>
+              <span>Settings</span>
             </li>
           </ul>
         </nav>
@@ -1133,5 +1133,6 @@ document.addEventListener("DOMContentLoaded", () => {
 <?php endif; ?>
 </body>
 </html>
+
 
 

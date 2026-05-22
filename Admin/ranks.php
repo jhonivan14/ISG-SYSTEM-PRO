@@ -828,7 +828,7 @@ if (!empty($rankRows)) {
               data-nav="accounts.php" onclick="window.location.href='accounts.php'"
             >
               <i class="fas fa-user-circle w-5"></i>
-              <span>Accounts</span>
+              <span>Settings</span>
             </li>
           </ul>
         </nav>
@@ -1394,6 +1394,7 @@ if (!empty($rankRows)) {
     </script>
   </body>
 </html>
+
 
 
 

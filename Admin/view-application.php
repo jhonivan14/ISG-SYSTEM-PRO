@@ -141,6 +141,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       }
       $updateStmt->execute();
       $updateStmt->close();
+      if ($postAction === "approve" && !$isStudentAssistantApplicant) {
+        header("Location: institutional-scholars.php?applicant_id=" . urlencode((string)$postId) . "&source=approved");
+        exit;
+      }
       header("Location: applicant.php");
       exit;
     } else {
@@ -376,7 +380,7 @@ foreach ($uploadedRequirements as $upload) {
             </li>
             <li class="flex items-center gap-2 px-4 py-3 hover:bg-white/15 cursor-pointer" data-nav="accounts.php" onclick="window.location.href='accounts.php'">
               <i class="fas fa-user-circle w-5"></i>
-              <span>Accounts</span>
+              <span>Settings</span>
             </li>
           </ul>
         </nav>
@@ -1060,6 +1064,7 @@ foreach ($uploadedRequirements as $upload) {
         const actionInput = document.getElementById("applicationActionInput");
         const batchInput = document.getElementById("applicationBatchInput");
         const actionButtons = document.querySelectorAll("[data-action]");
+        const isStudentAssistantApplicant = <?= json_encode($isStudentAssistantApplicant) ?>;
 
         const labels = {
           approve: {
@@ -1094,6 +1099,8 @@ foreach ($uploadedRequirements as $upload) {
 
             const confirmText = action === "approve" && batchInput
               ? `This applicant will move to approved list under ${batchInput.value}.`
+              : action === "approve" && !isStudentAssistantApplicant
+                ? "This applicant will be added to Institutional Scholars."
               : label.text;
 
             Swal.fire({
@@ -1145,6 +1152,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 

@@ -3,13 +3,21 @@
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
+require_once "../scholarship-program-options.php";
 
 $resetMessage = "";
 $resetError = "";
 $accountMessage = "";
 $accountError = "";
+$programSettingsMessage = "";
+$programSettingsError = "";
 $panelistAccounts = [];
 $headOfficeAccounts = [];
+$programOptionGroups = [
+  "senior_high" => [],
+  "college" => [],
+  "student_assistant" => [],
+];
 $panelistError = "";
 $headOfficeError = "";
 $panelistFormError = "";
@@ -78,6 +86,27 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       } else {
         $resetError = "Unable to reset the password.";
       }
+    }
+  } elseif (isset($_POST["add_program_option"])) {
+    $programCategory = trim((string)($_POST["program_category"] ?? ""));
+    $programName = trim((string)($_POST["program_name"] ?? ""));
+
+    if (isg_add_program_option($conn, $programCategory, $programName, $programSettingsError)) {
+      $categoryLabels = isg_program_option_categories();
+      $programSettingsMessage = ($categoryLabels[$programCategory] ?? "Program option") . " added.";
+    }
+  } elseif (isset($_POST["remove_program_option"])) {
+    $programOptionId = (int)($_POST["program_option_id"] ?? 0);
+
+    if (isg_deactivate_program_option($conn, $programOptionId, $programSettingsError)) {
+      $programSettingsMessage = "Program option removed.";
+    }
+  } elseif (isset($_POST["update_program_option"])) {
+    $programOptionId = (int)($_POST["program_option_id"] ?? 0);
+    $programName = trim((string)($_POST["program_name"] ?? ""));
+
+    if (isg_update_program_option($conn, $programOptionId, $programName, $programSettingsError)) {
+      $programSettingsMessage = "Program option updated.";
     }
   } elseif (isset($_POST["update_account"])) {
     $updateAccountType = trim((string)($_POST["update_account_type"] ?? ""));
@@ -366,6 +395,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   }
 }
 
+isg_ensure_program_options_table($conn);
+foreach (array_keys($programOptionGroups) as $categoryKey) {
+  $programOptionGroups[$categoryKey] = isg_load_program_options($conn, $categoryKey);
+}
+
 $panelistResult = $conn->query("SELECT username, full_name, password_hash, status FROM panelists ORDER BY username ASC");
 if ($panelistResult) {
   while ($row = $panelistResult->fetch_assoc()) {
@@ -541,7 +575,7 @@ if ($headOfficeResult) {
               data-nav="accounts.php" onclick="window.location.href='accounts.php'"
             >
               <i class="fas fa-user-circle w-5"></i>
-              <span>Accounts</span>
+              <span>Settings</span>
             </li>
           </ul>
         </nav>
@@ -629,12 +663,12 @@ if ($headOfficeResult) {
             </button>
             <h2 class="text-slate-800 text-lg font-semibold flex items-center gap-2">
             <i class="fas fa-flag"></i>
-            ACCOUNTS
+            SETTINGS
           </h2>
           </div>
         </section>
 
-        <section class="px-4 sm:px-6 pt-6">
+        <section class="order-1 px-4 sm:px-6 pt-6">
           <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
             <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -664,7 +698,115 @@ if ($headOfficeResult) {
           </div>
         </section>
 
-        <section class="px-4 sm:px-6 pt-6">
+        <section class="order-4 px-4 sm:px-6 pt-6 pb-6">
+          <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
+            <div class="mb-4">
+              <p class="text-[#0d8ddb] text-sm font-semibold">Application Program Settings</p>
+              <p class="text-xs text-[#052c6a]">
+                Manage the dropdown choices shown in the applicant form for Senior High, College, and Student Assistant applicants.
+              </p>
+            </div>
+
+            <?php if ($programSettingsMessage !== ""): ?>
+              <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                <?= htmlspecialchars($programSettingsMessage) ?>
+              </div>
+            <?php endif; ?>
+            <?php if ($programSettingsError !== ""): ?>
+              <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= htmlspecialchars($programSettingsError) ?>
+              </div>
+            <?php endif; ?>
+
+            <div class="grid gap-4 xl:grid-cols-3">
+              <?php
+                $programSettingCards = [
+                  "senior_high" => [
+                    "title" => "Senior High Strands",
+                    "placeholder" => "e.g. STEM",
+                    "empty" => "No Senior High strands added yet.",
+                  ],
+                  "college" => [
+                    "title" => "College Programs",
+                    "placeholder" => "e.g. Bachelor of Science in Computer Science",
+                    "empty" => "No College programs added yet.",
+                  ],
+                  "student_assistant" => [
+                    "title" => "Student Assistant Programs",
+                    "placeholder" => "e.g. Bachelor in Human Services",
+                    "empty" => "No Student Assistant programs added yet.",
+                  ],
+                ];
+              ?>
+              <?php foreach ($programSettingCards as $categoryKey => $settingCard): ?>
+                <div class="rounded-xl border border-[#0d8ddb]/40 bg-[#f9fbff] p-4">
+                  <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">
+                    <?= htmlspecialchars($settingCard["title"]) ?>
+                  </p>
+                  <form method="POST" class="mt-3 flex flex-col gap-2 sm:flex-row xl:flex-col 2xl:flex-row">
+                    <input type="hidden" name="program_category" value="<?= htmlspecialchars($categoryKey) ?>" />
+                    <input
+                      type="text"
+                      name="program_name"
+                      class="min-w-0 flex-1 rounded-lg border border-[#0d8ddb]/40 px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                      placeholder="<?= htmlspecialchars($settingCard["placeholder"]) ?>"
+                      required
+                    />
+                    <button
+                      type="submit"
+                      name="add_program_option"
+                      value="1"
+                      class="rounded-full bg-[#0d8ddb] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
+                    >
+                      Add
+                    </button>
+                  </form>
+
+                  <div class="mt-4 space-y-2">
+                    <?php if (empty($programOptionGroups[$categoryKey])): ?>
+                      <div class="rounded-lg border border-dashed border-[#0d8ddb]/40 bg-white px-3 py-3 text-xs text-[#052c6a]/70">
+                        <?= htmlspecialchars($settingCard["empty"]) ?>
+                      </div>
+                    <?php else: ?>
+                      <?php foreach ($programOptionGroups[$categoryKey] as $programOption): ?>
+                        <div class="flex flex-col gap-2 rounded-lg border border-[#0d8ddb]/25 bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                          <span class="text-xs font-medium text-[#052c6a]">
+                            <?= htmlspecialchars((string)($programOption["name"] ?? "")) ?>
+                          </span>
+                          <div class="flex gap-2">
+                            <button
+                              type="button"
+                              class="rounded-full bg-[#052c6a] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b3d86]"
+                              data-edit-program-option
+                              data-program-option-id="<?= htmlspecialchars((string)($programOption["id"] ?? "")) ?>"
+                              data-program-option-name="<?= htmlspecialchars((string)($programOption["name"] ?? "")) ?>"
+                              data-program-option-category="<?= htmlspecialchars($categoryKey) ?>"
+                            >
+                              Edit
+                            </button>
+                            <form method="POST">
+                              <input type="hidden" name="program_option_id" value="<?= htmlspecialchars((string)($programOption["id"] ?? "")) ?>" />
+                              <button
+                                type="submit"
+                                name="remove_program_option"
+                                value="1"
+                                class="rounded-full bg-red-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-red-700 hover:bg-red-100"
+                              >
+                                Remove
+                              </button>
+                            </form>
+                          </div>
+                        </div>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              <?php endforeach; ?>
+            </div>
+          </div>
+        </section>
+
+        <section class="order-2 px-4 sm:px-6 pt-6">
           <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
             <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">Panelists</p>
             <?php if ($panelistError !== ""): ?>
@@ -750,7 +892,7 @@ if ($headOfficeResult) {
           </div>
         </section>
 
-        <section class="px-4 sm:px-6 pt-6 pb-6">
+        <section class="order-3 px-4 sm:px-6 pt-6">
           <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
             <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">Head of Offices</p>
             <?php if ($headOfficeError !== ""): ?>
@@ -1246,6 +1388,73 @@ if ($headOfficeResult) {
             </div>
           </div>
         </div>
+
+        <!-- Edit Program Option Modal -->
+        <div
+          id="editProgramOptionModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/60 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-program-option-modal-title"
+        >
+          <div class="absolute inset-0" data-close-modal="editProgramOptionModal"></div>
+          <div class="relative z-10 w-full max-w-xl rounded-2xl border border-[#0d8ddb]/20 bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0d8ddb]">Program Settings</p>
+                <h3 id="edit-program-option-modal-title" class="text-lg font-semibold text-[#052c6a]">Edit Program Option</h3>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                data-close-modal="editProgramOptionModal"
+              >
+                Close
+              </button>
+            </div>
+            <div class="px-6 py-5">
+              <form method="POST" class="grid gap-4">
+                <input type="hidden" name="program_option_id" id="edit-program-option-id" />
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-program-option-category">Category</label>
+                  <input
+                    id="edit-program-option-category"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-slate-50 px-4 py-2 text-sm text-[#052c6a]"
+                    readonly
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-program-option-name">Program / Strand Name</label>
+                  <input
+                    id="edit-program-option-name"
+                    name="program_name"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div class="flex flex-wrap justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    class="rounded-full border border-slate-300 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400 hover:text-slate-700"
+                    data-close-modal="editProgramOptionModal"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    name="update_program_option"
+                    value="1"
+                    class="rounded-full bg-[#0d8ddb] px-6 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow hover:bg-[#0b7bbf]"
+                  >
+                    Save
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
 
@@ -1379,6 +1588,30 @@ if ($headOfficeResult) {
             officeInput.value = button.dataset.office || "";
             statusSelect.value = button.dataset.status || "active";
             setModalState("editHeadOfficeModal", true);
+          });
+        });
+
+        document.querySelectorAll("[data-edit-program-option]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const optionIdInput = document.getElementById("edit-program-option-id");
+            const optionNameInput = document.getElementById("edit-program-option-name");
+            const optionCategoryInput = document.getElementById("edit-program-option-category");
+
+            if (!optionIdInput || !optionNameInput || !optionCategoryInput) {
+              return;
+            }
+
+            const categoryLabels = {
+              senior_high: "Senior High Strand",
+              college: "College Program",
+              student_assistant: "Student Assistant Program",
+            };
+            const category = button.dataset.programOptionCategory || "";
+
+            optionIdInput.value = button.dataset.programOptionId || "";
+            optionNameInput.value = button.dataset.programOptionName || "";
+            optionCategoryInput.value = categoryLabels[category] || "Program Option";
+            setModalState("editProgramOptionModal", true);
           });
         });
 

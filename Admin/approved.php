@@ -1,6 +1,6 @@
 <?php
-// Guide: Approved applicants page with messaging, panelist routing, and scholar confirmation actions.
-// Trace: handle confirm POST -> load approved applicants/panelists -> render modals -> action scripts.
+// Guide: Approved applicants page with messaging and panelist routing actions.
+// Trace: load approved applicants/panelists -> render modals -> action scripts.
 
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
@@ -79,47 +79,6 @@ if (isset($_GET["panelist_status"])) {
     $panelistToastMessage = $panelistError !== "" ? (string)$panelistError : "Failed to send to panelist. Please try again.";
     $panelistToastType = "error";
   }
-}
-
-// Handle scholar confirmation requests before the approved-applicants list is assembled.
-
-if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["confirm_applicant_id"])) {
-  $confirmApplicantId = (int)($_POST["confirm_applicant_id"] ?? 0);
-  $confirmError = "";
-
-  if ($confirmApplicantId <= 0) {
-    $confirmError = "Invalid applicant selected for confirmation.";
-  } else {
-    $confirmStmt = $conn->prepare("SELECT id, grant_id, status FROM applications WHERE id = ? LIMIT 1");
-    if ($confirmStmt) {
-      $confirmStmt->bind_param("i", $confirmApplicantId);
-      $confirmStmt->execute();
-      $confirmResult = $confirmStmt->get_result();
-      $confirmRow = $confirmResult ? $confirmResult->fetch_assoc() : null;
-      $confirmStmt->close();
-
-      if (!$confirmRow) {
-        $confirmError = "Applicant not found.";
-      } else {
-        $status = strtolower(trim((string)($confirmRow["status"] ?? "")));
-        $grantId = (int)($confirmRow["grant_id"] ?? 0);
-        if ($status !== "approved") {
-          $confirmError = "Only approved applicants can be confirmed.";
-        } elseif ($grantId === 1) {
-          $confirmError = "For Student Assistant applicants, use 'Send to Panelist'.";
-        } else {
-          header("Location: institutional-scholars.php?applicant_id=" . urlencode((string)$confirmApplicantId) . "&source=approved");
-          exit;
-        }
-      }
-    } else {
-      $confirmError = "Unable to process confirmation right now.";
-    }
-  }
-
-  $_SESSION["confirm_error"] = $confirmError;
-  header("Location: approved.php?confirm_status=error");
-  exit;
 }
 
 $filterClauses = [];
@@ -427,7 +386,7 @@ unset($applicant);
               data-nav="accounts.php" onclick="window.location.href='accounts.php'"
             >
               <i class="fas fa-user-circle w-5"></i>
-              <span>Accounts</span>
+              <span>Settings</span>
             </li>
           </ul>
         </nav>
@@ -523,18 +482,6 @@ unset($applicant);
 
         <!-- Academic Year / Semester Filters -->
         <section class="px-4 sm:px-6 mt-4">
-          <?php if (isset($_GET["confirm_status"])): ?>
-            <?php
-              $confirmStatus = (string)$_GET["confirm_status"];
-              $confirmError = $_SESSION["confirm_error"] ?? "";
-              unset($_SESSION["confirm_error"]);
-            ?>
-            <?php if ($confirmStatus === "error"): ?>
-              <div class="mb-3 rounded-lg border border-red-400 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
-                <?= htmlspecialchars($confirmError !== "" ? $confirmError : "Unable to confirm applicant.") ?>
-              </div>
-            <?php endif; ?>
-          <?php endif; ?>
           <div class="controls-float flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
             <div class="flex flex-wrap gap-2">
               <?php foreach ($categories as $category): ?>
@@ -659,20 +606,6 @@ unset($applicant);
                             >
                               Send Message
                             </button>
-                            <?php if ((int)$applicant["grant_id"] !== 1): ?>
-                              <form method="post" class="m-0 inline-flex items-center">
-                                <input type="hidden" name="confirm_applicant_id" value="<?= htmlspecialchars((string)$applicant["id"]) ?>" />
-                                <button
-                                  class="inline-flex items-center bg-green-600 text-white rounded px-3 py-1 text-xs hover:bg-green-700"
-                                  type="submit"
-                                  data-confirm-applicant
-                                  data-applicant-name="<?= htmlspecialchars($applicant["name"]) ?>"
-                                  data-grant-id="<?= htmlspecialchars((string)$applicant["grant_id"]) ?>"
-                                >
-                                  Confirm
-                                </button>
-                              </form>
-                            <?php endif; ?>
                             <?php if ((int)$applicant["grant_id"] === 1): ?>
                               <button
                                 class="border border-[#0d8ddb] text-[#0d8ddb] rounded px-3 py-1 text-xs hover:bg-white/15 hover:text-white"
@@ -1017,32 +950,6 @@ unset($applicant);
         }
       });
 
-      // Confirm routing
-      document.addEventListener("DOMContentLoaded", () => {
-        document.querySelectorAll("[data-confirm-applicant]").forEach((button) => {
-          button.addEventListener("click", (event) => {
-            event.preventDefault();
-            const form = button.closest("form");
-            if (!form) return;
-
-            const applicantName = button.getAttribute("data-applicant-name") || "this applicant";
-            const grantId = parseInt(button.getAttribute("data-grant-id") || "0", 10);
-            const destination =
-              grantId === 1
-                ? "Interview Evaluation and Applicant Ranks"
-                : "Official Institutional Scholars";
-
-            const shouldContinue = window.confirm(
-              `Confirm ${applicantName}? This will route the applicant to ${destination}.`
-            );
-
-            if (shouldContinue) {
-              form.submit();
-            }
-          });
-        });
-      });
-
       // Send to panelist modal
       document.addEventListener("DOMContentLoaded", () => {
         const modal = document.getElementById("sendPanelistModal");
@@ -1152,6 +1059,7 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>
 </body>
 </html>
+
 
 
 

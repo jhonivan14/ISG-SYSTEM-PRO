@@ -1,6 +1,7 @@
 <?php
 session_start();
 require_once "../db.php";
+require_once "../scholarship-program-options.php";
 
 $errors = [];
 
@@ -92,7 +93,7 @@ function infer_scholarship_type($grantId) {
   if ($grantId === 2) {
     return "Academic";
   }
-  if ($grantId === 4) {
+  if ($grantId === 4 || $grantId === 5) {
     return "Kabayani";
   }
   if ($grantId > 0) {
@@ -201,6 +202,16 @@ $studentAssistantPrograms = [
   "Bachelor of Science in Business Administration (BSBA) - major in Business Economics",
   "Bachelor in Human Services (BHumserv)",
 ];
+$studentAssistantPrograms = isg_load_program_option_names($conn, "student_assistant");
+
+$departmentOptions = ["Elementary", "Junior High School", "Senior High School", "College"];
+$elementaryProgramOptions = ["Nursery", "Kindergarten", "Grade 1", "Grade 2", "Grade 3", "Grade 4", "Grade 5", "Grade 6"];
+$juniorHighSchoolProgramOptions = ["Grade 7", "Grade 8", "Grade 9", "Grade 10"];
+$seniorHighSchoolProgramOptions = isg_load_program_option_names($conn, "senior_high");
+$collegeProgramOptions = isg_load_program_option_names($conn, "college");
+$seniorHighSchoolYearLevelOptions = ["Grade 11", "Grade 12"];
+$collegeYearLevelOptions = ["1st Year", "2nd Year", "3rd Year", "4th Year"];
+$semesterOptions = ["1st Semester", "2nd Semester"];
 
 $currentYear = (int)date("Y");
 $currentMonth = (int)date("n");
@@ -213,11 +224,18 @@ if (empty($schoolYearOptions)) {
 $currentGrantId = (int)($_POST["grant_id"] ?? $_GET["grant"] ?? 0);
 $currentGrantTitle = $grantNames[$currentGrantId] ?? "";
 $selectedScholarshipType = read_post_field("scholarshipType");
-$effectiveScholarshipType = $selectedScholarshipType !== "" ? $selectedScholarshipType : infer_scholarship_type($currentGrantId);
+$inferredScholarshipType = infer_scholarship_type($currentGrantId);
+$effectiveScholarshipType = $inferredScholarshipType !== "" ? $inferredScholarshipType : $selectedScholarshipType;
+$selectedDepartment = read_post_field("department");
 $kabayaniSpecifyValue = read_post_field("kabayaniSpecify");
 $othersSpecifyValue = read_post_field("othersSpecify");
 $programCourseValue = read_post_field("programCourse");
 $showStudentAssistantProgramSelect = uses_student_assistant_program_options($currentGrantId, $effectiveScholarshipType);
+$showProgramCourseSelect = in_array($selectedDepartment, ["Elementary", "Junior High School", "Senior High School"], true) ||
+  $selectedDepartment === "College";
+if ($kabayaniSpecifyValue === "" && $effectiveScholarshipType === "Kabayani" && $currentGrantTitle !== "") {
+  $kabayaniSpecifyValue = $currentGrantTitle;
+}
 if ($othersSpecifyValue === "" && $effectiveScholarshipType === "Others" && $currentGrantTitle !== "") {
   $othersSpecifyValue = $currentGrantTitle;
 }
@@ -225,11 +243,16 @@ $selectedSchoolYear = read_post_field("schoolYear");
 if ($selectedSchoolYear !== "" && !in_array($selectedSchoolYear, $schoolYearOptions, true)) {
   array_unshift($schoolYearOptions, $selectedSchoolYear);
 }
+$selectedYearLevel = read_post_field("yearLevel");
 $selectedSemester = read_post_field("semester");
 $dateOfBirthInputValue = format_birth_date_for_input(read_post_field("dateOfBirth"));
  
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $grantId = $currentGrantId;
+  $postedScholarshipType = infer_scholarship_type($grantId);
+  if ($postedScholarshipType !== "") {
+    $_POST["scholarshipType"] = $postedScholarshipType;
+  }
 
   if ($grantId <= 0) {
     $errors[] = "Missing grant selection.";
@@ -237,12 +260,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
  
   
   $requiredFields = [
+    "department" => "Department is required.",
     "scholarshipType" => "Scholarship type is required.",
     "applicantName" => "Applicant name is required.",
     "programCourse" => "Program/course is required.",
-    "yearLevel" => "Year level is required.",
     "schoolYear" => "School year is required.",
-    "semester" => "Semester is required.",
     "permanentAddress" => "Permanent address is required.",
     "gender" => "Gender is required.",
     "age" => "Age is required.",
@@ -261,12 +283,54 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
   }
 
-  if (
-    uses_student_assistant_program_options($grantId, read_post_field("scholarshipType")) &&
-    $programCourseValue !== "" &&
-    !in_array($programCourseValue, $studentAssistantPrograms, true)
-  ) {
-    $errors[] = "Please select a valid Student Assistant program/course.";
+  $department = read_post_field("department");
+  $programCourse = read_post_field("programCourse");
+  $yearLevel = read_post_field("yearLevel");
+  $semester = read_post_field("semester");
+
+  if ($department !== "" && !in_array($department, $departmentOptions, true)) {
+    $errors[] = "Please select a valid department.";
+  }
+
+  if ($department === "Elementary" && $programCourse !== "" && !in_array($programCourse, $elementaryProgramOptions, true)) {
+    $errors[] = "Please select a valid Elementary program/course.";
+  }
+
+  if ($department === "Junior High School" && $programCourse !== "" && !in_array($programCourse, $juniorHighSchoolProgramOptions, true)) {
+    $errors[] = "Please select a valid Junior High School program/course.";
+  }
+
+  if ($department === "Senior High School") {
+    if ($programCourse !== "" && !in_array($programCourse, $seniorHighSchoolProgramOptions, true)) {
+      $errors[] = "Please select a valid Senior High School strand.";
+    }
+    if ($yearLevel === "") {
+      $errors[] = "Year level is required.";
+    } elseif (!in_array($yearLevel, $seniorHighSchoolYearLevelOptions, true)) {
+      $errors[] = "Please select a valid Senior High School year level.";
+    }
+    if ($semester === "") {
+      $errors[] = "Semester is required.";
+    } elseif (!in_array($semester, $semesterOptions, true)) {
+      $errors[] = "Please select a valid semester.";
+    }
+  } elseif ($department === "College") {
+    $validCollegeProgramOptions = uses_student_assistant_program_options($grantId, read_post_field("scholarshipType"))
+      ? $studentAssistantPrograms
+      : $collegeProgramOptions;
+    if ($programCourse !== "" && !in_array($programCourse, $validCollegeProgramOptions, true)) {
+      $errors[] = "Please select a valid college program.";
+    }
+    if ($yearLevel === "") {
+      $errors[] = "Year level is required.";
+    } elseif (!in_array($yearLevel, $collegeYearLevelOptions, true)) {
+      $errors[] = "Please select a valid college year level.";
+    }
+    if ($semester === "") {
+      $errors[] = "Semester is required.";
+    } elseif (!in_array($semester, $semesterOptions, true)) {
+      $errors[] = "Please select a valid semester.";
+    }
   }
 
   $emailAddress = read_post_field("emailAddress");
@@ -295,6 +359,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       "scholarship_type" => $scholarshipType,
       "kabayani_specify" => read_post_field("kabayaniSpecify"),
       "others_specify" => $othersSpecify,
+      "department" => read_post_field("department"),
       "applicant_name" => read_post_field("applicantName"),
       "program_course" => read_post_field("programCourse"),
       "year_level" => read_post_field("yearLevel"),
@@ -473,11 +538,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           </legend>
 
           <p class="mt-2 text-[11px] sm:text-xs text-[#052c6a]/70">
-            Please select the type of scholarship or grant you are applying for. This will help the office
-            categorize your application.
+            This section is automatically based on the scholarship or grant selected in Step 1.
           </p>
 
-          <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          <div class="mt-4">
+            <div class="rounded-2xl border border-[#0d8ddb]/30 bg-white px-4 py-3 shadow-sm">
+              <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#0d8ddb]">Applied Scholarship / Grant</p>
+              <p id="appliedGrantTypeLabel" class="mt-2 text-sm sm:text-base font-semibold text-[#052c6a]">
+                <?php echo htmlspecialchars($currentGrantTitle !== "" ? $currentGrantTitle : "No grant selected"); ?>
+              </p>
+            </div>
+          </div>
+
+          <div class="hidden">
             <div class="space-y-3">
               <label class="flex items-center gap-2 rounded-2xl border border-transparent bg-white px-3 py-2 shadow-sm hover:border-[#0d8ddb]/60 cursor-pointer transition">
                 <input
@@ -487,7 +560,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                   type="radio"
                   value="Academic"
                   <?php echo $effectiveScholarshipType === "Academic" ? "checked" : ""; ?>
-                  required
                 />
                 <span class="text-sm sm:text-base text-[#052c6a] font-medium">Academic</span>
               </label>
@@ -580,6 +652,26 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mt-4">
             <div class="md:col-span-2">
+              <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="department">
+                Department <span class="text-red-600">*</span>
+              </label>
+              <select
+                class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+                       focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
+                id="department"
+                name="department"
+                required
+              >
+                <option disabled <?php echo $selectedDepartment === "" ? "selected" : ""; ?> value="">Select department</option>
+                <?php foreach ($departmentOptions as $option): ?>
+                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedDepartment === $option ? "selected" : ""; ?>>
+                    <?php echo htmlspecialchars($option); ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+            </div>
+
+            <div class="md:col-span-2">
               <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="applicantName">
                 Name of Applicant <span class="text-red-600">*</span>
               </label>
@@ -595,34 +687,51 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             </div>
 
             <div>
-              <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="programCourse">
+              <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="programCourseSelect">
                 Program / Course Enrolled <span class="text-red-600">*</span>
               </label>
               <select
-                class="<?php echo $showStudentAssistantProgramSelect ? "" : "hidden "; ?>w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+                class="<?php echo $showProgramCourseSelect ? "" : "hidden "; ?>w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                 id="programCourseSelect"
-                <?php echo $showStudentAssistantProgramSelect ? 'name="programCourse" required' : 'disabled'; ?>
+                data-selected-value="<?php echo htmlspecialchars($programCourseValue); ?>"
+                <?php echo $showProgramCourseSelect ? 'name="programCourse" required' : 'disabled'; ?>
               >
                 <option value="">Select program / course</option>
-                <?php foreach ($studentAssistantPrograms as $programOption): ?>
-                  <option value="<?php echo htmlspecialchars($programOption); ?>" <?php echo $programCourseValue === $programOption ? "selected" : ""; ?>>
-                    <?php echo htmlspecialchars($programOption); ?>
-                  </option>
-                <?php endforeach; ?>
+                <?php
+                  $initialProgramOptions = [];
+                  if ($selectedDepartment === "Elementary") {
+                    $initialProgramOptions = $elementaryProgramOptions;
+                  } elseif ($selectedDepartment === "Junior High School") {
+                    $initialProgramOptions = $juniorHighSchoolProgramOptions;
+                  } elseif ($selectedDepartment === "Senior High School") {
+                    $initialProgramOptions = $seniorHighSchoolProgramOptions;
+                  } elseif ($selectedDepartment === "College") {
+                    $initialProgramOptions = $showStudentAssistantProgramSelect ? $studentAssistantPrograms : $collegeProgramOptions;
+                  }
+                ?>
+                <?php if (empty($initialProgramOptions) && in_array($selectedDepartment, ["Senior High School", "College"], true)): ?>
+                  <option value="" disabled selected>No program added yet</option>
+                <?php else: ?>
+                  <?php foreach ($initialProgramOptions as $programOption): ?>
+                    <option value="<?php echo htmlspecialchars($programOption); ?>" <?php echo $programCourseValue === $programOption ? "selected" : ""; ?>>
+                      <?php echo htmlspecialchars($programOption); ?>
+                    </option>
+                  <?php endforeach; ?>
+                <?php endif; ?>
               </select>
               <input
-                class="<?php echo $showStudentAssistantProgramSelect ? "hidden " : ""; ?>w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
+                class="<?php echo $showProgramCourseSelect ? "hidden " : ""; ?>w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                 id="programCourseInput"
-                <?php echo $showStudentAssistantProgramSelect ? 'disabled' : 'name="programCourse" required'; ?>
-                placeholder="e.g. BS in Computer Science"
+                <?php echo $showProgramCourseSelect || $selectedDepartment === "" ? 'disabled' : 'name="programCourse" required'; ?>
+                placeholder="<?php echo $selectedDepartment === "" ? "Select department first" : "e.g. BS in Computer Science"; ?>"
                 type="text"
                 value="<?php echo htmlspecialchars($programCourseValue); ?>"
               />
               <p
                 id="programCourseHint"
-                class="<?php echo $showStudentAssistantProgramSelect ? "" : "hidden "; ?>mt-1 text-[11px] sm:text-xs text-[#052c6a]/75"
+                class="<?php echo $showProgramCourseSelect ? "" : "hidden "; ?>mt-1 text-[11px] sm:text-xs text-[#052c6a]/75"
               >
                 
               </p>
@@ -630,20 +739,25 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
             <div>
               <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="yearLevel">
-                Year Level <span class="text-red-600">*</span>
+                Year Level <span id="yearLevelRequiredMark" class="<?php echo $selectedDepartment !== "" && !in_array($selectedDepartment, ["Elementary", "Junior High School"], true) ? "" : "hidden "; ?>text-red-600">*</span><span id="yearLevelOptionalMark" class="<?php echo in_array($selectedDepartment, ["Elementary", "Junior High School"], true) ? "" : "hidden "; ?>text-xs font-normal text-[#052c6a]/60"> (Optional)</span>
               </label>
               <select
                 class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                        focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                 id="yearLevel"
                 name="yearLevel"
-                required
+                data-selected-value="<?php echo htmlspecialchars($selectedYearLevel); ?>"
+                <?php echo $selectedDepartment !== "" && !in_array($selectedDepartment, ["Elementary", "Junior High School"], true) ? "required" : ""; ?>
               >
-                <option disabled selected value="">Select year level</option>
-                <option value="1st Year">1st Year</option>
-                <option value="2nd Year">2nd Year</option>
-                <option value="3rd Year">3rd Year</option>
-                <option value="4th Year">4th Year</option>
+                <option value="">Select year level</option>
+                <?php
+                  $initialYearLevelOptions = $selectedDepartment === "Senior High School" ? $seniorHighSchoolYearLevelOptions : $collegeYearLevelOptions;
+                ?>
+                <?php foreach ($initialYearLevelOptions as $option): ?>
+                  <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedYearLevel === $option ? "selected" : ""; ?>>
+                    <?php echo htmlspecialchars($option); ?>
+                  </option>
+                <?php endforeach; ?>
               </select>
             </div>
 
@@ -670,17 +784,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
               <div>
                 <label class="block text-sm text-[#052c6a] font-semibold mb-1.5" for="semester">
-                  Semester <span class="text-red-600">*</span>
+                  Semester <span id="semesterRequiredMark" class="<?php echo $selectedDepartment !== "" && !in_array($selectedDepartment, ["Elementary", "Junior High School"], true) ? "" : "hidden "; ?>text-red-600">*</span><span id="semesterOptionalMark" class="<?php echo in_array($selectedDepartment, ["Elementary", "Junior High School"], true) ? "" : "hidden "; ?>text-xs font-normal text-[#052c6a]/60"> (Optional)</span>
                 </label>
                 <select
                   class="w-full border border-[#0d8ddb]/60 rounded-xl px-3 py-2 text-sm
                          focus:outline-none focus:ring-2 focus:ring-[#fcdc2f] focus:border-[#0d8ddb]"
                   id="semester"
                   name="semester"
-                  required
+                  <?php echo $selectedDepartment !== "" && !in_array($selectedDepartment, ["Elementary", "Junior High School"], true) ? "required" : ""; ?>
                 >
-                  <option disabled selected value="">Select semester</option>
-                  <?php $semesterOptions = ["1st Semester", "2nd Semester"]; ?>
+                  <option value="">Select semester</option>
                   <?php foreach ($semesterOptions as $option): ?>
                     <option value="<?php echo htmlspecialchars($option); ?>" <?php echo $selectedSemester === $option ? "selected" : ""; ?>>
                       <?php echo htmlspecialchars($option); ?>
@@ -1049,11 +1162,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     // map grant id to label (same order as Step 1)
     const grantNames = <?php echo json_encode($grantNames, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+    const elementaryProgramOptions = <?php echo json_encode($elementaryProgramOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+    const juniorHighSchoolProgramOptions = <?php echo json_encode($juniorHighSchoolProgramOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+    const seniorHighSchoolProgramOptions = <?php echo json_encode($seniorHighSchoolProgramOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+    const collegeProgramOptions = <?php echo json_encode($collegeProgramOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+    const studentAssistantProgramOptions = <?php echo json_encode($studentAssistantPrograms, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+    const seniorHighSchoolYearLevelOptions = <?php echo json_encode($seniorHighSchoolYearLevelOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+    const collegeYearLevelOptions = <?php echo json_encode($collegeYearLevelOptions, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
 
     const grantIdFromUrl = getQueryParam('grant');
     const grantLabelEl = document.getElementById('selectedGrantLabel');
+    const appliedGrantTypeLabel = document.getElementById('appliedGrantTypeLabel');
     const grantIdField = document.getElementById('grantIdField');
     const activeGrantId = grantIdFromUrl || grantIdField.value;
+    const departmentSelect = document.getElementById('department');
     const academicRadio = document.getElementById('academic');
     const kabayaniRadio = document.getElementById('kabayani');
     const studentAssistanceRadio = document.getElementById('studentAssistance');
@@ -1062,13 +1184,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     const programCourseSelect = document.getElementById('programCourseSelect');
     const programCourseInput = document.getElementById('programCourseInput');
     const programCourseHint = document.getElementById('programCourseHint');
+    const yearLevelSelect = document.getElementById('yearLevel');
+    const semesterSelect = document.getElementById('semester');
+    const yearLevelRequiredMark = document.getElementById('yearLevelRequiredMark');
+    const semesterRequiredMark = document.getElementById('semesterRequiredMark');
+    const yearLevelOptionalMark = document.getElementById('yearLevelOptionalMark');
+    const semesterOptionalMark = document.getElementById('semesterOptionalMark');
     const contactNumberInputs = document.querySelectorAll('#contactNumber, #motherContact, #fatherContact');
 
     function getAutoScholarshipType(grantId) {
       const idNum = parseInt(grantId, 10);
       if (idNum === 1) return 'Student Assistance';
       if (idNum === 2) return 'Academic';
-      if (idNum === 4) return 'Kabayani';
+      if (idNum === 4 || idNum === 5) return 'Kabayani';
       if (idNum > 0) return 'Others';
       return '';
     }
@@ -1089,17 +1217,70 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       return grantId === 1 || Boolean(studentAssistanceRadio && studentAssistanceRadio.checked);
     }
 
+    function setSelectOptions(select, options, placeholder, selectedValue, emptyPlaceholder = '') {
+      if (!select) {
+        return;
+      }
+
+      select.innerHTML = '';
+
+      const placeholderOption = document.createElement('option');
+      placeholderOption.value = '';
+      placeholderOption.textContent = options.length > 0 ? placeholder : (emptyPlaceholder || placeholder);
+      if (options.length === 0 && emptyPlaceholder) {
+        placeholderOption.disabled = true;
+      }
+      select.appendChild(placeholderOption);
+
+      options.forEach((optionValue) => {
+        const option = document.createElement('option');
+        option.value = optionValue;
+        option.textContent = optionValue;
+        if (optionValue === selectedValue) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+    }
+
+    function getDepartmentProgramOptions(department) {
+      if (department === 'Elementary') return elementaryProgramOptions;
+      if (department === 'Junior High School') return juniorHighSchoolProgramOptions;
+      if (department === 'Senior High School') return seniorHighSchoolProgramOptions;
+      if (department === 'College') return usesStudentAssistantPrograms() ? studentAssistantProgramOptions : collegeProgramOptions;
+      return [];
+    }
+
     function syncProgramCourseField() {
       if (!programCourseSelect || !programCourseInput) {
         return;
       }
 
-      const shouldUseSelect = usesStudentAssistantPrograms();
+      const department = departmentSelect ? departmentSelect.value : '';
+      const selectedValue = programCourseSelect.value || programCourseSelect.dataset.selectedValue || programCourseInput.value;
+      const programOptions = getDepartmentProgramOptions(department);
+      const shouldUseSelect = ['Elementary', 'Junior High School', 'Senior High School', 'College'].includes(department);
 
-      if (shouldUseSelect) {
-        if (programCourseInput.value && !programCourseSelect.value) {
-          programCourseSelect.value = programCourseInput.value;
+      if (!department) {
+        programCourseSelect.classList.add('hidden');
+        programCourseSelect.disabled = true;
+        programCourseSelect.required = false;
+        programCourseSelect.name = '';
+
+        programCourseInput.classList.remove('hidden');
+        programCourseInput.disabled = true;
+        programCourseInput.required = false;
+        programCourseInput.name = '';
+        programCourseInput.placeholder = 'Select department first';
+
+        if (programCourseHint) {
+          programCourseHint.classList.add('hidden');
+          programCourseHint.textContent = '';
         }
+      } else if (shouldUseSelect) {
+        const emptyPlaceholder = department === 'Senior High School' || department === 'College' ? 'No program added yet' : '';
+        setSelectOptions(programCourseSelect, programOptions, 'Select program / course', selectedValue, emptyPlaceholder);
+        programCourseSelect.dataset.selectedValue = programCourseSelect.value;
 
         programCourseSelect.classList.remove('hidden');
         programCourseSelect.disabled = false;
@@ -1110,9 +1291,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         programCourseInput.disabled = true;
         programCourseInput.required = false;
         programCourseInput.name = '';
+        programCourseInput.placeholder = 'e.g. BS in Computer Science';
 
         if (programCourseHint) {
           programCourseHint.classList.remove('hidden');
+          programCourseHint.textContent = department === 'Senior High School'
+            ? 'Select the Senior High School strand.'
+            : 'Select the option that matches the department.';
         }
       } else {
         if (programCourseSelect.value && !programCourseInput.value) {
@@ -1123,6 +1308,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         programCourseInput.disabled = false;
         programCourseInput.required = true;
         programCourseInput.name = 'programCourse';
+        programCourseInput.placeholder = 'e.g. BS in Computer Science';
 
         programCourseSelect.classList.add('hidden');
         programCourseSelect.disabled = true;
@@ -1131,7 +1317,40 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         if (programCourseHint) {
           programCourseHint.classList.add('hidden');
+          programCourseHint.textContent = '';
         }
+      }
+    }
+
+    function syncAcademicFields() {
+      if (!yearLevelSelect || !semesterSelect) {
+        return;
+      }
+
+      const department = departmentSelect ? departmentSelect.value : '';
+      const isBasicEducation = department === 'Elementary' || department === 'Junior High School';
+      const isSeniorHighSchool = department === 'Senior High School';
+      const isYearAndSemesterRequired = department !== '' && !isBasicEducation;
+      const selectedYearLevel = yearLevelSelect.value || yearLevelSelect.dataset.selectedValue || '';
+      const yearOptions = isSeniorHighSchool ? seniorHighSchoolYearLevelOptions : collegeYearLevelOptions;
+
+      setSelectOptions(yearLevelSelect, yearOptions, 'Select year level', selectedYearLevel);
+      yearLevelSelect.dataset.selectedValue = yearLevelSelect.value;
+
+      yearLevelSelect.required = isYearAndSemesterRequired;
+      semesterSelect.required = isYearAndSemesterRequired;
+
+      if (yearLevelRequiredMark) {
+        yearLevelRequiredMark.classList.toggle('hidden', !isYearAndSemesterRequired);
+      }
+      if (semesterRequiredMark) {
+        semesterRequiredMark.classList.toggle('hidden', !isYearAndSemesterRequired);
+      }
+      if (yearLevelOptionalMark) {
+        yearLevelOptionalMark.classList.toggle('hidden', !isBasicEducation);
+      }
+      if (semesterOptionalMark) {
+        semesterOptionalMark.classList.toggle('hidden', !isBasicEducation);
       }
     }
 
@@ -1145,9 +1364,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     if (activeGrantId && grantNames[activeGrantId]) {
       grantLabelEl.textContent = grantNames[activeGrantId] + ' (Grant #' + activeGrantId + ')';
       grantIdField.value = activeGrantId;
+      if (appliedGrantTypeLabel) {
+        appliedGrantTypeLabel.textContent = grantNames[activeGrantId];
+      }
     } else {
       grantLabelEl.textContent = 'No specific grant selected. You may go back to Step 1 to choose a grant.';
       grantIdField.value = '';
+      if (appliedGrantTypeLabel) {
+        appliedGrantTypeLabel.textContent = 'No grant selected';
+      }
     }
 
     // optional: auto-select scholarship type based on grant id
@@ -1168,9 +1393,40 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       othersRadio.addEventListener('change', syncOthersSpecify);
     }
 
+    if (departmentSelect) {
+      departmentSelect.addEventListener('change', () => {
+        if (programCourseSelect) {
+          programCourseSelect.dataset.selectedValue = '';
+        }
+        if (programCourseInput) {
+          programCourseInput.value = '';
+        }
+        if (yearLevelSelect) {
+          yearLevelSelect.dataset.selectedValue = '';
+        }
+        syncProgramCourseField();
+        syncAcademicFields();
+      });
+    }
+
+    if (programCourseSelect) {
+      programCourseSelect.addEventListener('change', () => {
+        programCourseSelect.dataset.selectedValue = programCourseSelect.value;
+      });
+    }
+
+    if (yearLevelSelect) {
+      yearLevelSelect.addEventListener('change', () => {
+        yearLevelSelect.dataset.selectedValue = yearLevelSelect.value;
+      });
+    }
+
     [academicRadio, kabayaniRadio, studentAssistanceRadio, othersRadio].forEach((radio) => {
       if (radio) {
-        radio.addEventListener('change', syncProgramCourseField);
+        radio.addEventListener('change', () => {
+          syncProgramCourseField();
+          syncAcademicFields();
+        });
       }
     });
 
@@ -1183,6 +1439,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     syncOthersSpecify();
     syncProgramCourseField();
+    syncAcademicFields();
 
   </script>
 </body>
