@@ -55,6 +55,76 @@ $grantRequiresUploads = !in_array($grantId ?? 0, $noRequirementGrantIds, true);
 if (empty($errors)) {
   ensure_applications_department_column($conn);
 
+  $scholarshipType = draft_value($draft, "scholarship_type");
+  $kabayaniSpecify = draft_value($draft, "kabayani_specify");
+  $othersSpecify = draft_value($draft, "others_specify");
+  $applicantName = draft_value($draft, "applicant_name");
+  $department = draft_value($draft, "department");
+  $programCourse = draft_value($draft, "program_course");
+  $yearLevel = draft_value($draft, "year_level");
+  $schoolYear = draft_value($draft, "school_year");
+  $semester = draft_value($draft, "semester");
+  $permanentAddress = draft_value($draft, "permanent_address");
+  $gender = draft_value($draft, "gender");
+  $age = draft_int($draft, "age");
+  $dateOfBirth = draft_value($draft, "date_of_birth");
+  $contactNumber = draft_value($draft, "contact_number");
+  $emailAddress = draft_value($draft, "email_address");
+  $estimatedIncome = draft_int($draft, "estimated_income");
+  $motherName = draft_value($draft, "mother_name");
+  $motherContact = draft_value($draft, "mother_contact");
+  $motherCompanyName = draft_value($draft, "mother_company_name");
+  $motherCompanyAddress = draft_value($draft, "mother_company_address");
+  $motherAge = draft_int($draft, "mother_age");
+  $motherOccupation = draft_value($draft, "mother_occupation");
+  $fatherName = draft_value($draft, "father_name");
+  $fatherContact = draft_value($draft, "father_contact");
+  $fatherCompanyName = draft_value($draft, "father_company_name");
+  $fatherCompanyAddress = draft_value($draft, "father_company_address");
+  $fatherAge = draft_int($draft, "father_age");
+  $fatherOccupation = draft_value($draft, "father_occupation");
+
+  $duplicateSql = "
+    SELECT id, reference_number
+    FROM applications
+    WHERE LOWER(TRIM(email_address)) = LOWER(TRIM(?))
+      AND TRIM(COALESCE(school_year, '')) = ?
+      AND TRIM(COALESCE(semester, '')) = ?
+    LIMIT 1
+  ";
+  $duplicateStmt = $conn->prepare($duplicateSql);
+
+  if ($duplicateStmt) {
+    $duplicateStmt->bind_param("sss", $emailAddress, $schoolYear, $semester);
+    if ($duplicateStmt->execute()) {
+      $duplicateResult = $duplicateStmt->get_result();
+      $duplicateApplication = $duplicateResult instanceof mysqli_result ? $duplicateResult->fetch_assoc() : null;
+
+      if ($duplicateApplication) {
+        $duplicateReference = trim((string)($duplicateApplication["reference_number"] ?? ""));
+        $duplicateMessage = "You already have an application for this school year and semester.";
+        if ($duplicateReference !== "") {
+          $duplicateMessage .= " Please use your reference number " . $duplicateReference . " to track or update your application.";
+        } else {
+          $duplicateMessage .= " Please contact the scholarship office if you need to update your application.";
+        }
+        $errors[] = $duplicateMessage;
+      }
+
+      if ($duplicateResult instanceof mysqli_result) {
+        $duplicateResult->free();
+      }
+    } else {
+      $errors[] = "Failed to check existing applications.";
+    }
+
+    $duplicateStmt->close();
+  } else {
+    $errors[] = "Failed to prepare duplicate application check.";
+  }
+}
+
+if (empty($errors)) {
   $sql = "INSERT INTO applications (
     grant_id,
     scholarship_type,
@@ -91,35 +161,6 @@ if (empty($errors)) {
   )";
 
   if ($stmt = $conn->prepare($sql)) {
-    $scholarshipType = draft_value($draft, "scholarship_type");
-    $kabayaniSpecify = draft_value($draft, "kabayani_specify");
-    $othersSpecify = draft_value($draft, "others_specify");
-    $applicantName = draft_value($draft, "applicant_name");
-    $department = draft_value($draft, "department");
-    $programCourse = draft_value($draft, "program_course");
-    $yearLevel = draft_value($draft, "year_level");
-    $schoolYear = draft_value($draft, "school_year");
-    $semester = draft_value($draft, "semester");
-    $permanentAddress = draft_value($draft, "permanent_address");
-    $gender = draft_value($draft, "gender");
-    $age = draft_int($draft, "age");
-    $dateOfBirth = draft_value($draft, "date_of_birth");
-    $contactNumber = draft_value($draft, "contact_number");
-    $emailAddress = draft_value($draft, "email_address");
-    $estimatedIncome = draft_int($draft, "estimated_income");
-    $motherName = draft_value($draft, "mother_name");
-    $motherContact = draft_value($draft, "mother_contact");
-    $motherCompanyName = draft_value($draft, "mother_company_name");
-    $motherCompanyAddress = draft_value($draft, "mother_company_address");
-    $motherAge = draft_int($draft, "mother_age");
-    $motherOccupation = draft_value($draft, "mother_occupation");
-    $fatherName = draft_value($draft, "father_name");
-    $fatherContact = draft_value($draft, "father_contact");
-    $fatherCompanyName = draft_value($draft, "father_company_name");
-    $fatherCompanyAddress = draft_value($draft, "father_company_address");
-    $fatherAge = draft_int($draft, "father_age");
-    $fatherOccupation = draft_value($draft, "father_occupation");
-
     $stmt->bind_param(
       "isssssssssssisssissssisssssis",
       $grantId,

@@ -49,6 +49,10 @@ function trackingStatusLabel(string $status): string
         return "Pending Review";
     }
 
+    if ($key === "reapplied") {
+        return "Reapplied";
+    }
+
     if ($key === "approved") {
         return "Approved";
     }
@@ -68,6 +72,10 @@ function trackingStatusBadgeClass(string $status): string
         return "border-yellow-200 bg-yellow-50 text-yellow-800";
     }
 
+    if ($key === "reapplied") {
+        return "border-blue-200 bg-blue-50 text-blue-700";
+    }
+
     if ($key === "approved") {
         return "border-emerald-200 bg-emerald-50 text-emerald-700";
     }
@@ -85,6 +93,10 @@ function trackingStatusMessage(string $status): string
 
     if ($key === "" || $key === "pending") {
         return "Your application has been received and is waiting for office review.";
+    }
+
+    if ($key === "reapplied") {
+        return "Your reapplication has been received and is waiting for admin review.";
     }
 
     if ($key === "approved") {
@@ -112,7 +124,13 @@ function trackingProgressStep(string $status): int
 function trackingCanUpdateSubmission(string $status): bool
 {
     $key = strtolower(trim($status));
-    return $key === "" || $key === "pending";
+    return $key === "" || $key === "pending" || $key === "reapplied";
+}
+
+function trackingCanReapplySubmission(string $status): bool
+{
+    $key = strtolower(trim($status));
+    return $key === "rejected" || $key === "declined";
 }
 
 function trackingUpdateLockMessage(string $status): string
@@ -124,7 +142,7 @@ function trackingUpdateLockMessage(string $status): string
     }
 
     if ($key === "rejected" || $key === "declined") {
-        return "Submission updates are no longer available because the application review has already been completed.";
+        return "Your application was rejected. Use the Reapply button to update the same application and send it back for review.";
     }
 
     return "Submission updates are no longer available because the scholarship office has already updated your application status.";
@@ -234,7 +252,10 @@ $statusClass = $application ? trackingStatusBadgeClass((string)($application["st
 $statusMessage = $application ? trackingStatusMessage((string)($application["status"] ?? "")) : "";
 $progressStep = $application ? trackingProgressStep((string)($application["status"] ?? "")) : 0;
 $canUpdateSubmission = $application ? trackingCanUpdateSubmission((string)($application["status"] ?? "")) : false;
+$canReapplySubmission = $application ? trackingCanReapplySubmission((string)($application["status"] ?? "")) : false;
+$canEditSubmission = $canUpdateSubmission || $canReapplySubmission;
 $updateLockMessage = $application ? trackingUpdateLockMessage((string)($application["status"] ?? "")) : "";
+$submissionActionLabel = $canReapplySubmission ? "Reapply" : "Update Submission";
 $grantId = $application ? (int)($application["grant_id"] ?? 0) : 0;
 $grantLabel = $application ? ($grantNames[$grantId] ?? (string)($application["scholarship_type"] ?? "N/A")) : "";
 $requiredDocumentLabels = $application ? ($grantRequirements[$grantId] ?? []) : [];
@@ -409,7 +430,8 @@ if ($isStudentAssistantFlow) {
     unset($studentAssistantCard);
 
     $isRejectedFlow = $statusKey === "rejected" || $statusKey === "declined";
-    if (!$isRejectedFlow) {
+    $isReappliedFlow = $statusKey === "reapplied";
+    if (!$isRejectedFlow && !$isReappliedFlow) {
         if ($qualificationComplete) {
             if ($isQualifiedOutcome) {
                 $statusText = "Qualified";
@@ -520,6 +542,10 @@ if ($isStudentAssistantFlow) {
     <?php if ($updateStatus === "updated"): ?>
       <div class="rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
         Your submission was updated successfully. The latest application details and uploaded requirements are shown below.
+      </div>
+    <?php elseif ($updateStatus === "reapplied"): ?>
+      <div class="rounded-[1.5rem] border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700">
+        Your reapplication was submitted successfully. Your application is now marked as Reapplied for admin review.
       </div>
     <?php elseif ($updateStatus === "locked"): ?>
       <div class="rounded-[1.5rem] border border-yellow-200 bg-yellow-50 px-5 py-4 text-sm text-yellow-800">
@@ -755,7 +781,15 @@ if ($isStudentAssistantFlow) {
                 <p class="text-[11px] font-semibold uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#0d8ddb]">Saved Application Form</p>
                 <h3 class="mt-2 text-xl font-extrabold text-[#052c6a]">Submitted application details</h3>
                 <p class="mt-2 text-sm leading-6 text-[#052c6a]/80">
-                  <?php echo htmlspecialchars($canUpdateSubmission ? "Review the exact form details on file. If the admin asks for corrections while your application is still pending, use the single Update Submission button below to revise both the form and the uploaded documents." : "Review the exact form details on file. This submission is now locked because the application status has already been updated."); ?>
+                  <?php
+                  echo htmlspecialchars(
+                      $canReapplySubmission
+                          ? "Review the rejected application details on file. Use the Reapply button below to edit the same application and send it back for admin review."
+                          : ($canUpdateSubmission
+                              ? "Review the exact form details on file. If the admin asks for corrections while your application is still pending, use the single Update Submission button below to revise both the form and the uploaded documents."
+                              : "Review the exact form details on file. This submission is now locked because the application status has already been updated.")
+                  );
+                  ?>
                 </p>
               </div>
 
@@ -809,7 +843,15 @@ if ($isStudentAssistantFlow) {
                 <p class="text-[11px] font-semibold uppercase tracking-[0.12em] sm:tracking-[0.18em] text-[#0d8ddb]">Submitted Requirements</p>
                 <h3 class="mt-2 text-xl font-extrabold text-[#052c6a]">Uploaded documentary requirements</h3>
                 <p class="mt-2 text-sm leading-6 text-[#052c6a]/80">
-                  <?php echo htmlspecialchars($canUpdateSubmission ? "These are the files currently on record. Use the same Update Submission button below if you need to replace any document while your application is still pending." : "These are the files currently on record. Document replacement is locked after the scholarship office updates the application status."); ?>
+                  <?php
+                  echo htmlspecialchars(
+                      $canReapplySubmission
+                          ? "These are the files currently on record. Replace only the documents that need a clearer or corrected copy before reapplying."
+                          : ($canUpdateSubmission
+                              ? "These are the files currently on record. Use the same Update Submission button below if you need to replace any document while your application is still pending."
+                              : "These are the files currently on record. Document replacement is locked after the scholarship office updates the application status.")
+                  );
+                  ?>
                 </p>
               </div>
 
@@ -851,13 +893,13 @@ if ($isStudentAssistantFlow) {
               <?php endif; ?>
             </div>
 
-            <?php if ($canUpdateSubmission): ?>
+            <?php if ($canEditSubmission): ?>
               <div class="flex justify-center">
                 <a
                   href="update-submission.php?reference=<?php echo urlencode((string)($application["reference_number"] ?? "")); ?>"
                   class="inline-flex items-center justify-center rounded-full bg-[#052c6a] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#0d8ddb]"
                 >
-                  Update Submission
+                  <?php echo htmlspecialchars($submissionActionLabel); ?>
                 </a>
               </div>
             <?php else: ?>

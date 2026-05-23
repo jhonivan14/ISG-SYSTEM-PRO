@@ -948,7 +948,7 @@ if ($assistantFullName !== "") {
           margin-top: 1rem !important;
         }
       }
-          #sidebar nav ul {
+          #sidebar > nav > ul {
         padding: 0.35rem 0.5rem 5.5rem;
       }
       #sidebar li[data-nav] {
@@ -1012,14 +1012,35 @@ if ($assistantFullName !== "") {
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-
-            <li
-              class="flex items-center gap-2 px-4 py-3 hover:bg-white/15 cursor-pointer"
-              data-nav="applicant.php"
-              onclick="window.location.href='applicant.php'"
-            >
-              <i class="fas fa-user-graduate w-5"></i>
-              <span>Applicants</span>
+            <li class="mb-1">
+              <details class="group">
+                <summary
+                  class="flex cursor-pointer list-none items-center gap-2 rounded-[0.85rem] px-4 py-3 text-left hover:bg-white/15"
+                  style="list-style: none;"
+                  data-nav="applicant.php"
+                >
+                  <i class="fas fa-user-graduate w-5"></i>
+                  <span class="flex-1">Applicants</span>
+                  <i class="fas fa-chevron-down text-[10px] transition group-open:rotate-180"></i>
+                </summary>
+                <ul class="ml-8 mt-1 space-y-1 border-l border-white/20 pl-3 text-[11px] font-semibold">
+                  <li>
+                    <a href="applicant.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      Pending Applicants
+                    </a>
+                  </li>
+                  <li>
+                    <a href="declined-applicants.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      Declined Applicants
+                    </a>
+                  </li>
+                  <li>
+                    <a href="summary-of-applicants.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      Summary of Applicants
+                    </a>
+                  </li>
+                </ul>
+              </details>
             </li>
 
             <li
@@ -1692,8 +1713,11 @@ if ($assistantFullName !== "") {
         }
 
         // Close sidebar when clicking any nav item on small screens
-        sidebar.querySelectorAll("li[data-nav]").forEach((item) => {
-          item.addEventListener("click", () => {
+        sidebar.querySelectorAll("[data-nav]").forEach((item) => {
+          item.addEventListener("click", (event) => {
+            if (event.target.closest("summary")) {
+              return;
+            }
             if (window.innerWidth < 768) {
               sidebar.classList.add("-translate-x-full");
             }
@@ -1703,6 +1727,8 @@ if ($assistantFullName !== "") {
         // Active highlight
         const currentPage = window.location.pathname.split("/").pop().toLowerCase();
         const sidebarAliases = {
+          "summary-of-applicants.php": "applicant.php",
+          "declined-applicants.php": "applicant.php",
           "view-application.php": "applicant.php",
           "department-evaluation-indi.php": "department-evaluation-list.php",
           "summary-reports.php": "summary-report.php",
@@ -1710,7 +1736,7 @@ if ($assistantFullName !== "") {
         };
         const activePage = (sidebarAliases[currentPage] || currentPage).toLowerCase();
 
-        sidebar.querySelectorAll("li[data-nav]").forEach((item) => {
+        sidebar.querySelectorAll("[data-nav]").forEach((item) => {
           const target = (item.dataset.nav || "").toLowerCase();
           const isActive = target === activePage;
 
@@ -1768,8 +1794,43 @@ if ($assistantFullName !== "") {
         };
       }
     </script>
-  </body>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const sidebar = document.getElementById("sidebar");
+        if (!sidebar) return;
+
+        const currentPage = window.location.pathname.split("/").pop().toLowerCase();
+        const applicantPages = new Set([
+          "applicant.php",
+          "declined-applicants.php",
+          "summary-of-applicants.php",
+          "view-application.php"
+        ]);
+        const applicantMenuTrigger = sidebar.querySelector('summary[data-nav="applicant.php"]');
+        const applicantMenu = applicantMenuTrigger ? applicantMenuTrigger.closest("details") : null;
+        if (applicantMenu) {
+          applicantMenu.open = applicantPages.has(currentPage);
+        }
+
+        const applicantSubmenuAliases = {
+          "view-application.php": "applicant.php"
+        };
+        const activeApplicantSubmenu = applicantSubmenuAliases[currentPage] || currentPage;
+        sidebar.querySelectorAll('details a[href]').forEach((link) => {
+          const linkPage = link.getAttribute("href").split("?")[0].split("#")[0].split("/").pop().toLowerCase();
+          const isActive = linkPage === activeApplicantSubmenu;
+          link.classList.toggle("bg-white/15", isActive);
+          link.classList.toggle("text-white", isActive);
+          link.classList.toggle("font-bold", isActive);
+          link.classList.toggle("text-blue-50", !isActive);
+          link.classList.toggle("hover:bg-white/15", !isActive);
+        });
+      });
+    </script>  </body>
 </html>
+
+
+
 
 
 

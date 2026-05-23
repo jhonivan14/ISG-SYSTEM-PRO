@@ -66,7 +66,8 @@ $pendingQuery = "SELECT id, created_at, applicant_name, program_course,reference
   FROM applications
   WHERE (status IS NULL
     OR TRIM(status) = ''
-    OR LOWER(TRIM(status)) = 'pending')";
+    OR LOWER(TRIM(status)) = 'pending'
+    OR LOWER(TRIM(status)) = 'reapplied')";
 if (!empty($filterClauses)) {
   $pendingQuery .= " AND " . implode(" AND ", $filterClauses);
 }
@@ -134,47 +135,17 @@ foreach ($pendingApplicants as &$applicant) {
 unset($applicant);
 
 $pendingCount = count($pendingApplicants);
-
-$declinedApplicants = [];
-$declinedQuery = "SELECT id, created_at, applicant_name, program_course, reference_number, grant_id, status
-  FROM applications
-  WHERE LOWER(TRIM(status)) IN ('declined', 'rejected')";
-if (!empty($filterClauses)) {
-  $declinedQuery .= " AND " . implode(" AND ", $filterClauses);
+$applicantPageParams = [];
+if ($activeSchoolYearFilter !== "") {
+  $applicantPageParams["school_year"] = $activeSchoolYearFilter;
 }
-$declinedQuery .= " ORDER BY created_at DESC";
-if ($stmt = $conn->prepare($declinedQuery)) {
-  if (!empty($filterParams)) {
-    $stmt->bind_param($filterTypes, ...$filterParams);
-  }
-  $stmt->execute();
-  $result = $stmt->get_result();
-  if ($result) {
-    while ($row = $result->fetch_assoc()) {
-      $applicationId = (int)($row["id"] ?? 0);
-      $grantId = (int)($row["grant_id"] ?? 0);
-    $grantLabel = $grantLabels[$grantId] ?? "Others";
-    $submittedAtRaw = $row["created_at"] ?? "";
-    $submittedAt = $submittedAtRaw ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
-    $status = isset($row["status"]) ? trim((string)$row["status"]) : "Rejected";
-    if ($status === "") {
-      $status = "Declined";
-    }
-
-    $declinedApplicants[] = [
-      "id" => $applicationId,
-      "submitted_at" => $submittedAt,
-      "name" => $row["applicant_name"] ?? "",
-      "program_course" => $row["program_course"] ?? "",
-      "reference_number" => $row["reference_number"] ?? "",
-      "grant" => $grantLabel,
-        "status" => $status,
-      ];
-    }
-    $result->free();
-  }
-  $stmt->close();
+if ($activeSemesterFilter !== "") {
+  $applicantPageParams["semester"] = $activeSemesterFilter;
 }
+$applicantPageSuffix = !empty($applicantPageParams) ? "?" . http_build_query($applicantPageParams) : "";
+$pendingPageUrl = "applicant.php" . $applicantPageSuffix;
+$declinedPageUrl = "declined-applicants.php" . $applicantPageSuffix;
+$summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -267,7 +238,7 @@ if ($stmt = $conn->prepare($declinedQuery)) {
       .app-table-danger tbody tr:hover {
         background-color: #ffeaea !important;
       }
-          #sidebar nav ul {
+      #sidebar > nav > ul {
         padding: 0.35rem 0.5rem 5.5rem;
       }
       #sidebar li[data-nav] {
@@ -329,13 +300,35 @@ if ($stmt = $conn->prepare($declinedQuery)) {
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-
-            <li
-              class="flex items-center gap-2 px-4 py-3 hover:bg-white/15 cursor-pointer"
-              data-nav="applicant.php" onclick="window.location.href='applicant.php'"
-            >
-              <i class="fas fa-user-graduate w-5"></i>
-              <span>Applicants</span>
+            <li class="mb-1">
+              <details class="group">
+                <summary
+                  class="flex cursor-pointer list-none items-center gap-2 rounded-[0.85rem] px-4 py-3 text-left hover:bg-white/15"
+                  style="list-style: none;"
+                  data-nav="applicant.php"
+                >
+                  <i class="fas fa-user-graduate w-5"></i>
+                  <span class="flex-1">Applicants</span>
+                  <i class="fas fa-chevron-down text-[10px] transition group-open:rotate-180"></i>
+                </summary>
+                <ul class="ml-8 mt-1 space-y-1 border-l border-white/20 pl-3 text-[11px] font-semibold">
+                  <li>
+                    <a href="applicant.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      Pending Applicants
+                    </a>
+                  </li>
+                  <li>
+                    <a href="declined-applicants.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      Declined Applicants
+                    </a>
+                  </li>
+                  <li>
+                    <a href="summary-of-applicants.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      Summary of Applicants
+                    </a>
+                  </li>
+                </ul>
+              </details>
             </li>
 
             <li
@@ -521,19 +514,6 @@ if ($stmt = $conn->prepare($declinedQuery)) {
               </option>
             <?php endforeach; ?>
           </select>
-          <button
-            type="button"
-            class="inline-flex items-center gap-2 rounded-full border border-[#f44336] bg-white px-3 py-2 text-xs font-semibold text-[#f44336] shadow-sm transition hover:bg-[#f44336] hover:text-white"
-            data-applicant-view-toggle
-            aria-controls="pendingApplicantsSection declinedApplicantsSection"
-            aria-pressed="false"
-          >
-            <i class="fas fa-user-times" data-applicant-view-icon></i>
-            <span data-applicant-view-label>Declined Applicants</span>
-            <span class="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-[#ba2a2a]" data-applicant-view-count>
-              <?= htmlspecialchars((string)count($declinedApplicants)) ?>
-            </span>
-          </button>
           <?php if ($rawSelectedSchoolYear !== null || $rawSelectedSemester !== null): ?>
             <a
               href="applicant.php"
@@ -676,93 +656,6 @@ if ($stmt = $conn->prepare($declinedQuery)) {
           </div>
         </section>
 
-        <section id="declinedApplicantsSection" class="hidden px-4 sm:px-6 pb-10 mt-2">
-          <div class="rounded-lg border border-[#f44336] bg-white p-4 shadow-sm">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <p class="text-[#f44336] text-sm font-semibold">Declined Applicants</p>
-                <p class="text-xs text-[#052c6a]">
-                  Showing <?= htmlspecialchars((string)count($declinedApplicants)) ?> declined applicants.
-                </p>
-              </div>
-            </div>
-
-            <div class="mt-4 overflow-x-auto table-float table-float-danger">
-              <table class="app-table app-table-danger min-w-full text-xs text-center">
-                <thead>
-                  <tr class="bg-white border-b border-[#f44336]">
-                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
-                      Timestamp
-                    </th>
-                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
-                      Applicant Name
-                    </th>
-                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
-                      Program / Course
-                    </th>
-                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
-                      Reference_number
-                    </th>
-                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
-                      ISG Grant
-                    </th>
-                    <th class="border-r border-[#f44336] py-2 px-2 font-semibold text-[#f44336]">
-                      Application Status
-                    </th>
-                    <th class="py-2 px-2 font-semibold text-[#f44336]">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <?php if (empty($declinedApplicants)): ?>
-                    <tr>
-                      <td colspan="7" class="py-3 text-center text-[#052c6a]">
-                        No declined applicants at the moment.
-                      </td>
-                    </tr>
-                  <?php else: ?>
-                    <?php foreach ($declinedApplicants as $applicant): ?>
-                      <tr class="border-b border-[#f44336]">
-                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
-                          <?= htmlspecialchars($applicant["submitted_at"]) ?>
-                        </td>
-                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
-                          <?= htmlspecialchars($applicant["name"]) ?>
-                        </td>
-                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
-                          <?= htmlspecialchars($applicant["program_course"]) ?>
-                        </td>
-                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
-                          <?= htmlspecialchars($applicant["reference_number"]) ?>
-                        </td>
-                        <td class="border-r border-[#f44336] py-2 text-left px-2 text-[#052c6a]">
-                          <?= htmlspecialchars($applicant["grant"]) ?>
-                        </td>
-                        <td class="border-r border-[#f44336] py-2">
-                          <span class="bg-red-500 text-white rounded px-2 py-0.5 inline-block">
-                            <?= htmlspecialchars($applicant["status"]) ?>
-                          </span>
-                        </td>
-                        <td class="py-2">
-                          <div class="flex flex-wrap justify-center gap-2">
-                            <button
-                              class="bg-[#0d8ddb] text-white rounded px-3 py-1 text-xs"
-                              type="button"
-                              onclick="window.location.href='view-application.php?id=<?= htmlspecialchars((string)$applicant['id']) ?>'"
-                            >
-                              View Details
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    <?php endforeach; ?>
-                  <?php endif; ?>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
       </main>
     </div>
 
@@ -779,7 +672,10 @@ if ($stmt = $conn->prepare($declinedQuery)) {
 
           // Close sidebar when clicking any nav item on small screens
           sidebar.querySelectorAll("li").forEach((item) => {
-            item.addEventListener("click", () => {
+            item.addEventListener("click", (event) => {
+              if (event.target.closest("summary")) {
+                return;
+              }
               if (window.innerWidth < 768) {
                 sidebar.classList.add("-translate-x-full");
               }
@@ -792,14 +688,7 @@ if ($stmt = $conn->prepare($declinedQuery)) {
         // Pending applicant filters
         const filterButtons = document.querySelectorAll("[data-filter-category]");
         const applicantRows = document.querySelectorAll("[data-applicant-row]");
-        const pendingSection = document.getElementById("pendingApplicantsSection");
-        const declinedSection = document.getElementById("declinedApplicantsSection");
-        const applicantViewToggle = document.querySelector("[data-applicant-view-toggle]");
-        const applicantViewIcon = document.querySelector("[data-applicant-view-icon]");
-        const applicantViewLabel = document.querySelector("[data-applicant-view-label]");
-        const applicantViewCount = document.querySelector("[data-applicant-view-count]");
         let activeCategory = "";
-        let showingDeclined = false;
 
         const applyCategoryFilter = () => {
           applicantRows.forEach((row) => {
@@ -823,36 +712,6 @@ if ($stmt = $conn->prepare($declinedQuery)) {
         });
 
         applyCategoryFilter();
-
-        if (pendingSection && declinedSection && applicantViewToggle) {
-          const setApplicantView = (showDeclined) => {
-            showingDeclined = showDeclined;
-            pendingSection.classList.toggle("hidden", showDeclined);
-            declinedSection.classList.toggle("hidden", !showDeclined);
-            applicantViewToggle.setAttribute("aria-pressed", showDeclined ? "true" : "false");
-
-            if (applicantViewLabel) {
-              applicantViewLabel.textContent = showDeclined ? "Back" : "Declined Applicants";
-            }
-
-            if (applicantViewIcon) {
-              applicantViewIcon.className = showDeclined ? "fas fa-arrow-left" : "fas fa-user-times";
-            }
-
-            if (applicantViewCount) {
-              applicantViewCount.classList.toggle("hidden", showDeclined);
-            }
-
-            (showDeclined ? declinedSection : pendingSection).scrollIntoView({
-              behavior: "smooth",
-              block: "start"
-            });
-          };
-
-          applicantViewToggle.addEventListener("click", () => {
-            setApplicantView(!showingDeclined);
-          });
-        }
       });
     </script>
   <script>
@@ -866,6 +725,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const currentPage = window.location.pathname.split("/").pop().toLowerCase();
   const sidebarAliases = {
+    "summary-of-applicants.php": "applicant.php",
+    "declined-applicants.php": "applicant.php",
     "view-application.php": "applicant.php",
     "department-evaluation-indi.php": "department-evaluation-list.php",
     "summary-reports.php": "summary-report.php",
@@ -873,7 +734,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
   const activePage = sidebarAliases[currentPage] || currentPage;
 
-  sidebar.querySelectorAll("li[data-nav]").forEach((item) => {
+  sidebar.querySelectorAll("[data-nav]").forEach((item) => {
     const target = (item.dataset.nav || "").toLowerCase();
     const isActive = target === activePage;
     item.classList.toggle("bg-[#fcdc2f]", isActive);
@@ -883,8 +744,43 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 </script>
-</body>
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const sidebar = document.getElementById("sidebar");
+        if (!sidebar) return;
+
+        const currentPage = window.location.pathname.split("/").pop().toLowerCase();
+        const applicantPages = new Set([
+          "applicant.php",
+          "declined-applicants.php",
+          "summary-of-applicants.php",
+          "view-application.php"
+        ]);
+        const applicantMenuTrigger = sidebar.querySelector('summary[data-nav="applicant.php"]');
+        const applicantMenu = applicantMenuTrigger ? applicantMenuTrigger.closest("details") : null;
+        if (applicantMenu) {
+          applicantMenu.open = applicantPages.has(currentPage);
+        }
+
+        const applicantSubmenuAliases = {
+          "view-application.php": "applicant.php"
+        };
+        const activeApplicantSubmenu = applicantSubmenuAliases[currentPage] || currentPage;
+        sidebar.querySelectorAll('details a[href]').forEach((link) => {
+          const linkPage = link.getAttribute("href").split("?")[0].split("#")[0].split("/").pop().toLowerCase();
+          const isActive = linkPage === activeApplicantSubmenu;
+          link.classList.toggle("bg-white/15", isActive);
+          link.classList.toggle("text-white", isActive);
+          link.classList.toggle("font-bold", isActive);
+          link.classList.toggle("text-blue-50", !isActive);
+          link.classList.toggle("hover:bg-white/15", !isActive);
+        });
+      });
+    </script>  </body>
 </html>
+
+
+
 
 
 

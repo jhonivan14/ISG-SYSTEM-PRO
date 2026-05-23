@@ -2,6 +2,7 @@
 require_once "../db.php";
 require_once "../application-reference.php";
 require_once "../upload-storage.php";
+require_once "../Admin/includes/application-decline-history.php";
 
 function updateReadPostField(string $key): string
 {
@@ -56,7 +57,18 @@ function updateFormatBirthDateForInput(string $value): string
 function updateCanModifySubmission(string $status): bool
 {
   $key = strtolower(trim($status));
-  return $key === "" || $key === "pending";
+  return $key === "" || $key === "pending" || $key === "reapplied" || $key === "rejected" || $key === "declined";
+}
+
+function updateIsReapplySubmission(string $status): bool
+{
+  $key = strtolower(trim($status));
+  return $key === "rejected" || $key === "declined";
+}
+
+function updateIsReappliedSubmission(string $status): bool
+{
+  return strtolower(trim($status)) === "reapplied";
 }
 
 function updateSubmissionLockMessage(string $status): string
@@ -239,6 +251,7 @@ $allowedExt = ["pdf", "jpg", "jpeg", "png"];
 $formData = [];
 $submissionUpdatesAllowed = false;
 $submissionUpdateLockMessage = "";
+$isReapplySubmission = false;
 
 backfillMissingApplicationReferences($conn);
 
@@ -262,6 +275,7 @@ if (!$application) {
 if ($application) {
   $formData = mapApplicationToUpdateForm($application);
   $submissionUpdatesAllowed = updateCanModifySubmission((string)($application["status"] ?? ""));
+  $isReapplySubmission = updateIsReapplySubmission((string)($application["status"] ?? ""));
   $submissionUpdateLockMessage = updateSubmissionLockMessage((string)($application["status"] ?? ""));
   $existingSchoolYear = trim((string)($application["school_year"] ?? ""));
   if ($existingSchoolYear !== "" && !in_array($existingSchoolYear, $schoolYearOptions, true)) {
@@ -397,7 +411,13 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && $application) {
   }
 
   if (empty($errors)) {
-    $nextStatus = "Pending";
+    if ($isReapplySubmission) {
+      applicationDeclineHistorySnapshot($conn, (int)$application["id"], "applicant_reapply");
+    }
+
+    $nextStatus = ($isReapplySubmission || updateIsReappliedSubmission((string)($application["status"] ?? "")))
+      ? "Reapplied"
+      : "Pending";
     $dateOfBirthForStorage = updateNormalizeBirthDateForStorage((string)$formData["dateOfBirth"]);
     $updateStmt = $conn->prepare(
       "UPDATE applications SET
@@ -549,7 +569,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST" && $application) {
       }
 
       if (empty($errors)) {
-        header("Location: tracking-dashboard.php?reference=" . urlencode($referenceNumber) . "&update_status=updated");
+        $updateStatus = $isReapplySubmission ? "reapplied" : "updated";
+        header("Location: tracking-dashboard.php?reference=" . urlencode($referenceNumber) . "&update_status=" . urlencode($updateStatus));
         exit;
       }
     }
@@ -650,9 +671,9 @@ $showStudentAssistantProgramSelect = updateUsesStudentAssistantPrograms($grantId
     <?php else: ?>
       <section class="rounded-[2rem] border border-[#cfe2ff] bg-white px-5 py-6 shadow-sm sm:px-6 lg:px-8">
         <div class="rounded-[1.75rem] bg-gradient-to-br from-[#052c6a] via-[#0d8ddb] to-[#38bdf8] px-6 py-6 text-white">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-100">Submission Update</p>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-blue-100"><?php echo htmlspecialchars($isReapplySubmission ? "Application Reapply" : "Submission Update"); ?></p>
           <h2 class="mt-2 text-2xl font-extrabold"><?php echo htmlspecialchars((string)($application["applicant_name"] ?? "Applicant")); ?></h2>
-          <p class="mt-2 text-sm leading-6 text-blue-50">Review the saved form below, correct any missing details, and replace any document that needs a clearer copy.</p>
+          <p class="mt-2 text-sm leading-6 text-blue-50"><?php echo htmlspecialchars($isReapplySubmission ? "Edit the rejected application below, replace any document that needs correction, and submit it again for admin review." : "Review the saved form below, correct any missing details, and replace any document that needs a clearer copy."); ?></p>
         </div>
 
         <form action="update-submission.php" method="post" enctype="multipart/form-data" class="mt-6 space-y-8">
@@ -826,8 +847,8 @@ $showStudentAssistantProgramSelect = updateUsesStudentAssistantPrograms($grantId
           </section>
 
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <p class="text-sm text-[#052c6a]/75">Saving changes will keep the same reference number and send the application back for admin review when it is not yet approved.</p>
-            <button type="submit" class="inline-flex items-center justify-center rounded-full bg-[#0d8ddb] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:-translate-y-[1px] hover:bg-[#0b63d1]">Save Updated Submission</button>
+            <p class="text-sm text-[#052c6a]/75"><?php echo htmlspecialchars($isReapplySubmission ? "Submitting this reapplication will keep the same reference number and mark the application as Reapplied for admin review." : "Saving changes will keep the same reference number and send the application back for admin review when it is not yet approved."); ?></p>
+            <button type="submit" class="inline-flex items-center justify-center rounded-full bg-[#0d8ddb] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:-translate-y-[1px] hover:bg-[#0b63d1]"><?php echo htmlspecialchars($isReapplySubmission ? "Submit Reapplication" : "Save Updated Submission"); ?></button>
           </div>
         </form>
       </section>
