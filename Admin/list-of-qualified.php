@@ -6,6 +6,7 @@ require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 $defaultBatchLabel = "All Batches";
 require_once __DIR__ . "/includes/school-term-filter.php";
+require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 require_once __DIR__ . "/includes/mailer.php";
 
 $qualifiedApplicants = [];
@@ -77,8 +78,8 @@ function qualifiedEnsureInstitutionalScholarTable(mysqli $conn): bool
       contract_ended TINYINT(1) NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      UNIQUE KEY uniq_isr_category_source (category, source_application_id),
-      UNIQUE KEY uniq_isr_category_scholar (category, scholar_id),
+      UNIQUE KEY uniq_isr_category_source_term (category, source_application_id, semester, academic_year),
+      UNIQUE KEY uniq_isr_category_scholar_term (category, scholar_id, semester, academic_year),
       KEY idx_isr_source (source_application_id),
       KEY idx_isr_category (category)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
@@ -116,9 +117,20 @@ function qualifiedEnsureInstitutionalScholarTable(mysqli $conn): bool
     }
   }
 
+  foreach (["uniq_isr_category_source", "uniq_isr_category_scholar"] as $legacyIndexName) {
+    $legacyIndexResult = $conn->query("SHOW INDEX FROM institutional_scholar_records WHERE Key_name = '" . $conn->real_escape_string($legacyIndexName) . "'");
+    $legacyExists = $legacyIndexResult instanceof mysqli_result && $legacyIndexResult->num_rows > 0;
+    if ($legacyIndexResult instanceof mysqli_result) {
+      $legacyIndexResult->free();
+    }
+    if ($legacyExists) {
+      $conn->query("ALTER TABLE institutional_scholar_records DROP INDEX $legacyIndexName");
+    }
+  }
+
   $indexChecks = [
-    "uniq_isr_category_source" => "CREATE UNIQUE INDEX uniq_isr_category_source ON institutional_scholar_records (category, source_application_id)",
-    "uniq_isr_category_scholar" => "CREATE UNIQUE INDEX uniq_isr_category_scholar ON institutional_scholar_records (category, scholar_id)",
+    "uniq_isr_category_source_term" => "CREATE UNIQUE INDEX uniq_isr_category_source_term ON institutional_scholar_records (category, source_application_id, semester, academic_year)",
+    "uniq_isr_category_scholar_term" => "CREATE UNIQUE INDEX uniq_isr_category_scholar_term ON institutional_scholar_records (category, scholar_id, semester, academic_year)",
     "idx_isr_source" => "CREATE INDEX idx_isr_source ON institutional_scholar_records (source_application_id)",
     "idx_isr_category" => "CREATE INDEX idx_isr_category ON institutional_scholar_records (category)",
   ];
@@ -762,8 +774,11 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
                 </summary>
                 <ul class="ml-8 mt-1 space-y-1 border-l border-white/20 pl-3 text-[11px] font-semibold">
                   <li>
-                    <a href="applicant.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
-                      Pending Applicants
+                    <a href="applicant.php" class="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      <span>Pending Applicants</span>
+                      <span class="inline-flex min-w-[1.65rem] items-center justify-center rounded-full bg-gradient-to-r from-[#fcdc2f] to-[#ffe889] px-2 py-0.5 text-[10px] font-extrabold leading-none text-[#052c6a] shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_6px_14px_rgba(252,220,47,0.28)]">
+                        <?= htmlspecialchars($sidebarPendingApplicantBadge ?? '0') ?>
+                      </span>
                     </a>
                   </li>
                   <li>
@@ -1401,6 +1416,9 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     </script>  </body>
 </html>
+
+
+
 
 
 

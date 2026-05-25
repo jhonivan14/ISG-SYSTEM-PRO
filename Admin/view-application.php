@@ -5,6 +5,8 @@
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
+require_once __DIR__ . "/includes/application-approval-timestamp.php";
+require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 require_once __DIR__ . "/includes/application-decline-history.php";
 
 $applicationId = (int)($_GET["id"] ?? 0);
@@ -130,9 +132,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   } else {
     $newStatus = $postAction === "approve" ? "Approved" : "Rejected";
     $shouldUpdateBatch = $postAction === "approve" && $isStudentAssistantApplicant;
-    $updateSql = $shouldUpdateBatch
-      ? "UPDATE applications SET status = ?, batch = ? WHERE id = ?"
-      : "UPDATE applications SET status = ? WHERE id = ?";
+    $canRecordApprovalTimestamp = $postAction === "approve" && adminEnsureApplicationApprovedAtColumn($conn);
+    if ($shouldUpdateBatch && $canRecordApprovalTimestamp) {
+      $updateSql = "UPDATE applications SET status = ?, batch = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?";
+    } elseif ($shouldUpdateBatch) {
+      $updateSql = "UPDATE applications SET status = ?, batch = ? WHERE id = ?";
+    } elseif ($canRecordApprovalTimestamp) {
+      $updateSql = "UPDATE applications SET status = ?, approved_at = CURRENT_TIMESTAMP WHERE id = ?";
+    } else {
+      $updateSql = "UPDATE applications SET status = ? WHERE id = ?";
+    }
     $updateStmt = $conn->prepare($updateSql);
     if ($updateStmt) {
       if ($shouldUpdateBatch) {
@@ -367,8 +376,11 @@ foreach ($uploadedRequirements as $upload) {
                 </summary>
                 <ul class="ml-8 mt-1 space-y-1 border-l border-white/20 pl-3 text-[11px] font-semibold">
                   <li>
-                    <a href="applicant.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
-                      Pending Applicants
+                    <a href="applicant.php" class="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      <span>Pending Applicants</span>
+                      <span class="inline-flex min-w-[1.65rem] items-center justify-center rounded-full bg-gradient-to-r from-[#fcdc2f] to-[#ffe889] px-2 py-0.5 text-[10px] font-extrabold leading-none text-[#052c6a] shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_6px_14px_rgba(252,220,47,0.28)]">
+                        <?= htmlspecialchars($sidebarPendingApplicantBadge ?? '0') ?>
+                      </span>
                     </a>
                   </li>
                   <li>
@@ -1223,6 +1235,9 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     </script>  </body>
 </html>
+
+
+
 
 
 

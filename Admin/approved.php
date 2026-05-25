@@ -6,6 +6,8 @@ require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once '../db.php';
 require_once __DIR__ . "/includes/school-term-filter.php";
+require_once __DIR__ . "/includes/application-approval-timestamp.php";
+require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 
 $categoryDefinitions = [
   [
@@ -96,11 +98,15 @@ if ($activeSemesterFilter !== "") {
 }
 
 $approvedApplicants = [];
-$approvedQuery = "SELECT id, applicant_name, email_address, grant_id, status FROM applications WHERE status = 'Approved'";
+$hasApprovalTimestampColumn = adminEnsureApplicationApprovedAtColumn($conn);
+$approvalTimestampSelect = $hasApprovalTimestampColumn ? "approved_at" : "NULL AS approved_at";
+$approvedQuery = "SELECT id, applicant_name, email_address, grant_id, status, {$approvalTimestampSelect} FROM applications WHERE status = 'Approved'";
 if (!empty($filterClauses)) {
   $approvedQuery .= " AND " . implode(" AND ", $filterClauses);
 }
-$approvedQuery .= " ORDER BY created_at DESC";
+$approvedQuery .= $hasApprovalTimestampColumn
+  ? " ORDER BY approved_at DESC, created_at DESC"
+  : " ORDER BY created_at DESC";
 if ($stmt = $conn->prepare($approvedQuery)) {
   if (!empty($filterParams)) {
     $stmt->bind_param($filterTypes, ...$filterParams);
@@ -115,9 +121,11 @@ if ($stmt = $conn->prepare($approvedQuery)) {
     if ($status === "") {
       $status = "Approved";
     }
+    $approvedAt = adminFormatApplicationApprovalTimestamp((string)($row["approved_at"] ?? ""));
 
     $approvedApplicants[] = [
       "id" => (int)($row["id"] ?? 0),
+      "approved_at" => $approvedAt,
       "name" => $row["applicant_name"] ?? "",
       "email" => $row["email_address"] ?? "",
       "grant_id" => $grantId,
@@ -329,8 +337,11 @@ unset($applicant);
                 </summary>
                 <ul class="ml-8 mt-1 space-y-1 border-l border-white/20 pl-3 text-[11px] font-semibold">
                   <li>
-                    <a href="applicant.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
-                      Pending Applicants
+                    <a href="applicant.php" class="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      <span>Pending Applicants</span>
+                      <span class="inline-flex min-w-[1.65rem] items-center justify-center rounded-full bg-gradient-to-r from-[#fcdc2f] to-[#ffe889] px-2 py-0.5 text-[10px] font-extrabold leading-none text-[#052c6a] shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_6px_14px_rgba(252,220,47,0.28)]">
+                        <?= htmlspecialchars($sidebarPendingApplicantBadge ?? '0') ?>
+                      </span>
                     </a>
                   </li>
                   <li>
@@ -576,6 +587,7 @@ unset($applicant);
               <table class="app-table min-w-full text-xs text-center">
                 <thead>
                   <tr class="bg-white border-b border-[#0d8ddb]">
+                    <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">Approved Date</th>
                     <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">Applicant Name</th>
                     <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">ISG Grant</th>
                     <th class="border-r border-[#0d8ddb] py-2 px-2 font-semibold text-[#fcdc2f]">Status</th>
@@ -585,12 +597,12 @@ unset($applicant);
                 <tbody>
                   <?php if (empty($approvedApplicants)): ?>
                     <tr>
-                      <td colspan="4" class="py-3 text-center text-[#052c6a]">No approved applicants.</td>
+                      <td colspan="5" class="py-3 text-center text-[#052c6a]">No approved applicants.</td>
                     </tr>
                   <?php else: ?>
                     <?php foreach ($approvedApplicants as $applicant): ?>
                       <?php
-                        $searchText = strtolower($applicant["name"] . " " . $applicant["grant"] . " " . $applicant["status"]);
+                        $searchText = strtolower($applicant["approved_at"] . " " . $applicant["name"] . " " . $applicant["grant"] . " " . $applicant["status"]);
                       ?>
                       <tr
                         class="border-b border-[#0d8ddb]"
@@ -598,6 +610,11 @@ unset($applicant);
                         data-search-text="<?= htmlspecialchars($searchText) ?>"
                         data-category="<?= htmlspecialchars($applicant["category_slug"]) ?>"
                       >
+                        <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a] whitespace-nowrap">
+                          <span class="<?= $applicant["approved_at"] === "Not recorded" ? "text-slate-400 italic" : "font-semibold" ?>">
+                            <?= htmlspecialchars($applicant["approved_at"]) ?>
+                          </span>
+                        </td>
                         <td class="border-r border-[#0d8ddb] py-2 text-left px-2 text-[#052c6a]">
                           <?= htmlspecialchars($applicant["name"]) ?>
                         </td>
@@ -644,7 +661,7 @@ unset($applicant);
                       </tr>
                     <?php endforeach; ?>
                     <tr data-approved-empty class="hidden">
-                      <td colspan="4" class="py-3 text-center text-[#052c6a]">No matching approved applicants.</td>
+                      <td colspan="5" class="py-3 text-center text-[#052c6a]">No matching approved applicants.</td>
                     </tr>
                   <?php endif; ?>
                 </tbody>
@@ -1118,6 +1135,9 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     </script>  </body>
 </html>
+
+
+
 
 
 

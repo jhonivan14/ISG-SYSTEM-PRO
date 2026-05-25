@@ -7,6 +7,7 @@ require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once '../db.php';
 require_once __DIR__ . "/includes/school-term-filter.php";
+require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 $categoryDefinitions = [
   [
     "label" => "Student Assistant",
@@ -313,8 +314,11 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
                 </summary>
                 <ul class="ml-8 mt-1 space-y-1 border-l border-white/20 pl-3 text-[11px] font-semibold">
                   <li>
-                    <a href="applicant.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
-                      Pending Applicants
+                    <a href="applicant.php" class="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      <span>Pending Applicants</span>
+                      <span class="inline-flex min-w-[1.65rem] items-center justify-center rounded-full bg-gradient-to-r from-[#fcdc2f] to-[#ffe889] px-2 py-0.5 text-[10px] font-extrabold leading-none text-[#052c6a] shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_6px_14px_rgba(252,220,47,0.28)]">
+                        <?= htmlspecialchars($sidebarPendingApplicantBadge ?? '0') ?>
+                      </span>
                     </a>
                   </li>
                   <li>
@@ -778,6 +782,9 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     </script>  </body>
 </html>
+
+
+
 
 
 

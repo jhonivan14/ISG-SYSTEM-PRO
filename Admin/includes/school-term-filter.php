@@ -12,8 +12,10 @@ if (!(($conn ?? null) instanceof mysqli)) {
 $currentYear = (int)date("Y");
 $currentMonth = (int)date("n");
 $currentSchoolYearStart = $currentMonth < 6 ? $currentYear - 1 : $currentYear;
-$currentSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
-$currentSemester = $currentMonth < 6 ? "2nd Semester" : "1st Semester";
+$dateBasedSchoolYear = $currentSchoolYearStart . "-" . ($currentSchoolYearStart + 1);
+$dateBasedSemester = $currentMonth < 6 ? "2nd Semester" : "1st Semester";
+$currentSchoolYear = $dateBasedSchoolYear;
+$currentSemester = $dateBasedSemester;
 
 if (!function_exists("schoolTermNormalizeSchoolYear")) {
   function schoolTermNormalizeSchoolYear(string $schoolYear): string
@@ -48,6 +50,102 @@ if (!function_exists("schoolTermEnsureSchoolYearsTable")) {
   }
 }
 
+if (!function_exists("schoolTermEnsureSettingsTable")) {
+  function schoolTermEnsureSettingsTable(mysqli $conn): bool
+  {
+    return (bool)$conn->query("
+      CREATE TABLE IF NOT EXISTS school_term_settings (
+        id TINYINT NOT NULL PRIMARY KEY,
+        active_school_year VARCHAR(20) NOT NULL,
+        active_semester VARCHAR(50) NOT NULL,
+        updated_by VARCHAR(100) DEFAULT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    ");
+  }
+}
+
+if (!function_exists("schoolTermLoadSettings")) {
+  function schoolTermLoadSettings(mysqli $conn): array
+  {
+    if (!schoolTermEnsureSettingsTable($conn)) {
+      return [
+        "active_school_year" => "",
+        "active_semester" => "",
+      ];
+    }
+
+    $result = $conn->query("
+      SELECT active_school_year, active_semester
+      FROM school_term_settings
+      WHERE id = 1
+      LIMIT 1
+    ");
+    if (!$result instanceof mysqli_result) {
+      return [
+        "active_school_year" => "",
+        "active_semester" => "",
+      ];
+    }
+
+    $row = $result->fetch_assoc();
+    $result->free();
+    if (!is_array($row)) {
+      return [
+        "active_school_year" => "",
+        "active_semester" => "",
+      ];
+    }
+
+    return [
+      "active_school_year" => schoolTermNormalizeSchoolYear((string)($row["active_school_year"] ?? "")),
+      "active_semester" => trim((string)($row["active_semester"] ?? "")),
+    ];
+  }
+}
+
+if (!function_exists("schoolTermSaveSettings")) {
+  function schoolTermSaveSettings(mysqli $conn, string $schoolYear, string $semester, string $updatedBy = ""): string
+  {
+    $normalizedSchoolYear = schoolTermNormalizeSchoolYear($schoolYear);
+    if ($normalizedSchoolYear === "") {
+      return "invalid_school_year";
+    }
+
+    $semester = trim($semester);
+    if ($semester !== "1st Semester" && $semester !== "2nd Semester") {
+      return "invalid_semester";
+    }
+
+    if (!schoolTermEnsureSettingsTable($conn)) {
+      return "error";
+    }
+
+    if (schoolTermOpenSchoolYear($conn, $normalizedSchoolYear, $updatedBy) === "error") {
+      return "error";
+    }
+
+    $stmt = $conn->prepare("
+      INSERT INTO school_term_settings (id, active_school_year, active_semester, updated_by)
+      VALUES (1, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        active_school_year = VALUES(active_school_year),
+        active_semester = VALUES(active_semester),
+        updated_by = VALUES(updated_by),
+        updated_at = CURRENT_TIMESTAMP
+    ");
+    if (!$stmt) {
+      return "error";
+    }
+
+    $stmt->bind_param("sss", $normalizedSchoolYear, $semester, $updatedBy);
+    $ok = $stmt->execute();
+    $stmt->close();
+
+    return $ok ? "saved" : "error";
+  }
+}
+
 if (!function_exists("schoolTermOpenSchoolYear")) {
   function schoolTermOpenSchoolYear(mysqli $conn, string $schoolYear, string $openedBy = ""): string
   {
@@ -78,6 +176,16 @@ if (!function_exists("schoolTermOpenSchoolYear")) {
   }
 }
 
+$configuredSchoolTerm = schoolTermLoadSettings($conn);
+$configuredSchoolYear = (string)($configuredSchoolTerm["active_school_year"] ?? "");
+$configuredSemester = (string)($configuredSchoolTerm["active_semester"] ?? "");
+if ($configuredSchoolYear !== "") {
+  $currentSchoolYear = $configuredSchoolYear;
+}
+if ($configuredSemester === "1st Semester" || $configuredSemester === "2nd Semester") {
+  $currentSemester = $configuredSemester;
+}
+
 $schoolYearOptions = [];
 $schoolYearResult = $conn->query("SELECT DISTINCT school_year FROM applications WHERE school_year IS NOT NULL AND TRIM(school_year) <> ''");
 if ($schoolYearResult instanceof mysqli_result) {
@@ -104,6 +212,9 @@ if (schoolTermEnsureSchoolYearsTable($conn)) {
 }
 
 $schoolYearOptions = array_values(array_unique($schoolYearOptions));
+if ($currentSchoolYear !== "" && !in_array($currentSchoolYear, $schoolYearOptions, true)) {
+  $schoolYearOptions[] = $currentSchoolYear;
+}
 usort($schoolYearOptions, function ($a, $b) {
   $aYear = (int)substr((string)$a, 0, 4);
   $bYear = (int)substr((string)$b, 0, 4);
@@ -147,8 +258,8 @@ $defaultBatchLabel = isset($defaultBatchLabel) && is_string($defaultBatchLabel) 
   ? $defaultBatchLabel
   : "Batch 1";
 
-$defaultSchoolYear = $currentSchoolYear;
-if (!empty($schoolYearOptions)) {
+$defaultSchoolYear = $currentSchoolYear !== "" ? $currentSchoolYear : $dateBasedSchoolYear;
+if ($defaultSchoolYear === "" && !empty($schoolYearOptions)) {
   $sortedSchoolYearOptions = array_values($schoolYearOptions);
   $defaultSchoolYear = (string)end($sortedSchoolYearOptions);
 }

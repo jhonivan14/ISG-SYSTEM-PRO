@@ -3,12 +3,16 @@
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
+require_once __DIR__ . "/includes/school-term-filter.php";
+require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 require_once "../scholarship-program-options.php";
 
 $resetMessage = "";
 $resetError = "";
 $accountMessage = "";
 $accountError = "";
+$schoolTermSettingsMessage = "";
+$schoolTermSettingsError = "";
 $programSettingsMessage = "";
 $programSettingsError = "";
 $panelistAccounts = [];
@@ -86,6 +90,73 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       } else {
         $resetError = "Unable to reset the password.";
       }
+    }
+  } elseif (isset($_POST["add_school_year"])) {
+    $newSchoolYear = trim((string)($_POST["new_school_year"] ?? ""));
+    $updatedBy = trim((string)($_SESSION["admin_username"] ?? $_SESSION["admin_name"] ?? "Admin"));
+    $openResult = function_exists("schoolTermOpenSchoolYear")
+      ? schoolTermOpenSchoolYear($conn, $newSchoolYear, $updatedBy)
+      : "error";
+
+    if ($openResult === "opened") {
+      $normalizedNewSchoolYear = schoolTermNormalizeSchoolYear($newSchoolYear);
+      $schoolTermSettingsMessage = "School year " . $normalizedNewSchoolYear . " added.";
+      if ($normalizedNewSchoolYear !== "" && !in_array($normalizedNewSchoolYear, $schoolYearOptions, true)) {
+        $schoolYearOptions[] = $normalizedNewSchoolYear;
+        usort($schoolYearOptions, function ($a, $b) {
+          $aYear = (int)substr((string)$a, 0, 4);
+          $bYear = (int)substr((string)$b, 0, 4);
+          if ($aYear === $bYear) {
+            return strcmp((string)$a, (string)$b);
+          }
+          return $aYear <=> $bYear;
+        });
+      }
+    } elseif ($openResult === "exists") {
+      $schoolTermSettingsMessage = "School year already exists in the list.";
+    } elseif ($openResult === "invalid") {
+      $schoolTermSettingsError = "Use a valid school year format like 2026-2027.";
+    } else {
+      $schoolTermSettingsError = "Unable to add the school year right now.";
+    }
+  } elseif (isset($_POST["save_school_term_settings"])) {
+    $termSchoolYear = trim((string)($_POST["active_school_year"] ?? ""));
+    $termSemester = trim((string)($_POST["active_semester"] ?? ""));
+    $updatedBy = trim((string)($_SESSION["admin_username"] ?? $_SESSION["admin_name"] ?? "Admin"));
+    $saveResult = function_exists("schoolTermSaveSettings")
+      ? schoolTermSaveSettings($conn, $termSchoolYear, $termSemester, $updatedBy)
+      : "error";
+
+    if ($saveResult === "saved") {
+      $normalizedTermSchoolYear = schoolTermNormalizeSchoolYear($termSchoolYear);
+      $schoolTermSettingsMessage = "Active school term updated.";
+      $currentSchoolYear = $normalizedTermSchoolYear;
+      $currentSemester = $termSemester;
+      $displaySchoolYear = $normalizedTermSchoolYear;
+      $displaySemester = $termSemester;
+      $activeSchoolYearFilter = $normalizedTermSchoolYear;
+      $activeSemesterFilter = "";
+      $configuredSchoolTerm = [
+        "active_school_year" => $normalizedTermSchoolYear,
+        "active_semester" => $termSemester,
+      ];
+      if ($normalizedTermSchoolYear !== "" && !in_array($normalizedTermSchoolYear, $schoolYearOptions, true)) {
+        $schoolYearOptions[] = $normalizedTermSchoolYear;
+        usort($schoolYearOptions, function ($a, $b) {
+          $aYear = (int)substr((string)$a, 0, 4);
+          $bYear = (int)substr((string)$b, 0, 4);
+          if ($aYear === $bYear) {
+            return strcmp((string)$a, (string)$b);
+          }
+          return $aYear <=> $bYear;
+        });
+      }
+    } elseif ($saveResult === "invalid_school_year") {
+      $schoolTermSettingsError = "Use a valid school year format like 2026-2027.";
+    } elseif ($saveResult === "invalid_semester") {
+      $schoolTermSettingsError = "Select a valid semester.";
+    } else {
+      $schoolTermSettingsError = "Unable to update the active school term right now.";
     }
   } elseif (isset($_POST["add_program_option"])) {
     $programCategory = trim((string)($_POST["program_category"] ?? ""));
@@ -518,8 +589,11 @@ if ($headOfficeResult) {
                 </summary>
                 <ul class="ml-8 mt-1 space-y-1 border-l border-white/20 pl-3 text-[11px] font-semibold">
                   <li>
-                    <a href="applicant.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
-                      Pending Applicants
+                    <a href="applicant.php" class="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      <span>Pending Applicants</span>
+                      <span class="inline-flex min-w-[1.65rem] items-center justify-center rounded-full bg-gradient-to-r from-[#fcdc2f] to-[#ffe889] px-2 py-0.5 text-[10px] font-extrabold leading-none text-[#052c6a] shadow-[0_0_0_1px_rgba(255,255,255,0.35),0_6px_14px_rgba(252,220,47,0.28)]">
+                        <?= htmlspecialchars($sidebarPendingApplicantBadge ?? '0') ?>
+                      </span>
                     </a>
                   </li>
                   <li>
@@ -692,31 +766,99 @@ if ($headOfficeResult) {
 
         <section class="order-1 px-4 sm:px-6 pt-6">
           <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
-            <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
-                <p class="text-[#0d8ddb] text-sm font-semibold">Account Management</p>
+                <p class="text-[#0d8ddb] text-sm font-semibold">School Term Settings</p>
                 <p class="text-xs text-[#052c6a]">
-                  Manage profile details, status, and password resets for panelists and head of offices.
+                  Set the active school year and semester used by Institutional Scholars and admin term filters.
                 </p>
               </div>
-              <div class="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  class="rounded-full bg-[#052c6a] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b3d86]"
-                  data-open-modal="panelistModal"
-                >
-                  Add Panelist
-                </button>
-                <button
-                  type="button"
-                  class="rounded-full bg-[#0d8ddb] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
-                  data-open-modal="headOfficeModal"
-                >
-                  Add Head of Office
-                </button>
+              <div class="inline-flex w-fit items-center gap-2 rounded-full border border-[#0d8ddb]/25 bg-[#eef7ff] px-3 py-2 text-[11px] font-semibold text-[#052c6a]">
+                <i class="fas fa-calendar-alt text-[#0d8ddb]"></i>
+                <span><?= htmlspecialchars($displaySchoolYear) ?> / <?= htmlspecialchars($displaySemester) ?></span>
               </div>
             </div>
 
+            <?php if ($schoolTermSettingsMessage !== ""): ?>
+              <div class="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                <?= htmlspecialchars($schoolTermSettingsMessage) ?>
+              </div>
+            <?php endif; ?>
+            <?php if ($schoolTermSettingsError !== ""): ?>
+              <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <?= htmlspecialchars($schoolTermSettingsError) ?>
+              </div>
+            <?php endif; ?>
+
+            <div class="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1fr)]">
+              <form method="POST" class="rounded-xl border border-[#0d8ddb]/30 bg-[#f8fbff] p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">Add School Year</p>
+                <div class="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="new-school-year"
+                    name="new_school_year"
+                    type="text"
+                    placeholder="2026-2027"
+                    pattern="[0-9]{4}\s*-\s*[0-9]{4}"
+                    class="min-w-0 flex-1 rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    name="add_school_year"
+                    value="1"
+                    class="rounded-full bg-[#052c6a] px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-white shadow-sm hover:bg-[#0b3d86]"
+                  >
+                    Add Year
+                  </button>
+                </div>
+                <p class="mt-2 text-[11px] text-[#052c6a]/70">Added years remain available for previous records and filters.</p>
+              </form>
+
+              <form method="POST" class="rounded-xl border border-[#0d8ddb]/30 bg-white p-4">
+                <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">Active Term</p>
+                <div class="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(180px,0.65fr)_auto] md:items-end">
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]" for="active-school-year">School Year</label>
+                    <select
+                      id="active-school-year"
+                      name="active_school_year"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                      required
+                    >
+                      <?php foreach ($schoolYearOptions as $option): ?>
+                        <option value="<?= htmlspecialchars($option) ?>" <?= $displaySchoolYear === $option ? "selected" : "" ?>>
+                          <?= htmlspecialchars($option) ?>
+                        </option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]" for="active-semester">Semester</label>
+                    <select
+                      id="active-semester"
+                      name="active_semester"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                      required
+                    >
+                      <?php foreach ($semesterOptions as $option): ?>
+                        <option value="<?= htmlspecialchars($option) ?>" <?= $displaySemester === $option ? "selected" : "" ?>>
+                          <?= htmlspecialchars($option) ?>
+                        </option>
+                      <?php endforeach; ?>
+                    </select>
+                  </div>
+                  <button
+                    type="submit"
+                    name="save_school_term_settings"
+                    value="1"
+                    class="rounded-full bg-[#0d8ddb] px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-white shadow-sm hover:bg-[#0b7bbf]"
+                  >
+                    Save Active
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </section>
 
@@ -830,6 +972,33 @@ if ($headOfficeResult) {
 
         <section class="order-2 px-4 sm:px-6 pt-6">
           <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
+            <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-[#0d8ddb] text-sm font-semibold">Account Management</p>
+                <p class="text-xs text-[#052c6a]">
+                  Manage profile details, status, and password resets for panelists and head of offices.
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  class="rounded-full bg-[#052c6a] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b3d86]"
+                  data-open-modal="panelistModal"
+                >
+                  Add Panelist
+                </button>
+                <button
+                  type="button"
+                  class="rounded-full bg-[#0d8ddb] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
+                  data-open-modal="headOfficeModal"
+                >
+                  Add Head of Office
+                </button>
+              </div>
+            </div>
+
+            <div class="space-y-6">
+              <div>
             <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">Panelists</p>
             <?php if ($panelistError !== ""): ?>
               <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -911,11 +1080,9 @@ if ($headOfficeResult) {
                 </table>
               </div>
             <?php endif; ?>
-          </div>
-        </section>
+              </div>
 
-        <section class="order-3 px-4 sm:px-6 pt-6">
-          <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
+              <div class="border-t border-[#0d8ddb]/20 pt-5">
             <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">Head of Offices</p>
             <?php if ($headOfficeError !== ""): ?>
               <div class="mt-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -1007,6 +1174,8 @@ if ($headOfficeResult) {
                 </table>
               </div>
             <?php endif; ?>
+              </div>
+            </div>
           </div>
         </section>
          
@@ -1731,6 +1900,9 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     </script>  </body>
 </html>
+
+
+
 
 
 
