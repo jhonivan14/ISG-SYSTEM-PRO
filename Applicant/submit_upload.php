@@ -3,6 +3,7 @@ session_start();
 require_once "../db.php";
 require_once "../application-reference.php";
 require_once "../upload-storage.php";
+require_once "../scholarship-grants.php";
 
 $errors = [];
 $success = false;
@@ -10,6 +11,7 @@ $applicationId = null;
 $referenceNumber = null;
 $referenceWarning = "";
 $requirements = [];
+$requiredRequirements = [];
 $files = null;
 $allowedExt = ["pdf", "jpg", "jpeg", "png"];
 $uploadDir = "";
@@ -46,11 +48,17 @@ if (empty($errors)) {
   $grantId = draft_int($draft, "grant_id");
   if ($grantId <= 0) {
     $errors[] = "Invalid grant selection.";
+  } else {
+    $selectedGrant = isg_get_scholarship_grant($conn, $grantId);
+    if (!$selectedGrant) {
+      $errors[] = "Invalid grant selection.";
+    } else {
+      $requiredRequirements = $selectedGrant["requirements"] ?? [];
+    }
   }
 }
 
-$noRequirementGrantIds = [15];
-$grantRequiresUploads = !in_array($grantId ?? 0, $noRequirementGrantIds, true);
+$grantRequiresUploads = !empty($requiredRequirements);
 
 if (empty($errors)) {
   ensure_applications_department_column($conn);
@@ -102,7 +110,9 @@ if (empty($errors)) {
 
       if ($duplicateApplication) {
         $duplicateReference = trim((string)($duplicateApplication["reference_number"] ?? ""));
-        $duplicateMessage = "You already have an application for this school year and semester.";
+        $displaySchoolYear = trim((string)$schoolYear) !== "" ? "S.Y. " . trim((string)$schoolYear) : "the selected school year";
+        $displaySemester = trim((string)$semester) !== "" ? trim((string)$semester) : "the selected semester";
+        $duplicateMessage = "You already have an application for " . $displaySemester . ", " . $displaySchoolYear . ". Only 1 application per semester is allowed.";
         if ($duplicateReference !== "") {
           $duplicateMessage .= " Please use your reference number " . $duplicateReference . " to track or update your application.";
         } else {
@@ -213,11 +223,13 @@ if (empty($errors)) {
 }
 
 if (empty($errors) && $grantRequiresUploads) {
-  $requirements = $_POST["requirements"] ?? [];
+  $requirements = $requiredRequirements;
   $files = $_FILES["files"] ?? null;
 
   if (!$files || !isset($files["name"]) || !is_array($files["name"])) {
     $errors[] = "Missing uploaded files.";
+  } elseif (count($files["name"]) < count($requirements)) {
+    $errors[] = "Please upload one file for each required document.";
   } else {
     $uploadDir = applicationUploadDirectory($applicationId);
 
@@ -243,7 +255,7 @@ if (empty($errors) && $grantRequiresUploads) {
   if (!$uploadStmt) {
     $errors[] = "Failed to prepare upload statement.";
   } else {
-    $fileCount = count($files["name"]);
+    $fileCount = count($requirements);
 
     for ($i = 0; $i < $fileCount; $i++) {
       $error = $files["error"][$i] ?? UPLOAD_ERR_NO_FILE;
@@ -354,10 +366,10 @@ if (empty($errors)) {
         <?php endforeach; ?>
       </div>
       <a
-        href="applicationReq.php"
+        href="../index.php"
         class="mt-4 inline-flex items-center justify-center px-5 py-2 rounded-full bg-[#0d8ddb] text-white text-sm font-semibold hover:bg-[#0b63d1]"
       >
-        Back to Step 2
+        Back to homepage
       </a>
     <?php endif; ?>
   </div>

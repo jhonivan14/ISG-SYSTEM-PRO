@@ -8,6 +8,7 @@ require_once "../db.php";
 require_once __DIR__ . "/includes/application-approval-timestamp.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 require_once __DIR__ . "/includes/application-decline-history.php";
+require_once "../scholarship-grants.php";
 
 $applicationId = (int)($_GET["id"] ?? 0);
 $application = [];
@@ -84,6 +85,8 @@ $grantRequirements = [
     "Certification from Alumni Association"
   ],
 ];
+
+$grantRequirements = isg_load_scholarship_grant_requirements($conn, true);
 
 // Helper: safely pull optional application fields while keeping the template code compact.
 

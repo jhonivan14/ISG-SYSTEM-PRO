@@ -4,6 +4,10 @@ if (empty($_SESSION["from_index"])) {
   header("Location: ../index.php");
   exit;
 }
+require_once "../db.php";
+require_once "../scholarship-grants.php";
+
+$scholarshipGrants = isg_load_scholarship_grants($conn);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -552,7 +556,7 @@ if (empty($_SESSION["from_index"])) {
 
         <div class="metric-grid">
           <div class="metric-card">
-            <strong>15</strong>
+            <strong><?php echo htmlspecialchars((string)count($scholarshipGrants)); ?></strong>
             <span>Available grants and discounts</span>
           </div>
           <div class="metric-card">
@@ -606,6 +610,136 @@ if (empty($_SESSION["from_index"])) {
     </section>
 
     
+    <?php if (empty($scholarshipGrants)): ?>
+      <section class="bg-white/95 backdrop-blur rounded-3xl shadow-xl border border-[#cddfff] px-6 sm:px-8 py-8 text-center text-[#052c6a]">
+        <h3 class="text-lg sm:text-xl font-extrabold">No active grants available</h3>
+        <p class="mt-2 text-sm text-[#052c6a]/75">Please check again later or contact the Admission and Scholarship Office.</p>
+      </section>
+    <?php else: ?>
+      <?php foreach ($scholarshipGrants as $grantId => $grant): ?>
+        <?php
+          $title = trim((string)($grant["title"] ?? ""));
+          $categoryLabel = trim((string)($grant["category_label"] ?? ""));
+          $badgeLabel = trim((string)($grant["badge_label"] ?? ""));
+          $description = trim((string)($grant["description"] ?? ""));
+          $qualificationItems = isg_parse_requirement_lines((string)($grant["qualification_text"] ?? ""));
+          $programItems = isg_parse_requirement_lines((string)($grant["program_text"] ?? ""));
+          $benefitItems = isg_parse_requirement_lines((string)($grant["benefits_text"] ?? ""));
+          $requirements = $grant["requirements"] ?? [];
+          $applyLabel = stripos($categoryLabel, "discount") !== false ? "APPLY FOR THIS DISCOUNT" : "APPLY FOR THIS GRANT";
+        ?>
+        <section class="bg-white/95 backdrop-blur rounded-3xl shadow-xl border border-[#cddfff] overflow-hidden transition hover:shadow-2xl hover:-translate-y-0.5">
+          <div class="bg-gradient-to-r from-[#0d8ddb] to-[#052c6a] px-6 sm:px-8 py-4 sm:py-5 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-[11px] sm:text-xs text-blue-100 uppercase tracking-[0.25em]">
+                <?php echo htmlspecialchars($categoryLabel !== "" ? $categoryLabel : "Scholarship Category"); ?>
+              </p>
+              <h3 class="text-lg sm:text-xl font-extrabold text-white">
+                <?php echo htmlspecialchars((string)$grantId . ". " . $title); ?>
+              </h3>
+            </div>
+            <?php if ($badgeLabel !== ""): ?>
+              <span class="inline-flex items-center rounded-full bg-white/90 text-[#0d8ddb] text-[11px] sm:text-xs font-semibold px-3 py-1 shadow">
+                <?php echo htmlspecialchars($badgeLabel); ?>
+              </span>
+            <?php endif; ?>
+          </div>
+
+          <div class="px-6 sm:px-8 py-6 sm:py-8 space-y-5 text-[#052c6a] text-sm sm:text-base">
+            <?php if ($description !== ""): ?>
+              <p class="text-xs sm:text-sm text-[#052c6a]/90">
+                <?php echo nl2br(htmlspecialchars($description)); ?>
+              </p>
+            <?php endif; ?>
+
+            <div class="grid gap-5 lg:grid-cols-2">
+              <div>
+                <h4 class="font-semibold text-[#0d8ddb] flex items-center gap-2">
+                  <span class="inline-block w-1 h-5 rounded-full bg-[#fcdc2f]"></span>
+                  Qualifications
+                </h4>
+                <?php if (!empty($qualificationItems)): ?>
+                  <ul class="mt-2 list-disc list-inside space-y-1.5 pl-1">
+                    <?php foreach ($qualificationItems as $qualification): ?>
+                      <li><?php echo htmlspecialchars((string)$qualification); ?></li>
+                    <?php endforeach; ?>
+                  </ul>
+                <?php else: ?>
+                  <p class="mt-2 text-xs sm:text-sm text-[#052c6a]/75">
+                    Qualifications will be posted by the Admission and Scholarship Office.
+                  </p>
+                <?php endif; ?>
+              </div>
+
+              <div>
+                <h4 class="font-semibold text-[#0d8ddb] flex items-center gap-2">
+                  <span class="inline-block w-1 h-5 rounded-full bg-[#22c55e]"></span>
+                  Benefits
+                </h4>
+                <?php if (!empty($benefitItems)): ?>
+                  <ul class="mt-2 list-disc list-inside space-y-1.5 pl-1">
+                    <?php foreach ($benefitItems as $benefit): ?>
+                      <li><?php echo htmlspecialchars((string)$benefit); ?></li>
+                    <?php endforeach; ?>
+                  </ul>
+                <?php else: ?>
+                  <p class="mt-2 text-xs sm:text-sm text-[#052c6a]/75">
+                    Benefits will be posted by the Admission and Scholarship Office.
+                  </p>
+                <?php endif; ?>
+              </div>
+            </div>
+
+            <?php if (!empty($programItems)): ?>
+              <div>
+                <h4 class="font-semibold text-[#0d8ddb] flex items-center gap-2">
+                  <span class="inline-block w-1 h-5 rounded-full bg-[#0d8ddb]"></span>
+                  Eligible Programs / Courses
+                </h4>
+                <ul class="mt-2 list-disc list-inside space-y-1.5 pl-1">
+                  <?php foreach ($programItems as $programItem): ?>
+                    <li><?php echo htmlspecialchars((string)$programItem); ?></li>
+                  <?php endforeach; ?>
+                </ul>
+              </div>
+            <?php endif; ?>
+
+            <div>
+              <h4 class="font-semibold text-[#0d8ddb] flex items-center gap-2">
+                <span class="inline-block w-1 h-5 rounded-full bg-[#fcdc2f]"></span>
+                Requirements for Upload
+              </h4>
+              <?php if (!empty($requirements)): ?>
+                <ul class="mt-2 list-disc list-inside space-y-1.5 pl-1">
+                  <?php foreach ($requirements as $requirement): ?>
+                    <li><?php echo htmlspecialchars((string)$requirement); ?></li>
+                  <?php endforeach; ?>
+                </ul>
+              <?php else: ?>
+                <p class="mt-2 text-xs sm:text-sm text-[#052c6a]/75">
+                  This grant currently has no documentary upload requirement.
+                </p>
+              <?php endif; ?>
+            </div>
+
+            <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <p class="text-[11px] sm:text-xs text-[#052c6a]/80 text-center sm:text-left">
+                Review the requirements before continuing to the application form.
+              </p>
+              <button
+                type="button"
+                onclick="goApply(<?php echo htmlspecialchars((string)$grantId); ?>)"
+                class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-[#0d8ddb] hover:bg-[#0b63d1] text-white font-semibold text-sm sm:text-base px-8 py-2.5 rounded-full shadow-md transition-transform duration-150 hover:-translate-y-[1px]"
+              >
+                <?php echo htmlspecialchars($applyLabel); ?>
+              </button>
+            </div>
+          </div>
+        </section>
+      <?php endforeach; ?>
+    <?php endif; ?>
+
+    <?php if (false): ?>
     <!-- ============ 1. STUDENT ASSISTANT ============ -->
     <section
       class="bg-white/95 backdrop-blur rounded-3xl shadow-xl border border-[#cddfff] overflow-hidden transition hover:shadow-2xl hover:-translate-y-0.5"
@@ -1400,6 +1534,8 @@ if (empty($_SESSION["from_index"])) {
     </section>
 
     
+    <?php endif; ?>
+
     <!-- GLOBAL CTA -->
      <!--
     <section class="pt-4">

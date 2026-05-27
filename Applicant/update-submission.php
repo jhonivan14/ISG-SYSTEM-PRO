@@ -3,6 +3,7 @@ require_once "../db.php";
 require_once "../application-reference.php";
 require_once "../upload-storage.php";
 require_once "../Admin/includes/application-decline-history.php";
+require_once "../scholarship-grants.php";
 
 function updateReadPostField(string $key): string
 {
@@ -221,6 +222,9 @@ $grantRequirements = [
   14 => ["2x2 ID Picture", "Certification from Alumni Association"],
   15 => [],
 ];
+
+$grantNames = isg_load_scholarship_grant_names($conn, true);
+$grantRequirements = isg_load_scholarship_grant_requirements($conn, true);
 
 $studentAssistantPrograms = [
   "Bachelor of Arts in English Language (AB English)",

@@ -7,6 +7,7 @@ adminRequireLogin();
 require_once '../db.php';
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
+require_once "../scholarship-grants.php";
 
 $showLoginSuccess = isset($_GET["login"]) && trim((string)$_GET["login"]) === "success";
 
@@ -32,6 +33,7 @@ $dashboardGrantLabels = [
   14 => "SMCC Alumni Discount",
   15 => "Michaelinian Stakeholders Grant",
 ];
+$dashboardGrantLabels = isg_load_scholarship_grant_names($conn);
 $requestedDashboardGrantId = (int)($_GET["grant_id"] ?? 0);
 $dashboardGrantId = array_key_exists($requestedDashboardGrantId, $dashboardGrantLabels) ? $requestedDashboardGrantId : 0;
 $dashboardGrantLabel = $dashboardGrantId > 0
@@ -304,11 +306,18 @@ $grantCategorySql = "
     COUNT(*) AS total
   FROM applications
   WHERE TRIM(COALESCE(school_year, '')) = ?
-  GROUP BY grant_category
 ";
+if ($dashboardGrantId > 0) {
+  $grantCategorySql .= " AND grant_id = ?";
+}
+$grantCategorySql .= " GROUP BY grant_category";
 $grantCategoryStmt = $conn->prepare($grantCategorySql);
 if ($grantCategoryStmt) {
-  $grantCategoryStmt->bind_param("s", $dashboardSchoolYear);
+  if ($dashboardGrantId > 0) {
+    $grantCategoryStmt->bind_param("si", $dashboardSchoolYear, $dashboardGrantId);
+  } else {
+    $grantCategoryStmt->bind_param("s", $dashboardSchoolYear);
+  }
   if ($grantCategoryStmt->execute()) {
     $result = $grantCategoryStmt->get_result();
     if ($result instanceof mysqli_result) {
@@ -386,6 +395,62 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
       #sidebar li[data-nav]:hover {
         transform: translateX(2px);
         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+      }
+      .school-print-header {
+        color: #000;
+        font-family: "Times New Roman", serif;
+      }
+      .school-print-header h1,
+      .school-print-header h2,
+      .school-print-header p {
+        margin: 0;
+      }
+      .school-print-header header {
+        margin-bottom: 0.5rem;
+        text-align: center;
+      }
+      .school-print-header .header-top {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 0.15rem;
+      }
+      .school-print-header .header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .school-print-header .header-left img {
+        width: 76px;
+        height: 76px;
+        object-fit: contain;
+      }
+      .school-print-header .header-left-text {
+        line-height: 1.2;
+        text-align: left;
+      }
+      .school-print-header .header-left-text h1 {
+        font-size: 16pt;
+        font-weight: 700;
+      }
+      .school-print-header .header-left-text p {
+        font-size: 10pt;
+      }
+      .school-print-header .header-right {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .school-print-header .header-right img {
+        width: 96px;
+        height: 74px;
+        object-fit: contain;
+      }
+      .school-print-header .title-line {
+        font-weight: 700;
+        letter-spacing: 0.02em;
       }
 
       @media print {
@@ -474,6 +539,28 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
           margin: 0 auto !important;
           max-height: 100% !important;
           max-width: 100% !important;
+        }
+        .school-print-header .header-top {
+          flex-wrap: nowrap !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 0.75rem !important;
+        }
+        .school-print-header .header-left {
+          flex-direction: row !important;
+          align-items: center !important;
+          gap: 0.5rem !important;
+        }
+        .school-print-header .header-left-text {
+          text-align: left !important;
+        }
+        .school-print-header .header-left-text h1 {
+          font-size: 16pt !important;
+          line-height: 1.2 !important;
+        }
+        .school-print-header .header-left-text p {
+          font-size: 10pt !important;
+          line-height: 1.2 !important;
         }
       }
       .print-only {
@@ -785,11 +872,36 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
 
         <!-- Charts -->
         <section class="dashboard-report-section px-4 sm:px-6 space-y-4 mt-3">
-          <div class="print-only border-b border-slate-300 pb-3">
-            <h1 class="text-2xl font-bold text-slate-800">Statistical Report</h1>
-            <p class="text-sm text-slate-500 mt-1">
-              <?php echo htmlspecialchars($dashboardGrantLabel); ?> for S.Y. <?php echo htmlspecialchars($dashboardSchoolYear); ?>
-            </p>
+          <div class="print-only school-print-header mb-4">
+            <header>
+              <div class="header-top">
+                <div class="header-left">
+                  <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
+                  <div class="header-left-text">
+                    <h1 class="text-center">Saint Michael College of Caraga</h1>
+                    <p class="text-center">Brgy. 4, Nasipit, Agusan del Norte, Philippines</p>
+                    <p class="text-center">Tel. No. 085 225-0208</p>
+                    <p class="text-center">
+                      Website: <a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a>,
+                      Email: <a href="mailto:communications@smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">communications@smccnasipit.edu.ph</a>
+                    </p>
+                  </div>
+                </div>
+                <div class="header-right">
+                  <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" />
+                </div>
+              </div>
+            </header>
+            <div class="text-center mb-1">
+              <div class="title-line">Office of the Admission &amp; Scholarship</div>
+            </div>
+            <hr class="border-black mb-3" />
+            <section class="text-center mb-4">
+              <h2 class="font-bold text-base">Statistical Report</h2>
+              <p class="font-semibold text-sm">
+                <?php echo htmlspecialchars($dashboardGrantLabel); ?> for S.Y. <?php echo htmlspecialchars($dashboardSchoolYear); ?>
+              </p>
+            </section>
           </div>
 
           <div class="bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm no-print">
@@ -856,7 +968,7 @@ $grantCategoryTotal = array_sum($grantCategoryChartCounts);
                   Applications by Grant Category
                 </div>
                 <p class="text-[11px] text-slate-500 mt-1">
-                  Based on applications submitted for S.Y. <?php echo htmlspecialchars($dashboardSchoolYear); ?>.
+                  Grant filter: <?php echo htmlspecialchars($dashboardGrantLabel); ?>, S.Y. <?php echo htmlspecialchars($dashboardSchoolYear); ?>.
                 </p>
               </div>
               <div class="pie-report-layout grid gap-4 2xl:grid-cols-[minmax(0,1fr)_220px] 2xl:items-center">

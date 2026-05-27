@@ -8,6 +8,7 @@ require_once "../db.php";
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 require_once __DIR__ . "/includes/application-decline-history.php";
+require_once "../scholarship-grants.php";
 
 $grantLabels = [
   1 => "Student Assistant",
@@ -26,6 +27,7 @@ $grantLabels = [
   14 => "SMCC Alumni Discount",
   15 => "Michaelinian Stakeholders Grant",
 ];
+$grantLabels = isg_load_scholarship_grant_names($conn, true);
 
 applicationDeclineHistoryBackfillCurrent($conn);
 

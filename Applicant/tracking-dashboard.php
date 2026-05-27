@@ -2,6 +2,7 @@
 require_once "../db.php";
 require_once "../application-reference.php";
 require_once "../upload-storage.php";
+require_once "../scholarship-grants.php";
 
 backfillMissingApplicationReferences($conn);
 
@@ -40,6 +41,9 @@ $grantRequirements = [
     14 => ["2x2 ID Picture", "Certification from Alumni Association"],
     15 => [],
 ];
+
+$grantNames = isg_load_scholarship_grant_names($conn, true);
+$grantRequirements = isg_load_scholarship_grant_requirements($conn, true);
 
 function trackingStatusLabel(string $status): string
 {

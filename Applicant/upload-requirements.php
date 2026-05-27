@@ -4,6 +4,8 @@ if (empty($_SESSION["from_index"])) {
   header("Location: ../index.php");
   exit;
 }
+require_once "../db.php";
+require_once "../scholarship-grants.php";
 
 $grants = [
   1 => [
@@ -137,7 +139,8 @@ $grants = [
 // Prefer POST (gikan Step 2), fallback to GET (direct link)
 $draft = $_SESSION["application_draft"] ?? null;
 $id = $_POST["grant_id"] ?? $_GET["grant"] ?? ($draft["grant_id"] ?? 0);
-$selected = $grants[$id] ?? null;
+$id = (int)$id;
+$selected = isg_get_scholarship_grant($conn, $id);
 $hasRequirements = $selected && !empty($selected["requirements"]);
 ?>
 <!DOCTYPE html>

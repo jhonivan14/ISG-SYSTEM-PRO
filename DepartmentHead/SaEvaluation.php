@@ -135,6 +135,84 @@ function saEnsureDepartmentHeadEvaluationTable(mysqli $conn): bool
   return true;
 }
 
+function saEnsureDepartmentEvaluationWindowTable(mysqli $conn): bool
+{
+  $createWindowTableSql = "CREATE TABLE IF NOT EXISTS department_evaluation_window (
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    school_year VARCHAR(20) NOT NULL DEFAULT '',
+    semester VARCHAR(50) NOT NULL DEFAULT '',
+    is_open TINYINT(1) NOT NULL DEFAULT 0,
+    opened_at DATETIME DEFAULT NULL,
+    opened_by VARCHAR(100) DEFAULT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_dew_term (school_year, semester)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+  if ($conn->query($createWindowTableSql) !== true) {
+    return false;
+  }
+
+  $columnDefinitions = [
+    "school_year" => "VARCHAR(20) NOT NULL DEFAULT '' AFTER id",
+    "semester" => "VARCHAR(50) NOT NULL DEFAULT '' AFTER school_year",
+    "is_open" => "TINYINT(1) NOT NULL DEFAULT 0 AFTER semester",
+    "opened_at" => "DATETIME DEFAULT NULL AFTER is_open",
+    "opened_by" => "VARCHAR(100) DEFAULT NULL AFTER opened_at",
+    "updated_at" => "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER opened_by",
+  ];
+  foreach ($columnDefinitions as $column => $definition) {
+    $columnResult = $conn->query("SHOW COLUMNS FROM department_evaluation_window LIKE '" . $conn->real_escape_string($column) . "'");
+    $exists = $columnResult instanceof mysqli_result && $columnResult->num_rows > 0;
+    if ($columnResult instanceof mysqli_result) {
+      $columnResult->free();
+    }
+    if (!$exists) {
+      $conn->query("ALTER TABLE department_evaluation_window ADD COLUMN $column $definition");
+    }
+  }
+  $conn->query("ALTER TABLE department_evaluation_window MODIFY id INT UNSIGNED NOT NULL AUTO_INCREMENT");
+
+  $indexResult = $conn->query("SHOW INDEX FROM department_evaluation_window WHERE Key_name = 'uniq_dew_term'");
+  $hasTermIndex = $indexResult instanceof mysqli_result && $indexResult->num_rows > 0;
+  if ($indexResult instanceof mysqli_result) {
+    $indexResult->free();
+  }
+  if (!$hasTermIndex) {
+    $conn->query("CREATE UNIQUE INDEX uniq_dew_term ON department_evaluation_window (school_year, semester)");
+  }
+
+  return true;
+}
+
+function saIsEvaluationWindowOpenForTerm(mysqli $conn, string $schoolYear, string $semester): bool
+{
+  $schoolYear = trim($schoolYear);
+  $semester = trim($semester);
+  if ($schoolYear === "" || $semester === "" || !saEnsureDepartmentEvaluationWindowTable($conn)) {
+    return false;
+  }
+
+  $stmt = $conn->prepare("SELECT is_open FROM department_evaluation_window WHERE school_year = ? AND semester = ? LIMIT 1");
+  if (!$stmt) {
+    return false;
+  }
+
+  $stmt->bind_param("ss", $schoolYear, $semester);
+  $isOpen = false;
+  if ($stmt->execute()) {
+    $result = $stmt->get_result();
+    $row = $result ? $result->fetch_assoc() : null;
+    if (is_array($row)) {
+      $isOpen = ((int)($row["is_open"] ?? 0)) === 1;
+    }
+    if ($result instanceof mysqli_result) {
+      $result->free();
+    }
+  }
+  $stmt->close();
+
+  return $isOpen;
+}
+
 if ($headUsername !== "") {
   $headAccountStmt = $conn->prepare("SELECT name, lastname, office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
   if ($headAccountStmt) {
@@ -252,23 +330,11 @@ if ($applicationId === 0) {
 }
 
 if ($loadError === "" && ($conn ?? null) instanceof mysqli) {
-  $createWindowTableSql = "CREATE TABLE IF NOT EXISTS department_evaluation_window (
-    id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
-    is_open TINYINT(1) NOT NULL DEFAULT 0,
-    opened_at DATETIME DEFAULT NULL,
-    opened_by VARCHAR(100) DEFAULT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-  if ($conn->query($createWindowTableSql) === true) {
-    $windowStateResult = $conn->query("SELECT is_open FROM department_evaluation_window WHERE id = 1 LIMIT 1");
-    if ($windowStateResult instanceof mysqli_result) {
-      $windowRow = $windowStateResult->fetch_assoc();
-      if (is_array($windowRow)) {
-        $isEvaluationWindowOpen = ((int)($windowRow["is_open"] ?? 0)) === 1;
-      }
-      $windowStateResult->free();
-    }
-  }
+  $isEvaluationWindowOpen = saIsEvaluationWindowOpenForTerm(
+    $conn,
+    (string)($applicationProfile["school_year"] ?? ""),
+    (string)($applicationProfile["semester"] ?? "")
+  );
 
   $hasEvaluationTable = saEnsureDepartmentHeadEvaluationTable($conn);
   if (!$hasEvaluationTable) {

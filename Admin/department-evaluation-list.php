@@ -15,7 +15,7 @@ $rawSelectedSemester = array_key_exists("semester", $_GET)
   ? trim((string)$_GET["semester"])
   : null;
 $activeSchoolYearFilter = $rawSelectedSchoolYear === null ? $displaySchoolYear : $selectedSchoolYear;
-$activeSemesterFilter = $rawSelectedSemester === null ? "" : $selectedSemester;
+$activeSemesterFilter = $rawSelectedSemester === null ? $displaySemester : $selectedSemester;
 
 $assistantEvaluationRecords = [];
 $isEvaluationWindowOpen = false;
@@ -72,17 +72,59 @@ function isgDepartmentEvaluationSemesterSortRank(string $semester): int
   return 9;
 }
 
-// Load evaluation-window settings and student assistant records for the selected term.
-
-if (($conn ?? null) instanceof mysqli) {
+function isgEnsureDepartmentEvaluationWindowTable(mysqli $conn): bool
+{
   $createWindowTableSql = "CREATE TABLE IF NOT EXISTS department_evaluation_window (
-    id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    school_year VARCHAR(20) NOT NULL DEFAULT '',
+    semester VARCHAR(50) NOT NULL DEFAULT '',
     is_open TINYINT(1) NOT NULL DEFAULT 0,
     opened_at DATETIME DEFAULT NULL,
     opened_by VARCHAR(100) DEFAULT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_dew_term (school_year, semester)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-  $windowTableReady = $conn->query($createWindowTableSql) === true;
+  if ($conn->query($createWindowTableSql) !== true) {
+    return false;
+  }
+
+  $columnDefinitions = [
+    "school_year" => "VARCHAR(20) NOT NULL DEFAULT '' AFTER id",
+    "semester" => "VARCHAR(50) NOT NULL DEFAULT '' AFTER school_year",
+    "is_open" => "TINYINT(1) NOT NULL DEFAULT 0 AFTER semester",
+    "opened_at" => "DATETIME DEFAULT NULL AFTER is_open",
+    "opened_by" => "VARCHAR(100) DEFAULT NULL AFTER opened_at",
+    "updated_at" => "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER opened_by",
+  ];
+  foreach ($columnDefinitions as $column => $definition) {
+    $columnResult = $conn->query("SHOW COLUMNS FROM department_evaluation_window LIKE '" . $conn->real_escape_string($column) . "'");
+    $exists = $columnResult instanceof mysqli_result && $columnResult->num_rows > 0;
+    if ($columnResult instanceof mysqli_result) {
+      $columnResult->free();
+    }
+    if (!$exists) {
+      $conn->query("ALTER TABLE department_evaluation_window ADD COLUMN $column $definition");
+    }
+  }
+
+  $conn->query("ALTER TABLE department_evaluation_window MODIFY id INT UNSIGNED NOT NULL AUTO_INCREMENT");
+
+  $indexResult = $conn->query("SHOW INDEX FROM department_evaluation_window WHERE Key_name = 'uniq_dew_term'");
+  $hasTermIndex = $indexResult instanceof mysqli_result && $indexResult->num_rows > 0;
+  if ($indexResult instanceof mysqli_result) {
+    $indexResult->free();
+  }
+  if (!$hasTermIndex) {
+    $conn->query("CREATE UNIQUE INDEX uniq_dew_term ON department_evaluation_window (school_year, semester)");
+  }
+
+  return true;
+}
+
+// Load evaluation-window settings and student assistant records for the selected term.
+
+if (($conn ?? null) instanceof mysqli) {
+  $windowTableReady = isgEnsureDepartmentEvaluationWindowTable($conn);
 
   if (!$windowTableReady) {
     $evaluationWindowError = "Unable to access evaluation window settings.";
@@ -92,40 +134,62 @@ if (($conn ?? null) instanceof mysqli) {
       : "";
 
     if ($windowAction === "open" || $windowAction === "close") {
-      if ($windowAction === "open") {
-        $windowSql = "INSERT INTO department_evaluation_window (id, is_open, opened_at, opened_by)
-          VALUES (1, 1, NOW(), 'admin')
-          ON DUPLICATE KEY UPDATE
-            is_open = VALUES(is_open),
-            opened_at = VALUES(opened_at),
-            opened_by = VALUES(opened_by)";
+      $windowSchoolYear = trim((string)($_POST["evaluation_window_school_year"] ?? $activeSchoolYearFilter));
+      $windowSemester = trim((string)($_POST["evaluation_window_semester"] ?? $activeSemesterFilter));
+      if ($windowSchoolYear === "" || $windowSemester === "") {
+        $evaluationWindowError = "Select a specific school year and semester before opening or closing evaluation.";
       } else {
-        $windowSql = "INSERT INTO department_evaluation_window (id, is_open, opened_at, opened_by)
-          VALUES (1, 0, NULL, 'admin')
-          ON DUPLICATE KEY UPDATE
-            is_open = VALUES(is_open),
-            opened_at = VALUES(opened_at),
-            opened_by = VALUES(opened_by)";
-      }
-
-      if ($conn->query($windowSql) === true) {
-        $evaluationWindowNotice = $windowAction === "open"
-          ? "Evaluation window is now open."
-          : "Evaluation window is now closed.";
-      } else {
-        $evaluationWindowError = $windowAction === "open"
-          ? "Unable to open the evaluation window."
-          : "Unable to close the evaluation window.";
+        $openedBy = trim((string)($_SESSION["admin_username"] ?? $_SESSION["admin_name"] ?? "admin"));
+        if ($windowAction === "open") {
+          $windowSql = "INSERT INTO department_evaluation_window (school_year, semester, is_open, opened_at, opened_by)
+            VALUES (?, ?, 1, NOW(), ?)
+            ON DUPLICATE KEY UPDATE
+              is_open = VALUES(is_open),
+              opened_at = VALUES(opened_at),
+              opened_by = VALUES(opened_by)";
+        } else {
+          $windowSql = "INSERT INTO department_evaluation_window (school_year, semester, is_open, opened_at, opened_by)
+            VALUES (?, ?, 0, NULL, ?)
+            ON DUPLICATE KEY UPDATE
+              is_open = VALUES(is_open),
+              opened_at = VALUES(opened_at),
+              opened_by = VALUES(opened_by)";
+        }
+        $windowStmt = $conn->prepare($windowSql);
+        if ($windowStmt) {
+          $windowStmt->bind_param("sss", $windowSchoolYear, $windowSemester, $openedBy);
+          if ($windowStmt->execute()) {
+            $evaluationWindowNotice = $windowAction === "open"
+              ? "Evaluation window is now open for {$windowSemester}, S.Y. {$windowSchoolYear}."
+              : "Evaluation window is now closed for {$windowSemester}, S.Y. {$windowSchoolYear}.";
+          } else {
+            $evaluationWindowError = $windowAction === "open"
+              ? "Unable to open the evaluation window for the selected term."
+              : "Unable to close the evaluation window for the selected term.";
+          }
+          $windowStmt->close();
+        } else {
+          $evaluationWindowError = "Unable to prepare evaluation window update.";
+        }
       }
     }
 
-    $windowStateResult = $conn->query("SELECT is_open FROM department_evaluation_window WHERE id = 1 LIMIT 1");
-    if ($windowStateResult instanceof mysqli_result) {
-      $windowRow = $windowStateResult->fetch_assoc();
-      if (is_array($windowRow)) {
-        $isEvaluationWindowOpen = ((int)($windowRow["is_open"] ?? 0)) === 1;
+    if ($activeSchoolYearFilter !== "" && $activeSemesterFilter !== "") {
+      $windowStateStmt = $conn->prepare("SELECT is_open FROM department_evaluation_window WHERE school_year = ? AND semester = ? LIMIT 1");
+      if ($windowStateStmt) {
+        $windowStateStmt->bind_param("ss", $activeSchoolYearFilter, $activeSemesterFilter);
+        if ($windowStateStmt->execute()) {
+          $windowStateResult = $windowStateStmt->get_result();
+          $windowRow = $windowStateResult ? $windowStateResult->fetch_assoc() : null;
+          if (is_array($windowRow)) {
+            $isEvaluationWindowOpen = ((int)($windowRow["is_open"] ?? 0)) === 1;
+          }
+          if ($windowStateResult instanceof mysqli_result) {
+            $windowStateResult->free();
+          }
+        }
+        $windowStateStmt->close();
       }
-      $windowStateResult->free();
     }
   }
 
@@ -735,7 +799,11 @@ if (!empty($evaluationWindowActionParams)) {
                 <div>
                   <h2 class="text-lg font-semibold text-[#052c6a]">Student Assistants Evaluation List</h2>
                   <p class="text-xs text-gray-500 mt-1">
-                    Evaluation window:
+                    Evaluation window for
+                    <span class="font-semibold text-[#052c6a]">
+                      <?php echo htmlspecialchars($activeSemesterFilter !== "" ? $activeSemesterFilter : "All Semesters"); ?>,
+                      S.Y. <?php echo htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years"); ?>
+                    </span>:
                     <span
                       id="evalWindowLabel"
                       class="font-semibold <?php echo $isEvaluationWindowOpen ? "text-green-600" : "text-[#052c6a]"; ?>"
@@ -746,12 +814,15 @@ if (!empty($evaluationWindowActionParams)) {
                 </div>
                 <form method="post" action="<?php echo htmlspecialchars($evaluationWindowActionUrl); ?>" class="m-0">
                   <input type="hidden" name="evaluation_window_action" value="<?php echo $isEvaluationWindowOpen ? "close" : "open"; ?>" />
+                  <input type="hidden" name="evaluation_window_school_year" value="<?php echo htmlspecialchars($activeSchoolYearFilter); ?>" />
+                  <input type="hidden" name="evaluation_window_semester" value="<?php echo htmlspecialchars($activeSemesterFilter); ?>" />
                   <button
                     id="openEvalBtn"
                     type="submit"
                     class="<?php echo $isEvaluationWindowOpen
                       ? "bg-red-500 hover:bg-red-600"
                       : "bg-[#0d8ddb] hover:bg-[#0b7cc4]"; ?> text-white text-sm font-semibold px-4 py-2 rounded shadow-sm transition"
+                    <?php echo ($activeSchoolYearFilter === "" || $activeSemesterFilter === "") ? "disabled" : ""; ?>
                   >
                     <?php echo $isEvaluationWindowOpen ? "Close Evaluation" : "Open for Evaluation"; ?>
                   </button>

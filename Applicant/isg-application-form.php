@@ -2,6 +2,7 @@
 session_start();
 require_once "../db.php";
 require_once "../scholarship-program-options.php";
+require_once "../scholarship-grants.php";
 
 $errors = [];
 
@@ -169,23 +170,7 @@ function application_form_load_open_school_years($conn) {
   return $schoolYears;
 }
 
-$grantNames = [
-  1 => "Student Assistant",
-  2 => "Academic Scholarship Program",
-  3 => "(ESG) President Scholarship Program",
-  4 => "Kabayani Scholarship Program",
-  5 => "Kabayani Loyalty Grant",
-  6 => "Discount for Persons with Disability (PWD)",
-  7 => "Discount for Children of Employees",
-  8 => "Discount for Sibling of Employees",
-  9 => "Sibling Discount",
-  10 => "DXSM-FM Grant",
-  11 => "Michaelinian Mirror Grant (EIC)",
-  12 => "Dependents of a Lot Donor",
-  13 => "Dependents of a Board of Trustees Member",
-  14 => "SMCC Alumni Discount",
-  15 => "Michaelinian Stakeholders Grant",
-];
+$grantNames = isg_load_scholarship_grant_names($conn);
 
 $studentAssistantPrograms = [
   "Bachelor of Arts in English Language (AB English)",
@@ -256,6 +241,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
   if ($grantId <= 0) {
     $errors[] = "Missing grant selection.";
+  } elseif (!isset($grantNames[$grantId])) {
+    $errors[] = "Invalid grant selection.";
   }
  
   

@@ -8,6 +8,7 @@ require_once '../db.php';
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/application-approval-timestamp.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
+require_once "../scholarship-grants.php";
 
 $categoryDefinitions = [
   [
@@ -48,6 +49,7 @@ $grantLabels = [
   13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
   14 => "SMCC Alumni Discount",
 ];
+$grantLabels = isg_load_scholarship_grant_names($conn, true);
 
 $messageToastMessage = "";
 $messageToastType = "";

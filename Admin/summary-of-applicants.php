@@ -7,6 +7,7 @@ adminRequireLogin();
 require_once "../db.php";
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
+require_once "../scholarship-grants.php";
 
 $grantLabels = [
   1 => "Student Assistant",
@@ -25,6 +26,7 @@ $grantLabels = [
   14 => "SMCC Alumni Discount",
   15 => "Michaelinian Stakeholders Grant",
 ];
+$grantLabels = isg_load_scholarship_grant_names($conn, true);
 
 $filterClauses = [];
 $filterParams = [];
@@ -123,6 +125,62 @@ $totalApplicants = count($summaryApplicants);
         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
       }
       .print-only { display: none; }
+      .school-print-header {
+        color: #000;
+        font-family: "Times New Roman", serif;
+      }
+      .school-print-header h1,
+      .school-print-header h2,
+      .school-print-header p {
+        margin: 0;
+      }
+      .school-print-header header {
+        margin-bottom: 0.5rem;
+        text-align: center;
+      }
+      .school-print-header .header-top {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-bottom: 0.15rem;
+      }
+      .school-print-header .header-left {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .school-print-header .header-left img {
+        width: 76px;
+        height: 76px;
+        object-fit: contain;
+      }
+      .school-print-header .header-left-text {
+        line-height: 1.2;
+        text-align: left;
+      }
+      .school-print-header .header-left-text h1 {
+        font-size: 16pt;
+        font-weight: 700;
+      }
+      .school-print-header .header-left-text p {
+        font-size: 10pt;
+      }
+      .school-print-header .header-right {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+      }
+      .school-print-header .header-right img {
+        width: 96px;
+        height: 74px;
+        object-fit: contain;
+      }
+      .school-print-header .title-line {
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
       @media print {
         @page {
           size: A4 portrait;
@@ -159,6 +217,20 @@ $totalApplicants = count($summaryApplicants);
         .print-row {
           break-inside: avoid;
           page-break-inside: avoid;
+        }
+        .school-print-header .header-top {
+          flex-wrap: nowrap !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 0.75rem !important;
+        }
+        .school-print-header .header-left {
+          flex-direction: row !important;
+          align-items: center !important;
+          gap: 0.5rem !important;
+        }
+        .school-print-header .header-left-text {
+          text-align: left !important;
         }
       }
     </style>
@@ -307,15 +379,39 @@ $totalApplicants = count($summaryApplicants);
 
         <section class="print-area px-4 sm:px-6 pb-10 mt-4">
           <div class="print-card rounded-lg border border-[#d9e7ff] bg-white p-4 shadow-sm">
-            <div class="print-only mb-4 border-b border-slate-300 pb-3 text-center">
-              <p class="text-sm font-semibold uppercase tracking-wide text-slate-700">Saint Michael College of Caraga</p>
-              <h1 class="mt-1 text-xl font-bold text-slate-900">Summary of Applicants</h1>
-              <p class="mt-1 text-xs text-slate-600">
+            <div class="print-only school-print-header mb-4">
+              <header>
+                <div class="header-top">
+                  <div class="header-left">
+                    <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
+                    <div class="header-left-text">
+                      <h1 class="text-center">Saint Michael College of Caraga</h1>
+                      <p class="text-center">Brgy. 4, Nasipit, Agusan del Norte, Philippines</p>
+                      <p class="text-center">Tel. No. 085 225-0208</p>
+                      <p class="text-center">
+                        Website: <a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a>,
+                        Email: <a href="mailto:communications@smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">communications@smccnasipit.edu.ph</a>
+                      </p>
+                    </div>
+                  </div>
+                  <div class="header-right">
+                    <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC ISO 9001 logo" />
+                  </div>
+                </div>
+              </header>
+              <div class="text-center mb-1">
+                <div class="title-line">Office of the Admission &amp; Scholarship</div>
+              </div>
+              <hr class="border-black mb-3" />
+              <section class="text-center mb-4">
+                <h2 class="font-bold text-base">Summary of Applicants</h2>
+                <p class="font-semibold text-sm">
                 <?= htmlspecialchars($activeSemesterFilter !== "" ? $activeSemesterFilter : "All Semesters") ?>,
                 S.Y. <?= htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years") ?>
-              </p>
+                </p>
+              </section>
             </div>
-            <div>
+            <div class="no-print">
               <p class="text-[#052c6a] text-sm font-semibold">Summary of Applicants</p>
               <p class="text-xs text-[#052c6a]/70">
                 Showing <?= htmlspecialchars((string)$totalApplicants) ?> applicants under the selected filters.
@@ -325,7 +421,7 @@ $totalApplicants = count($summaryApplicants);
               <?php if (empty($summaryApplicants)): ?>
                 <div class="px-4 py-3 text-sm text-[#052c6a]/70">No applicants found for the selected filters.</div>
               <?php else: ?>
-                <?php foreach ($summaryApplicants as $applicant): ?>
+                <?php foreach ($summaryApplicants as $index => $applicant): ?>
                   <?php
                   $statusKey = strtolower(trim((string)$applicant["status"]));
                   $statusClass = "bg-slate-100 text-slate-700";
@@ -340,7 +436,11 @@ $totalApplicants = count($summaryApplicants);
                   }
                   ?>
                   <div class="print-row flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                    <div class="min-w-0">
+                    <div class="flex min-w-0 flex-1 items-start gap-3">
+                      <span class="shrink-0 text-sm font-bold text-[#052c6a]">
+                        <?= htmlspecialchars((string)($index + 1)) ?>.
+                      </span>
+                      <div class="min-w-0">
                       <p class="break-anywhere text-sm font-semibold text-[#052c6a]">
                         <?= htmlspecialchars($applicant["name"] !== "" ? $applicant["name"] : "Unnamed Applicant") ?>
                       </p>
@@ -350,6 +450,7 @@ $totalApplicants = count($summaryApplicants);
                           &middot; Ref: <?= htmlspecialchars($applicant["reference_number"]) ?>
                         <?php endif; ?>
                       </p>
+                      </div>
                     </div>
                     <span class="rounded-full px-3 py-1 text-xs font-bold <?= htmlspecialchars($statusClass) ?>">
                       <?= htmlspecialchars($applicant["status"]) ?>

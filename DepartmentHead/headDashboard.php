@@ -27,6 +27,7 @@ $evaluationLoadError = "";
 $hasHeadEvaluationTable = false;
 $hasScholarTable = false;
 $isEvaluationWindowOpen = false;
+$evaluationWindowOpenTerms = [];
 
 function headDashboardDisplayStatusLabel(string $status): string
 {
@@ -85,24 +86,79 @@ function headDashboardEvaluationKey(int $applicationId, string $schoolYear, stri
   return strtolower(trim((string)$applicationId)) . "|" . strtolower(trim($schoolYear)) . "|" . strtolower(trim($semester));
 }
 
-if (($conn ?? null) instanceof mysqli) {
+function headEnsureDepartmentEvaluationWindowTable(mysqli $conn): bool
+{
   $createWindowTableSql = "CREATE TABLE IF NOT EXISTS department_evaluation_window (
-    id TINYINT UNSIGNED NOT NULL PRIMARY KEY,
+    id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    school_year VARCHAR(20) NOT NULL DEFAULT '',
+    semester VARCHAR(50) NOT NULL DEFAULT '',
     is_open TINYINT(1) NOT NULL DEFAULT 0,
     opened_at DATETIME DEFAULT NULL,
     opened_by VARCHAR(100) DEFAULT NULL,
-    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_dew_term (school_year, semester)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-  if ($conn->query($createWindowTableSql) === true) {
-    $windowStateResult = $conn->query("SELECT is_open FROM department_evaluation_window WHERE id = 1 LIMIT 1");
-    if ($windowStateResult instanceof mysqli_result) {
-      $windowRow = $windowStateResult->fetch_assoc();
-      if (is_array($windowRow)) {
-        $isEvaluationWindowOpen = ((int)($windowRow["is_open"] ?? 0)) === 1;
-      }
-      $windowStateResult->free();
+  if ($conn->query($createWindowTableSql) !== true) {
+    return false;
+  }
+
+  $columnDefinitions = [
+    "school_year" => "VARCHAR(20) NOT NULL DEFAULT '' AFTER id",
+    "semester" => "VARCHAR(50) NOT NULL DEFAULT '' AFTER school_year",
+    "is_open" => "TINYINT(1) NOT NULL DEFAULT 0 AFTER semester",
+    "opened_at" => "DATETIME DEFAULT NULL AFTER is_open",
+    "opened_by" => "VARCHAR(100) DEFAULT NULL AFTER opened_at",
+    "updated_at" => "TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER opened_by",
+  ];
+  foreach ($columnDefinitions as $column => $definition) {
+    $columnResult = $conn->query("SHOW COLUMNS FROM department_evaluation_window LIKE '" . $conn->real_escape_string($column) . "'");
+    $exists = $columnResult instanceof mysqli_result && $columnResult->num_rows > 0;
+    if ($columnResult instanceof mysqli_result) {
+      $columnResult->free();
+    }
+    if (!$exists) {
+      $conn->query("ALTER TABLE department_evaluation_window ADD COLUMN $column $definition");
     }
   }
+  $conn->query("ALTER TABLE department_evaluation_window MODIFY id INT UNSIGNED NOT NULL AUTO_INCREMENT");
+
+  $indexResult = $conn->query("SHOW INDEX FROM department_evaluation_window WHERE Key_name = 'uniq_dew_term'");
+  $hasTermIndex = $indexResult instanceof mysqli_result && $indexResult->num_rows > 0;
+  if ($indexResult instanceof mysqli_result) {
+    $indexResult->free();
+  }
+  if (!$hasTermIndex) {
+    $conn->query("CREATE UNIQUE INDEX uniq_dew_term ON department_evaluation_window (school_year, semester)");
+  }
+
+  return true;
+}
+
+function headLoadOpenEvaluationTerms(mysqli $conn): array
+{
+  $terms = [];
+  if (!headEnsureDepartmentEvaluationWindowTable($conn)) {
+    return $terms;
+  }
+
+  $result = $conn->query("SELECT school_year, semester FROM department_evaluation_window WHERE is_open = 1");
+  if ($result instanceof mysqli_result) {
+    while ($row = $result->fetch_assoc()) {
+      $schoolYear = strtolower(trim((string)($row["school_year"] ?? "")));
+      $semester = strtolower(trim((string)($row["semester"] ?? "")));
+      if ($schoolYear !== "" && $semester !== "") {
+        $terms[$schoolYear . "|" . $semester] = true;
+      }
+    }
+    $result->free();
+  }
+
+  return $terms;
+}
+
+if (($conn ?? null) instanceof mysqli) {
+  $evaluationWindowOpenTerms = headLoadOpenEvaluationTerms($conn);
+  $isEvaluationWindowOpen = !empty($evaluationWindowOpenTerms);
 }
 
 if ($headOffice === "" && $headUsername !== "") {
@@ -193,6 +249,9 @@ if ($headOffice === "") {
           }
 
           $evaluationReferenceId = 0 - $scholarRecordId;
+          $recordSemester = trim((string)($scholarRow["semester"] ?? ""));
+          $recordAcademicYear = trim((string)($scholarRow["academic_year"] ?? ""));
+          $recordTermKey = strtolower($recordAcademicYear) . "|" . strtolower($recordSemester);
 
           $approvedApplicantMap[$recordKey] = [
             "id" => $evaluationReferenceId,
@@ -201,10 +260,11 @@ if ($headOffice === "") {
             "sort_timestamp" => $submittedAtRaw !== "" ? (int)strtotime($submittedAtRaw) : 0,
             "name" => trim((string)($scholarRow["full_name"] ?? "")),
             "program_course" => trim((string)($scholarRow["program_year"] ?? "")),
-            "semester" => trim((string)($scholarRow["semester"] ?? "")),
-            "academic_year" => trim((string)($scholarRow["academic_year"] ?? "")),
+            "semester" => $recordSemester,
+            "academic_year" => $recordAcademicYear,
             "status_text" => headDashboardDisplayStatusLabel((string)($scholarRow["status"] ?? "official_scholar")),
             "can_evaluate" => true,
+            "is_evaluation_window_open" => isset($evaluationWindowOpenTerms[$recordTermKey]),
             "has_evaluation" => false,
             "evaluation_url" => "SaEvaluation.php?application_id=" . urlencode((string)$evaluationReferenceId),
           ];
@@ -364,7 +424,7 @@ foreach ($approvedApplicants as $approvedApplicantRow) {
   if (
     ($approvedApplicantRow["can_evaluate"] ?? false) === true
     && ($approvedApplicantRow["has_evaluation"] ?? false) !== true
-    && $isEvaluationWindowOpen
+    && ($approvedApplicantRow["is_evaluation_window_open"] ?? false) === true
   ) {
     $readyToEvaluateCount++;
   }
@@ -750,7 +810,7 @@ if ($requestedTab === "my-sas") {
                           <span class="inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
                             Evaluated
                           </span>
-                        <?php elseif (($applicant["can_evaluate"] ?? false) === true && $isEvaluationWindowOpen): ?>
+                        <?php elseif (($applicant["can_evaluate"] ?? false) === true && ($applicant["is_evaluation_window_open"] ?? false) === true): ?>
                           <button
                             class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
                             type="button"

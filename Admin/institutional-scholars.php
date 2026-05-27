@@ -6,6 +6,7 @@ require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
+require_once "../scholarship-grants.php";
 
 $autoImportType = "";
 $autoImportMessage = "";
@@ -41,6 +42,7 @@ $grantLabels = [
   13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
   14 => "SMCC Alumni Discount",
 ];
+$grantLabels = isg_load_scholarship_grant_names($conn, true);
 
 $scholarCategoryLabels = [
   "official" => "Official Scholars",
@@ -50,12 +52,10 @@ $scholarCategoryLabels = [
   "others" => "Others",
 ];
 
-$manualGrantOptions = [
-  "Student Assistant",
-  "Academic Scholarship Program",
-  "Kabayani Scholarship Program",
-  "Others",
-];
+$manualGrantOptions = array_values($grantLabels);
+if (!in_array("Others", $manualGrantOptions, true)) {
+  $manualGrantOptions[] = "Others";
+}
 $manualGrantDefaultsByCategory = [
   "student_assistant" => "Student Assistant",
   "academic" => "Academic Scholarship Program",
@@ -913,7 +913,8 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
       contract_ended,
       termination_reason,
       terminated_at,
-      terminated_by
+      terminated_by,
+      created_at
     FROM institutional_scholar_records
     ORDER BY id DESC
   ");
@@ -944,6 +945,7 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
       "termination_reason" => trim((string)($row["termination_reason"] ?? "")),
       "terminated_at" => trim((string)($row["terminated_at"] ?? "")),
       "terminated_by" => trim((string)($row["terminated_by"] ?? "")),
+      "created_at" => trim((string)($row["created_at"] ?? "")),
       "__category" => $category,
     ];
 
@@ -2762,6 +2764,73 @@ if (($conn ?? null) instanceof mysqli) {
         });
       }
 
+      function getHistoryTimestampMs(value) {
+        const rawValue = String(value || "").trim();
+        if (rawValue === "") return 0;
+        const parsedDate = new Date(rawValue.replace(" ", "T"));
+        const time = parsedDate.getTime();
+        return Number.isNaN(time) ? 0 : time;
+      }
+
+      function getAssignedOfficeTimelineForRecord(record) {
+        if (!record || typeof record !== "object") {
+          return [];
+        }
+
+        const historyRows = getAssignedOfficeHistoryForRecord(record)
+          .slice()
+          .sort((left, right) => {
+            const leftTime = getHistoryTimestampMs(left && typeof left === "object" ? left.changed_at : "");
+            const rightTime = getHistoryTimestampMs(right && typeof right === "object" ? right.changed_at : "");
+            if (leftTime === rightTime) {
+              return Number(left && typeof left === "object" ? (left.id || 0) : 0) - Number(right && typeof right === "object" ? (right.id || 0) : 0);
+            }
+            return leftTime - rightTime;
+          });
+        const currentOffice = String(record.assigned_office || "").trim();
+        const createdAt = String(record.created_at || "").trim();
+        const timeline = [];
+        let activeOffice = historyRows.length > 0
+          ? String(historyRows[0].from_office || "").trim()
+          : currentOffice;
+        let activeStartedAt = createdAt;
+
+        historyRows.forEach((history) => {
+          const fromOffice = String(history.from_office || "").trim();
+          const toOffice = String(history.to_office || "").trim();
+          const changedAt = String(history.changed_at || "").trim();
+          const displayOffice = activeOffice !== "" ? activeOffice : fromOffice;
+
+          if (displayOffice !== "" || changedAt !== "") {
+            timeline.push({
+              office: displayOffice !== "" ? displayOffice : "Unassigned",
+              started_at: activeStartedAt,
+              ended_at: changedAt,
+              moved_to: toOffice,
+              changed_by: String(history.changed_by || "").trim(),
+              is_current: false
+            });
+          }
+
+          activeOffice = toOffice;
+          activeStartedAt = changedAt;
+        });
+
+        const finalOffice = currentOffice !== "" ? currentOffice : activeOffice;
+        if (finalOffice !== "" || timeline.length > 0) {
+          timeline.push({
+            office: finalOffice !== "" ? finalOffice : "Unassigned",
+            started_at: activeStartedAt,
+            ended_at: "",
+            moved_to: "",
+            changed_by: "",
+            is_current: true
+          });
+        }
+
+        return timeline;
+      }
+
       function getLogicalScholarMatchKey(record) {
         if (!record || typeof record !== "object") return "";
 
@@ -3407,38 +3476,52 @@ if (($conn ?? null) instanceof mysqli) {
         const record = getRecordByKey(category, recordKey);
         if (!record) return;
 
-        const historyRows = getAssignedOfficeHistoryForRecord(record);
+        const officeTimeline = getAssignedOfficeTimelineForRecord(record);
         if (typeof Swal === "undefined") {
-          if (historyRows.length === 0) {
+          if (officeTimeline.length === 0) {
             window.alert("No assigned office history yet.");
             return;
           }
-          window.alert(historyRows.map((history) => {
-            const fromOffice = String(history.from_office || "").trim() || "Unassigned";
-            const toOffice = String(history.to_office || "").trim() || "Unassigned";
-            const changedAt = formatHistoryTimestamp(history.changed_at);
-            const changedBy = String(history.changed_by || "").trim();
-            return fromOffice + " to " + toOffice + (changedAt ? " on " + changedAt : "") + (changedBy ? " by " + changedBy : "");
+          window.alert(officeTimeline.map((item) => {
+            const office = String(item.office || "").trim() || "Unassigned";
+            const startedAt = formatHistoryTimestamp(item.started_at) || "Date not recorded";
+            const endedAt = formatHistoryTimestamp(item.ended_at);
+            const movedTo = String(item.moved_to || "").trim();
+            const changedBy = String(item.changed_by || "").trim();
+            if (item.is_current) {
+              return office + " - started " + startedAt + " (current)";
+            }
+            return office + " - started " + startedAt + (endedAt ? ", moved on " + endedAt : "") + (movedTo ? " to " + movedTo : "") + (changedBy ? " by " + changedBy : "");
           }).join("\n"));
           return;
         }
 
         const titleName = String(record.full_name || "Student Assistant").trim();
-        const html = historyRows.length === 0
+        const html = officeTimeline.length === 0
           ? '<div class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm text-slate-600">No assigned office history yet.</div>'
           : '<div class="max-h-[420px] overflow-y-auto text-left">' +
-              historyRows.map((history) => {
-                const fromOffice = escapeHtml(String(history.from_office || "").trim() || "Unassigned");
-                const toOffice = escapeHtml(String(history.to_office || "").trim() || "Unassigned");
-                const changedAt = escapeHtml(formatHistoryTimestamp(history.changed_at));
-                const changedBy = escapeHtml(String(history.changed_by || "").trim());
+              officeTimeline.map((item) => {
+                const office = escapeHtml(String(item.office || "").trim() || "Unassigned");
+                const startedAt = escapeHtml(formatHistoryTimestamp(item.started_at) || "Date not recorded");
+                const endedAt = escapeHtml(formatHistoryTimestamp(item.ended_at));
+                const movedTo = escapeHtml(String(item.moved_to || "").trim());
+                const changedBy = escapeHtml(String(item.changed_by || "").trim());
+                const isCurrent = item.is_current === true;
                 return '<div class="mb-3 rounded-lg border border-[#dbe7ff] bg-[#f8fbff] px-4 py-3">' +
-                  '<div class="grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center">' +
-                    '<div><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">From</p><p class="text-sm font-semibold text-[#052c6a]">' + fromOffice + '</p></div>' +
-                    '<div class="text-center text-[#0d8ddb]"><i class="fas fa-arrow-right"></i></div>' +
-                    '<div><p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">To</p><p class="text-sm font-semibold text-[#052c6a]">' + toOffice + '</p></div>' +
+                  '<div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">' +
+                    '<div>' +
+                      '<p class="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Assigned Office</p>' +
+                      '<p class="text-sm font-semibold text-[#052c6a]">' + office + '</p>' +
+                    '</div>' +
+                    (isCurrent ? '<span class="inline-flex rounded-full bg-green-50 px-2 py-1 text-[10px] font-semibold text-green-700">Current</span>' : '') +
                   '</div>' +
-                  '<p class="mt-2 text-[11px] text-slate-500">' + changedAt + (changedBy ? ' by ' + changedBy : '') + '</p>' +
+                  '<div class="mt-3 grid gap-2 text-[11px] text-slate-600 sm:grid-cols-2">' +
+                    '<p><span class="font-semibold text-slate-700">Started:</span> ' + startedAt + '</p>' +
+                    (isCurrent
+                      ? '<p><span class="font-semibold text-slate-700">Status:</span> Current office</p>'
+                      : '<p><span class="font-semibold text-slate-700">Moved:</span> ' + (endedAt !== "" ? endedAt : "Date not recorded") + (movedTo !== "" ? ' to ' + movedTo : '') + '</p>') +
+                  '</div>' +
+                  (!isCurrent && changedBy ? '<p class="mt-2 text-[11px] text-slate-500">Updated by ' + changedBy + '</p>' : '') +
                 '</div>';
               }).join("") +
             '</div>';

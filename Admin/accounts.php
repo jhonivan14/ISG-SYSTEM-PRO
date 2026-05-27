@@ -6,6 +6,7 @@ require_once "../db.php";
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 require_once "../scholarship-program-options.php";
+require_once "../scholarship-grants.php";
 
 $resetMessage = "";
 $resetError = "";
@@ -15,8 +16,11 @@ $schoolTermSettingsMessage = "";
 $schoolTermSettingsError = "";
 $programSettingsMessage = "";
 $programSettingsError = "";
+$grantSettingsMessage = "";
+$grantSettingsError = "";
 $panelistAccounts = [];
 $headOfficeAccounts = [];
+$scholarshipGrants = [];
 $programOptionGroups = [
   "senior_high" => [],
   "college" => [],
@@ -27,6 +31,7 @@ $headOfficeError = "";
 $panelistFormError = "";
 $headOfficeFormError = "";
 $activeModal = "";
+$activeSettingsPanel = "school-term";
 $panelistFormData = [
   "username" => "",
   "full_name" => "",
@@ -43,6 +48,14 @@ $headOfficeFormData = [
 // Handle password resets, account updates, and account creation requests before loading the account tables.
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+  if (isset($_POST["add_scholarship_grant"]) || isset($_POST["update_scholarship_grant"]) || isset($_POST["remove_scholarship_grant"])) {
+    $activeSettingsPanel = "grants";
+  } elseif (isset($_POST["add_program_option"]) || isset($_POST["remove_program_option"]) || isset($_POST["update_program_option"])) {
+    $activeSettingsPanel = "programs";
+  } elseif (isset($_POST["reset_account_password"]) || isset($_POST["update_account"]) || isset($_POST["create_account"])) {
+    $activeSettingsPanel = "accounts";
+  }
+
   if (isset($_POST["reset_account_password"])) {
     $accountType = trim((string)($_POST["account_type"] ?? ""));
     $resetUsername = trim((string)($_POST["reset_username"] ?? ""));
@@ -178,6 +191,39 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     if (isg_update_program_option($conn, $programOptionId, $programName, $programSettingsError)) {
       $programSettingsMessage = "Program option updated.";
+    }
+  } elseif (isset($_POST["add_scholarship_grant"])) {
+    $grantTitle = trim((string)($_POST["grant_title"] ?? ""));
+    $grantCategory = trim((string)($_POST["grant_category_label"] ?? ""));
+    $grantBadge = trim((string)($_POST["grant_badge_label"] ?? ""));
+    $grantDescription = trim((string)($_POST["grant_description"] ?? ""));
+    $grantQualification = trim((string)($_POST["grant_qualification_text"] ?? ""));
+    $grantProgram = trim((string)($_POST["grant_program_text"] ?? ""));
+    $grantBenefits = trim((string)($_POST["grant_benefits_text"] ?? ""));
+    $grantRequirements = isg_parse_requirement_lines((string)($_POST["grant_requirements"] ?? ""));
+
+    if (isg_add_scholarship_grant($conn, $grantTitle, $grantCategory, $grantBadge, $grantDescription, $grantQualification, $grantProgram, $grantBenefits, $grantRequirements, $grantSettingsError)) {
+      $grantSettingsMessage = "Grant added. Applicant pages will use the updated list.";
+    }
+  } elseif (isset($_POST["update_scholarship_grant"])) {
+    $grantId = (int)($_POST["grant_id"] ?? 0);
+    $grantTitle = trim((string)($_POST["grant_title"] ?? ""));
+    $grantCategory = trim((string)($_POST["grant_category_label"] ?? ""));
+    $grantBadge = trim((string)($_POST["grant_badge_label"] ?? ""));
+    $grantDescription = trim((string)($_POST["grant_description"] ?? ""));
+    $grantQualification = trim((string)($_POST["grant_qualification_text"] ?? ""));
+    $grantProgram = trim((string)($_POST["grant_program_text"] ?? ""));
+    $grantBenefits = trim((string)($_POST["grant_benefits_text"] ?? ""));
+    $grantRequirements = isg_parse_requirement_lines((string)($_POST["grant_requirements"] ?? ""));
+
+    if (isg_update_scholarship_grant($conn, $grantId, $grantTitle, $grantCategory, $grantBadge, $grantDescription, $grantQualification, $grantProgram, $grantBenefits, $grantRequirements, $grantSettingsError)) {
+      $grantSettingsMessage = "Grant updated. Applicant upload requirements now follow the saved list.";
+    }
+  } elseif (isset($_POST["remove_scholarship_grant"])) {
+    $grantId = (int)($_POST["grant_id"] ?? 0);
+
+    if (isg_deactivate_scholarship_grant($conn, $grantId, $grantSettingsError)) {
+      $grantSettingsMessage = "Grant removed from the applicant selection list.";
     }
   } elseif (isset($_POST["update_account"])) {
     $updateAccountType = trim((string)($_POST["update_account_type"] ?? ""));
@@ -465,6 +511,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     }
   }
 }
+
+isg_ensure_scholarship_grants_tables($conn);
+$scholarshipGrants = isg_load_scholarship_grants($conn);
 
 isg_ensure_program_options_table($conn);
 foreach (array_keys($programOptionGroups) as $categoryKey) {
@@ -764,7 +813,46 @@ if ($headOfficeResult) {
           </div>
         </section>
 
-        <section class="order-1 px-4 sm:px-6 pt-6">
+        <section class="px-4 sm:px-6 pt-6">
+          <div class="rounded-xl border border-[#0d8ddb]/25 bg-white p-3 shadow-sm">
+            <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              <button
+                type="button"
+                data-settings-tab="school-term"
+                class="settings-tab rounded-lg border border-[#0d8ddb]/30 px-4 py-3 text-left text-xs font-semibold text-[#052c6a] transition hover:border-[#0d8ddb] hover:bg-[#eef7ff]"
+              >
+                <span class="block text-[11px] uppercase tracking-wide text-[#0d8ddb]">Manage</span>
+                School Term
+              </button>
+              <button
+                type="button"
+                data-settings-tab="grants"
+                class="settings-tab rounded-lg border border-[#0d8ddb]/30 px-4 py-3 text-left text-xs font-semibold text-[#052c6a] transition hover:border-[#0d8ddb] hover:bg-[#eef7ff]"
+              >
+                <span class="block text-[11px] uppercase tracking-wide text-[#0d8ddb]">Manage</span>
+                Grants & Requirements
+              </button>
+              <button
+                type="button"
+                data-settings-tab="programs"
+                class="settings-tab rounded-lg border border-[#0d8ddb]/30 px-4 py-3 text-left text-xs font-semibold text-[#052c6a] transition hover:border-[#0d8ddb] hover:bg-[#eef7ff]"
+              >
+                <span class="block text-[11px] uppercase tracking-wide text-[#0d8ddb]">Manage</span>
+                Program Options
+              </button>
+              <button
+                type="button"
+                data-settings-tab="accounts"
+                class="settings-tab rounded-lg border border-[#0d8ddb]/30 px-4 py-3 text-left text-xs font-semibold text-[#052c6a] transition hover:border-[#0d8ddb] hover:bg-[#eef7ff]"
+              >
+                <span class="block text-[11px] uppercase tracking-wide text-[#0d8ddb]">Manage</span>
+                Accounts
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-panel px-4 sm:px-6 pt-6" data-settings-panel="school-term">
           <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -778,17 +866,6 @@ if ($headOfficeResult) {
                 <span><?= htmlspecialchars($displaySchoolYear) ?> / <?= htmlspecialchars($displaySemester) ?></span>
               </div>
             </div>
-
-            <?php if ($schoolTermSettingsMessage !== ""): ?>
-              <div class="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                <?= htmlspecialchars($schoolTermSettingsMessage) ?>
-              </div>
-            <?php endif; ?>
-            <?php if ($schoolTermSettingsError !== ""): ?>
-              <div class="mt-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <?= htmlspecialchars($schoolTermSettingsError) ?>
-              </div>
-            <?php endif; ?>
 
             <div class="mt-5 grid gap-4 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1fr)]">
               <form method="POST" class="rounded-xl border border-[#0d8ddb]/30 bg-[#f8fbff] p-4">
@@ -862,7 +939,154 @@ if ($headOfficeResult) {
           </div>
         </section>
 
-        <section class="order-4 px-4 sm:px-6 pt-6 pb-6">
+        <section class="settings-panel hidden px-4 sm:px-6 pt-6" data-settings-panel="grants">
+          <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
+            <div class="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-[#0d8ddb] text-sm font-semibold">Grant and Requirement Settings</p>
+                <p class="text-xs text-[#052c6a]">
+                  Manage the grants shown in the applicant Step 1 page and the documents required in Step 3 uploads.
+                </p>
+              </div>
+              <div class="inline-flex w-fit items-center gap-2 rounded-full border border-[#0d8ddb]/25 bg-[#eef7ff] px-3 py-2 text-[11px] font-semibold text-[#052c6a]">
+                <i class="fas fa-tasks text-[#0d8ddb]"></i>
+                <span><?= htmlspecialchars((string)count($scholarshipGrants)) ?> active grants</span>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-dashed border-[#0d8ddb]/40 bg-[#f8fbff] px-4 py-4">
+              <button
+                type="button"
+                data-open-modal="grantModal"
+                class="inline-flex items-center justify-center gap-2 rounded-full bg-[#0d8ddb] px-5 py-2 text-[11px] font-semibold uppercase tracking-wide text-white shadow-sm hover:bg-[#0b7bbf]"
+              >
+                <i class="fas fa-plus text-[10px]"></i>
+                Add Grant
+              </button>
+            </div>
+
+            <div class="mt-5 space-y-4">
+              <?php if (empty($scholarshipGrants)): ?>
+                <div class="rounded-lg border border-dashed border-[#0d8ddb]/40 bg-[#f8fbff] px-4 py-4 text-sm text-[#052c6a]/70">
+                  No active grants configured.
+                </div>
+              <?php else: ?>
+                <?php foreach ($scholarshipGrants as $grant): ?>
+                  <?php
+                    $grantId = (int)($grant["grant_id"] ?? 0);
+                    $requirementText = implode("\n", $grant["requirements"] ?? []);
+                  ?>
+                  <form method="POST" class="rounded-xl border border-[#0d8ddb]/25 bg-white p-4">
+                    <input type="hidden" name="grant_id" value="<?= htmlspecialchars((string)$grantId) ?>" />
+                    <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                      <div class="min-w-0 flex-1">
+                        <p class="text-[11px] font-semibold uppercase tracking-wide text-[#0d8ddb]">
+                          Grant #<?= htmlspecialchars((string)$grantId) ?>
+                        </p>
+                        <div class="mt-3 grid gap-3 lg:grid-cols-3">
+                          <div>
+                            <label class="text-xs font-semibold text-[#052c6a]">Title</label>
+                            <input
+                              type="text"
+                              name="grant_title"
+                              value="<?= htmlspecialchars((string)($grant["title"] ?? "")) ?>"
+                              class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <label class="text-xs font-semibold text-[#052c6a]">Category Label</label>
+                            <input
+                              type="text"
+                              name="grant_category_label"
+                              value="<?= htmlspecialchars((string)($grant["category_label"] ?? "")) ?>"
+                              class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                            />
+                          </div>
+                          <div>
+                            <label class="text-xs font-semibold text-[#052c6a]">Badge Label</label>
+                            <input
+                              type="text"
+                              name="grant_badge_label"
+                              value="<?= htmlspecialchars((string)($grant["badge_label"] ?? "")) ?>"
+                              class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                            />
+                          </div>
+                        </div>
+                        <div class="mt-3 grid gap-3 lg:grid-cols-2">
+                          <div>
+                            <label class="text-xs font-semibold text-[#052c6a]">Applicant Page Description</label>
+                            <textarea
+                              name="grant_description"
+                              rows="4"
+                              class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                            ><?= htmlspecialchars((string)($grant["description"] ?? "")) ?></textarea>
+                          </div>
+                          <div>
+                            <label class="text-xs font-semibold text-[#052c6a]">Qualifications</label>
+                            <textarea
+                              name="grant_qualification_text"
+                              rows="4"
+                              class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                            ><?= htmlspecialchars((string)($grant["qualification_text"] ?? "")) ?></textarea>
+                          </div>
+                        </div>
+                        <div class="mt-3 grid gap-3 lg:grid-cols-3">
+                          <div>
+                            <label class="text-xs font-semibold text-[#052c6a]">Eligible Programs / Courses</label>
+                            <textarea
+                              name="grant_program_text"
+                              rows="4"
+                              class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                            ><?= htmlspecialchars((string)($grant["program_text"] ?? "")) ?></textarea>
+                          </div>
+                          <div>
+                            <label class="text-xs font-semibold text-[#052c6a]">Benefits</label>
+                            <textarea
+                              name="grant_benefits_text"
+                              rows="4"
+                              class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                            ><?= htmlspecialchars((string)($grant["benefits_text"] ?? "")) ?></textarea>
+                          </div>
+                          <div>
+                            <label class="text-xs font-semibold text-[#052c6a]">Upload Requirements</label>
+                            <textarea
+                              name="grant_requirements"
+                              rows="4"
+                              class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                            ><?= htmlspecialchars($requirementText) ?></textarea>
+                            <p class="mt-1 text-[11px] text-[#052c6a]/70">One requirement per line. This controls the applicant upload fields.</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="flex shrink-0 gap-2 xl:flex-col">
+                        <button
+                          type="submit"
+                          name="update_scholarship_grant"
+                          value="1"
+                          class="rounded-full bg-[#052c6a] px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b3d86]"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="submit"
+                          name="remove_scholarship_grant"
+                          value="1"
+                          class="rounded-full bg-red-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-red-700 hover:bg-red-100"
+                          onclick="return confirm('Remove this grant from applicant selection? Existing submitted applications will remain unchanged.');"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  </form>
+                <?php endforeach; ?>
+              <?php endif; ?>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-panel hidden px-4 sm:px-6 pt-6 pb-6" data-settings-panel="programs">
           <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
             <div class="mb-4">
               <p class="text-[#0d8ddb] text-sm font-semibold">Application Program Settings</p>
@@ -870,17 +1094,6 @@ if ($headOfficeResult) {
                 Manage the dropdown choices shown in the applicant form for Senior High, College, and Student Assistant applicants.
               </p>
             </div>
-
-            <?php if ($programSettingsMessage !== ""): ?>
-              <div class="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-                <?= htmlspecialchars($programSettingsMessage) ?>
-              </div>
-            <?php endif; ?>
-            <?php if ($programSettingsError !== ""): ?>
-              <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                <?= htmlspecialchars($programSettingsError) ?>
-              </div>
-            <?php endif; ?>
 
             <div class="grid gap-4 xl:grid-cols-3">
               <?php
@@ -970,7 +1183,7 @@ if ($headOfficeResult) {
           </div>
         </section>
 
-        <section class="order-2 px-4 sm:px-6 pt-6">
+        <section class="settings-panel hidden px-4 sm:px-6 pt-6" data-settings-panel="accounts">
           <div class="rounded-xl border border-[#0d8ddb] bg-white p-5 shadow-sm">
             <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -1179,6 +1392,133 @@ if ($headOfficeResult) {
           </div>
         </section>
          
+
+        <!-- Add Grant Modal -->
+        <div
+          id="grantModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/60 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="grant-modal-title"
+        >
+          <div class="absolute inset-0" data-close-modal="grantModal"></div>
+          <div class="relative z-10 max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[#0d8ddb]/20 bg-white shadow-2xl">
+            <div class="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0d8ddb]">Grant Settings</p>
+                <h3 id="grant-modal-title" class="text-lg font-semibold text-[#052c6a]">Add Grant or Discount</h3>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                data-close-modal="grantModal"
+              >
+                Close
+              </button>
+            </div>
+            <div class="px-6 py-5">
+              <form method="POST" class="grid gap-4">
+                <div class="grid gap-3 lg:grid-cols-3">
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]">Title</label>
+                    <input
+                      type="text"
+                      name="grant_title"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                      placeholder="e.g. New Scholarship Grant"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]">Category Label</label>
+                    <input
+                      type="text"
+                      name="grant_category_label"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                      placeholder="Scholarship Category"
+                    />
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]">Badge Label</label>
+                    <input
+                      type="text"
+                      name="grant_badge_label"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                      placeholder="Open for Application"
+                    />
+                  </div>
+                </div>
+                <div class="grid gap-3 lg:grid-cols-2">
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]">Applicant Page Description</label>
+                    <textarea
+                      name="grant_description"
+                      rows="4"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                      placeholder="Short instructions or qualifications shown on the applicant page."
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]">Qualifications</label>
+                    <textarea
+                      name="grant_qualification_text"
+                      rows="4"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                      placeholder="One qualification per line"
+                    ></textarea>
+                  </div>
+                </div>
+                <div class="grid gap-3 lg:grid-cols-3">
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]">Eligible Programs / Courses</label>
+                    <textarea
+                      name="grant_program_text"
+                      rows="4"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                      placeholder="Optional. One program or course per line"
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]">Benefits</label>
+                    <textarea
+                      name="grant_benefits_text"
+                      rows="4"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                      placeholder="One benefit per line"
+                    ></textarea>
+                  </div>
+                  <div>
+                    <label class="text-xs font-semibold text-[#052c6a]">Upload Requirements</label>
+                    <textarea
+                      name="grant_requirements"
+                      rows="4"
+                      class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-3 py-2 text-xs text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring-2 focus:ring-[#0d8ddb]/20"
+                      placeholder="One requirement per line"
+                    ></textarea>
+                    <p class="mt-1 text-[11px] text-[#052c6a]/70">Leave blank if no document upload is required.</p>
+                  </div>
+                </div>
+                <div class="flex flex-wrap justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    class="rounded-full border border-slate-300 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400 hover:text-slate-700"
+                    data-close-modal="grantModal"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    name="add_scholarship_grant"
+                    value="1"
+                    class="rounded-full bg-[#0d8ddb] px-6 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow hover:bg-[#0b7bbf]"
+                  >
+                    Save Grant
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
 
         <!-- Panelist Modal -->
         <div
@@ -1667,6 +2007,30 @@ if ($headOfficeResult) {
           message: <?= json_encode($accountError, JSON_UNESCAPED_SLASHES) ?>,
           type: "error",
         },
+        {
+          message: <?= json_encode($schoolTermSettingsMessage, JSON_UNESCAPED_SLASHES) ?>,
+          type: "success",
+        },
+        {
+          message: <?= json_encode($schoolTermSettingsError, JSON_UNESCAPED_SLASHES) ?>,
+          type: "error",
+        },
+        {
+          message: <?= json_encode($grantSettingsMessage, JSON_UNESCAPED_SLASHES) ?>,
+          type: "success",
+        },
+        {
+          message: <?= json_encode($grantSettingsError, JSON_UNESCAPED_SLASHES) ?>,
+          type: "error",
+        },
+        {
+          message: <?= json_encode($programSettingsMessage, JSON_UNESCAPED_SLASHES) ?>,
+          type: "success",
+        },
+        {
+          message: <?= json_encode($programSettingsError, JSON_UNESCAPED_SLASHES) ?>,
+          type: "error",
+        },
       ].filter((item) => item.message);
 
       function showAccountToast(message, type) {
@@ -1704,6 +2068,7 @@ if ($headOfficeResult) {
         const toggleBtn = document.getElementById("sidebarToggle");
         // Restore modal state after validation errors and wire sidebar plus modal interactions.
         const initialModal = <?= json_encode($activeModal) ?>;
+        const initialSettingsPanel = <?= json_encode($activeSettingsPanel) ?> || "school-term";
 
         const setModalState = (modalId, isOpen) => {
           const modal = document.getElementById(modalId);
@@ -1715,6 +2080,37 @@ if ($headOfficeResult) {
           modal.classList.toggle("flex", isOpen);
           document.body.classList.toggle("overflow-hidden", isOpen);
         };
+
+        const settingsTabs = document.querySelectorAll("[data-settings-tab]");
+        const settingsPanels = document.querySelectorAll("[data-settings-panel]");
+        const setSettingsPanel = (panelKey) => {
+          const nextPanelKey = panelKey || "school-term";
+          settingsPanels.forEach((panel) => {
+            panel.classList.toggle("hidden", panel.getAttribute("data-settings-panel") !== nextPanelKey);
+          });
+          settingsTabs.forEach((tab) => {
+            const isActive = tab.getAttribute("data-settings-tab") === nextPanelKey;
+            tab.classList.toggle("border-[#0d8ddb]", isActive);
+            tab.classList.toggle("bg-[#052c6a]", isActive);
+            tab.classList.toggle("text-white", isActive);
+            tab.classList.toggle("shadow-sm", isActive);
+            tab.classList.toggle("border-[#0d8ddb]/30", !isActive);
+            tab.classList.toggle("text-[#052c6a]", !isActive);
+            const eyebrow = tab.querySelector("span");
+            if (eyebrow) {
+              eyebrow.classList.toggle("text-blue-100", isActive);
+              eyebrow.classList.toggle("text-[#0d8ddb]", !isActive);
+            }
+          });
+        };
+
+        settingsTabs.forEach((tab) => {
+          tab.addEventListener("click", () => {
+            setSettingsPanel(tab.getAttribute("data-settings-tab") || "school-term");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          });
+        });
+        setSettingsPanel(initialSettingsPanel);
 
         if (toggleBtn && sidebar) {
           toggleBtn.addEventListener("click", () => {

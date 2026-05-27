@@ -9,6 +9,7 @@ require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 
 $summaryRecords = [];
 $summaryLoadError = "";
+$showExcellentOnly = isset($_GET["excellent"]) && trim((string)$_GET["excellent"]) === "1";
 
 // Helpers below standardize weighted mean formatting before the printable summary is rendered.
 
@@ -45,6 +46,24 @@ $verbalFromAverage = static function (?float $value): string {
   return "Poor";
 };
 
+$formatCertificateDate = static function (?int $timestamp = null): string {
+  $timestamp = $timestamp ?? time();
+  $day = (int)date("j", $timestamp);
+  $suffix = "th";
+  if ($day % 100 < 11 || $day % 100 > 13) {
+    $lastDigit = $day % 10;
+    if ($lastDigit === 1) {
+      $suffix = "st";
+    } elseif ($lastDigit === 2) {
+      $suffix = "nd";
+    } elseif ($lastDigit === 3) {
+      $suffix = "rd";
+    }
+  }
+
+  return $day . $suffix . " day of " . date("F Y", $timestamp);
+};
+
 if (($conn ?? null) instanceof mysqli) {
   $evaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
   $hasEvaluationTable = $evaluationTableResult instanceof mysqli_result && $evaluationTableResult->num_rows > 0;
@@ -73,6 +92,9 @@ if (($conn ?? null) instanceof mysqli) {
         id,
         application_id,
         applicant_name,
+        assigned_office,
+        semester,
+        school_year,
         overall_total,
         strengths,
         recommendations,
@@ -106,6 +128,9 @@ if (($conn ?? null) instanceof mysqli) {
           $summaryRecords[] = [
             "application_id" => $applicationId,
             "name" => trim((string)($row["applicant_name"] ?? "")),
+            "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
+            "semester" => trim((string)($row["semester"] ?? "")),
+            "school_year" => trim((string)($row["school_year"] ?? "")),
             "weighted_mean" => $weightedMean,
             "verbal_description" => $verbalFromAverage($weightedMean),
             "strengths" => trim((string)($row["strengths"] ?? "")),
@@ -128,6 +153,13 @@ if (($conn ?? null) instanceof mysqli) {
 }
 
 if (!empty($summaryRecords)) {
+  if ($showExcellentOnly) {
+    $summaryRecords = array_values(array_filter($summaryRecords, static function (array $record): bool {
+      $weightedMean = $record["weighted_mean"] ?? null;
+      return is_numeric($weightedMean) && abs(((float)$weightedMean) - 4.0) < 0.00001;
+    }));
+  }
+
   usort($summaryRecords, static function (array $left, array $right): int {
     $leftName = strtolower(trim((string)($left["name"] ?? "")));
     $rightName = strtolower(trim((string)($right["name"] ?? "")));
@@ -139,6 +171,17 @@ if (!empty($summaryRecords)) {
 }
 
 $headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "All Semesters";
+$excellentFilterParams = [];
+if ($activeSchoolYearFilter !== "") {
+  $excellentFilterParams["school_year"] = $activeSchoolYearFilter;
+}
+if ($activeSemesterFilter !== "") {
+  $excellentFilterParams["semester"] = $activeSemesterFilter;
+}
+$allReportParams = $excellentFilterParams;
+$excellentFilterParams["excellent"] = "1";
+$excellentReportUrl = "summary-report.php?" . http_build_query($excellentFilterParams);
+$allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_build_query($allReportParams)) : "");
 ?>
 <html lang="en">
   <head>
@@ -150,8 +193,8 @@ $headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "A
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet" />
     <style>
       @page {
-        size: 8.5in 13in;
-        margin: 12mm 10mm;
+        size: <?php echo $showExcellentOnly ? "letter landscape" : "8.5in 13in"; ?>;
+        margin: <?php echo $showExcellentOnly ? "0" : "12mm 10mm"; ?>;
       }
 
       ::-webkit-scrollbar {
@@ -280,6 +323,339 @@ $headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "A
         line-height: 1.3;
       }
 
+      .excellent-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        overflow: hidden;
+        border: 1px solid #b7c9e8;
+        border-radius: 8px;
+        background: #ffffff;
+      }
+
+      .excellent-table thead th {
+        background: #052c6a;
+        color: #ffffff;
+        font-size: 11px;
+        letter-spacing: 0.04em;
+        padding: 10px 12px;
+        text-align: left;
+        text-transform: uppercase;
+      }
+
+      .excellent-table tbody td {
+        border-top: 1px solid #dbe7ff;
+        color: #052c6a;
+        padding: 11px 12px;
+        vertical-align: middle;
+      }
+
+      .excellent-table tbody tr:nth-child(even) {
+        background: #f8fbff;
+      }
+
+      .excellent-rank {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 24px;
+        color: #052c6a;
+        font-weight: 800;
+      }
+
+      .excellent-score {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 68px;
+        border-radius: 999px;
+        background: #e8f3ff;
+        border: 1px solid #8fc8ef;
+        color: #052c6a;
+        font-weight: 800;
+        padding: 5px 12px;
+      }
+
+      .excellent-badge {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        background: #ecfdf5;
+        border: 1px solid #a7f3d0;
+        color: #047857;
+        font-size: 11px;
+        font-weight: 800;
+        padding: 5px 12px;
+      }
+
+      .certificate-view-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        border: 1px solid #0d8ddb;
+        background: #0d8ddb;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 800;
+        padding: 7px 12px;
+        transition: background-color 0.16s ease, transform 0.16s ease;
+      }
+
+      .certificate-view-btn:hover {
+        background: #0a6fac;
+        transform: translateY(-1px);
+      }
+
+      .certificate-stack {
+        margin-top: 1.5rem;
+        display: grid;
+        gap: 1.25rem;
+      }
+
+      .certificate-templates {
+        display: none;
+      }
+
+      .certificate-modal[hidden] {
+        display: none !important;
+      }
+
+      .certificate-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(15, 23, 42, 0.68);
+        padding: 18px;
+      }
+
+      .certificate-modal-panel {
+        width: min(1120px, 100%);
+        max-height: 94vh;
+        overflow: auto;
+        border-radius: 12px;
+        background: #f8fafc;
+        box-shadow: 0 24px 80px rgba(15, 23, 42, 0.36);
+      }
+
+      .certificate-modal-bar {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid #dbe7ff;
+        background: #ffffff;
+        padding: 12px 14px;
+      }
+
+      .certificate-modal-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .certificate-modal-btn {
+        border-radius: 999px;
+        border: 1px solid #0d8ddb;
+        background: #0d8ddb;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 800;
+        padding: 8px 13px;
+      }
+
+      .certificate-modal-btn.secondary {
+        background: #ffffff;
+        color: #052c6a;
+      }
+
+      .certificate-modal-content {
+        padding: 18px;
+      }
+
+      .certificate-page {
+        position: relative;
+        overflow: hidden;
+        min-height: 720px;
+        border: 10px solid #052c6a;
+        background:
+          linear-gradient(78deg, #052c6a 0 4.2%, #c88921 4.2% 4.75%, #052c6a 4.75% 6.4%, transparent 6.45%) left center / 52% 100% no-repeat,
+          linear-gradient(282deg, #052c6a 0 4.2%, #c88921 4.2% 4.75%, #052c6a 4.75% 6.4%, transparent 6.45%) right center / 52% 100% no-repeat,
+          #ffffff;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+        color: #111827;
+        padding: 30px 62px 28px;
+      }
+
+      .certificate-page::before {
+        content: "";
+        position: absolute;
+        inset: 16px;
+        border: 2px solid #fcdc2f;
+        pointer-events: none;
+      }
+
+      .certificate-page::after {
+        content: "";
+        position: absolute;
+        inset: 42px;
+        border: 1px solid rgba(5, 44, 106, 0.25);
+        pointer-events: none;
+      }
+
+      .certificate-inner {
+        position: relative;
+        z-index: 1;
+        min-height: 650px;
+        padding: 0 4px;
+      }
+
+      .certificate-school {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        border-bottom: 2px solid #052c6a;
+        padding-bottom: 9px;
+      }
+
+      .certificate-logo-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .certificate-school img {
+        width: 70px;
+        height: 70px;
+        object-fit: contain;
+      }
+
+      .certificate-school-text {
+        flex: 1;
+        text-align: center;
+        line-height: 1.18;
+      }
+
+      .certificate-school-text h3 {
+        margin: 0;
+        color: #052c6a;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 27px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+
+      .certificate-school-text p {
+        margin: 2px 0 0;
+        font-size: 12.5px;
+      }
+
+      .certificate-office {
+        color: #052c6a;
+        font-size: 14.5px;
+        font-weight: 800;
+        margin-top: 4px;
+        text-transform: uppercase;
+      }
+
+      .certificate-title {
+        margin-top: 24px;
+        text-align: center;
+      }
+
+      .certificate-title h2 {
+        color: #111827;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 45px;
+        font-weight: 800;
+        margin: 0;
+      }
+
+      .certificate-presented {
+        margin-top: 16px;
+        text-align: center;
+        font-size: 16.5px;
+        font-weight: 700;
+      }
+
+      .certificate-name {
+        margin: 20px auto 18px;
+        max-width: 720px;
+        border-bottom: 2px solid #334155;
+        color: #1f2937;
+        font-family: "Brush Script MT", "Segoe Script", Georgia, serif;
+        font-size: 55px;
+        font-style: italic;
+        line-height: 1.1;
+        text-align: center;
+      }
+
+      .certificate-body {
+        margin: 0 auto;
+        max-width: 1010px;
+        text-align: center;
+        font-size: 17.5px;
+        line-height: 1.55;
+      }
+
+      .certificate-body p {
+        margin: 0 0 18px;
+      }
+
+      .certificate-body strong {
+        color: #052c6a;
+      }
+
+      .certificate-date {
+        margin-top: 22px;
+        padding-top: 0;
+        text-align: center;
+        font-size: 16.5px;
+        font-weight: 700;
+      }
+
+      .certificate-signatories {
+        margin-top: 54px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 42px 46px;
+        text-align: center;
+      }
+
+      .certificate-signatory:nth-child(4) {
+        grid-column: 1 / span 1;
+      }
+
+      .certificate-signatory:nth-child(5) {
+        grid-column: 2 / span 2;
+        justify-self: center;
+        width: min(360px, 100%);
+      }
+
+      .certificate-sign-line {
+        border-bottom: 1.5px solid #111827;
+        height: 24px;
+        margin-bottom: 7px;
+      }
+
+      .certificate-sign-name {
+        font-size: 14.5px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .certificate-sign-role {
+        font-size: 13.5px;
+      }
+
       @media print {
         #sidebar,
         .topbar,
@@ -365,6 +741,138 @@ $headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "A
           word-break: normal !important;
           overflow-wrap: normal !important;
           line-height: 1.25 !important;
+        }
+
+        .excellent-table {
+          border-collapse: collapse !important;
+          border-radius: 0 !important;
+          font-size: 11px !important;
+        }
+
+        .excellent-table th,
+        .excellent-table td {
+          border: 1px solid #000 !important;
+          padding: 6px 8px !important;
+        }
+
+        .excellent-rank,
+        .excellent-score,
+        .excellent-badge {
+          border-radius: 0 !important;
+          border: none !important;
+          background: transparent !important;
+          color: #000 !important;
+          min-width: 0 !important;
+          padding: 0 !important;
+        }
+
+        .certificate-stack {
+          display: block !important;
+          margin-top: 0 !important;
+        }
+
+        .certificate-page {
+          width: 11in !important;
+          height: 8.5in !important;
+          min-height: 0 !important;
+          box-sizing: border-box !important;
+          box-shadow: none !important;
+          break-after: page;
+          page-break-after: always;
+          margin: 0 auto !important;
+          padding: 0.26in 0.55in 0.24in !important;
+        }
+
+        .certificate-inner {
+          height: auto !important;
+          min-height: 0 !important;
+          padding: 0 0.03in !important;
+        }
+
+        .certificate-page:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+
+        .certificate-school {
+          gap: 0.16in !important;
+          padding-bottom: 0.08in !important;
+        }
+
+        .certificate-school img {
+          width: 0.68in !important;
+          height: 0.68in !important;
+        }
+
+        .certificate-school-text h3 {
+          font-size: 26px !important;
+          line-height: 1.05 !important;
+        }
+
+        .certificate-school-text p {
+          font-size: 11.5px !important;
+          line-height: 1.1 !important;
+        }
+
+        .certificate-office {
+          font-size: 13px !important;
+          line-height: 1.1 !important;
+        }
+
+        .certificate-title {
+          margin-top: 0.2in !important;
+        }
+
+        .certificate-title h2 {
+          font-size: 42px !important;
+          line-height: 1.05 !important;
+        }
+
+        .certificate-presented {
+          margin-top: 0.13in !important;
+          font-size: 15.5px !important;
+        }
+
+        .certificate-name {
+          font-size: 52px !important;
+          line-height: 1.02 !important;
+          margin-top: 0.14in !important;
+          margin-bottom: 0.12in !important;
+          max-width: 7.15in !important;
+        }
+
+        .certificate-body {
+          font-size: 15.8px !important;
+          line-height: 1.48 !important;
+          max-width: 9.25in !important;
+        }
+
+        .certificate-body p {
+          margin-bottom: 0.14in !important;
+        }
+
+        .certificate-date {
+          margin-top: 0.18in !important;
+          padding-top: 0 !important;
+          font-size: 14.8px !important;
+        }
+
+        .certificate-signatories {
+          margin-top: 0.45in !important;
+          gap: 0.24in 0.38in !important;
+        }
+
+        .certificate-sign-line {
+          height: 0.17in !important;
+          margin-bottom: 0.04in !important;
+        }
+
+        .certificate-sign-name {
+          font-size: 12.2px !important;
+        }
+
+        .certificate-sign-role {
+          font-size: 11.2px !important;
         }
       }
           #sidebar > nav > ul {
@@ -604,6 +1112,9 @@ $headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "A
         </section>
 
         <form class="term-filter-bar px-4 sm:px-6 mt-4 flex flex-wrap justify-end gap-2" method="get" action="summary-report.php">
+          <?php if ($showExcellentOnly): ?>
+            <input type="hidden" name="excellent" value="1" />
+          <?php endif; ?>
           <select
             class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
             name="school_year"
@@ -630,6 +1141,23 @@ $headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "A
               </option>
             <?php endforeach; ?>
           </select>
+          <?php if ($showExcellentOnly): ?>
+            <a
+              href="<?php echo htmlspecialchars($allReportUrl); ?>"
+              class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#0a6fac]"
+            >
+              <i class="fas fa-star text-[11px]"></i>
+              <span>Excellent Student Assistants</span>
+            </a>
+          <?php else: ?>
+            <a
+              href="<?php echo htmlspecialchars($excellentReportUrl); ?>"
+              class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-4 py-2 text-xs font-semibold text-[#052c6a] shadow-sm transition-colors hover:bg-[#eff6ff]"
+            >
+              <i class="fas fa-star text-[11px]"></i>
+              <span>Excellent Student Assistants</span>
+            </a>
+          <?php endif; ?>
           <button
             type="button"
             onclick="window.print()"
@@ -645,6 +1173,14 @@ $headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "A
               class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
             >
               Clear
+            </a>
+          <?php endif; ?>
+          <?php if ($showExcellentOnly): ?>
+            <a
+              href="<?php echo htmlspecialchars($allReportUrl); ?>"
+              class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
+            >
+              Show All
             </a>
           <?php endif; ?>
         </form>
@@ -683,64 +1219,207 @@ $headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "A
             <p class="text-center font-semibold title-line text-sm">OFFICE OF THE ADMISSION &amp; SCHOLARSHIP</p>
             <div class="thin-rule my-1"></div>
             <section class="text-center mb-4">
-              <h2 class="font-bold text-base">STUDENT ASSISTANTS' EVALUATION SUMMARY REPORT</h2>
+              <h2 class="font-bold text-base"><?php echo $showExcellentOnly ? "EXCELLENT STUDENT ASSISTANTS" : "STUDENT ASSISTANTS' EVALUATION SUMMARY REPORT"; ?></h2>
               <p class="font-semibold text-sm"><?php echo htmlspecialchars($headerSemesterLabel); ?>, S.Y. <?php echo htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years"); ?></p>
             </section>
 
             <div class="overflow-x-auto mb-6">
-              <table class="summary-table text-xs border border-black border-collapse">
-                <colgroup>
-                  <col class="col-seq" />
-                  <col class="col-name" />
-                  <col class="col-weighted" />
-                  <col class="col-verbal" />
-                  <col class="col-strength" />
-                  <col class="col-comment" />
-                </colgroup>
-                <thead>
-                  <tr class="bg-yellow-200">
-                    <th class="border border-black p-1">Seq.</th>
-                    <th class="border border-black p-1">NAME OF STUDENT ASSISTANT</th>
-                    <th class="border border-black p-1">Weighted<br />Mean</th>
-                    <th class="border border-black p-1">Verbal<br />Description</th>
-                    <th class="border border-black p-1">Strength(s)/Areas for Improvement</th>
-                    <th class="border border-black p-1">Evaluator's Comment(s)/Recommendation</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <?php if ($summaryLoadError !== ""): ?>
+              <?php if ($showExcellentOnly): ?>
+                <table class="excellent-table text-xs">
+                  <thead>
                     <tr>
-                      <td class="border border-black p-2 text-center" colspan="6"><?php echo htmlspecialchars($summaryLoadError); ?></td>
+                      <th style="width: 72px;">Seq.</th>
+                      <th>Name of Student Assistant</th>
+                      <th style="width: 190px;">Assigned Office</th>
+                      <th style="width: 150px;">Weighted Mean</th>
+                      <th style="width: 180px;">Distinction</th>
+                      <th style="width: 150px;">Certificate</th>
                     </tr>
-                  <?php elseif (empty($summaryRecords)): ?>
-                    <tr>
-                      <td class="border border-black p-2 text-center" colspan="6">No department evaluation results found for the selected term.</td>
-                    </tr>
-                  <?php else: ?>
-                    <?php foreach ($summaryRecords as $index => $record): ?>
+                  </thead>
+                  <tbody>
+                    <?php if ($summaryLoadError !== ""): ?>
                       <tr>
-                        <td class="border border-black p-1 text-center"><?php echo htmlspecialchars((string)($index + 1)); ?></td>
-                        <td class="border border-black p-1"><?php echo htmlspecialchars((string)($record["name"] !== "" ? $record["name"] : "N/A")); ?></td>
-                        <td class="border border-black p-1 text-center">
-                          <?php
-                            $weightedMean = $record["weighted_mean"];
-                            echo htmlspecialchars($formatAverage(is_numeric($weightedMean) ? (float)$weightedMean : null));
-                          ?>
-                        </td>
-                        <td class="border border-black p-1 text-center"><?php echo htmlspecialchars((string)($record["verbal_description"] ?? "")); ?></td>
-                        <td class="border border-black p-1 summary-text-cell">
-                          <?php echo $record["strengths"] !== "" ? nl2br(htmlspecialchars((string)$record["strengths"])) : "&nbsp;"; ?>
-                        </td>
-                        <td class="border border-black p-1 summary-text-cell">
-                          <?php echo $record["recommendations"] !== "" ? nl2br(htmlspecialchars((string)$record["recommendations"])) : "&nbsp;"; ?>
-                        </td>
+                        <td class="text-center" colspan="6"><?php echo htmlspecialchars($summaryLoadError); ?></td>
                       </tr>
-                    <?php endforeach; ?>
-                  <?php endif; ?>
-                </tbody>
-              </table>
+                    <?php elseif (empty($summaryRecords)): ?>
+                      <tr>
+                        <td class="text-center" colspan="6">No Excellent Student Assistants with a Weighted Mean of 4.00 found for the selected term.</td>
+                      </tr>
+                    <?php else: ?>
+                      <?php foreach ($summaryRecords as $index => $record): ?>
+                        <tr>
+                          <td><span class="excellent-rank"><?php echo htmlspecialchars((string)($index + 1)); ?></span></td>
+                          <td>
+                            <div class="font-bold text-[#052c6a]">
+                              <?php echo htmlspecialchars((string)($record["name"] !== "" ? $record["name"] : "N/A")); ?>
+                            </div>
+                          </td>
+                          <td><?php echo htmlspecialchars((string)($record["assigned_office"] !== "" ? $record["assigned_office"] : "N/A")); ?></td>
+                          <td>
+                            <span class="excellent-score">
+                              <?php
+                                $weightedMean = $record["weighted_mean"];
+                                echo htmlspecialchars($formatAverage(is_numeric($weightedMean) ? (float)$weightedMean : null));
+                              ?>
+                            </span>
+                          </td>
+                          <td><span class="excellent-badge">Excellent</span></td>
+                          <td>
+                            <button
+                              type="button"
+                              class="certificate-view-btn"
+                              data-certificate-id="certificate-<?php echo htmlspecialchars((string)$index); ?>"
+                            >
+                              View Certificate
+                            </button>
+                          </td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              <?php else: ?>
+                <table class="summary-table text-xs border border-black border-collapse">
+                  <colgroup>
+                    <col class="col-seq" />
+                    <col class="col-name" />
+                    <col class="col-weighted" />
+                    <col class="col-verbal" />
+                    <col class="col-strength" />
+                    <col class="col-comment" />
+                  </colgroup>
+                  <thead>
+                    <tr class="bg-yellow-200">
+                      <th class="border border-black p-1">Seq.</th>
+                      <th class="border border-black p-1">NAME OF STUDENT ASSISTANT</th>
+                      <th class="border border-black p-1">Weighted<br />Mean</th>
+                      <th class="border border-black p-1">Verbal<br />Description</th>
+                      <th class="border border-black p-1">Strength(s)/Areas for Improvement</th>
+                      <th class="border border-black p-1">Evaluator's Comment(s)/Recommendation</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <?php if ($summaryLoadError !== ""): ?>
+                      <tr>
+                        <td class="border border-black p-2 text-center" colspan="6"><?php echo htmlspecialchars($summaryLoadError); ?></td>
+                      </tr>
+                    <?php elseif (empty($summaryRecords)): ?>
+                      <tr>
+                        <td class="border border-black p-2 text-center" colspan="6">No department evaluation results found for the selected term.</td>
+                      </tr>
+                    <?php else: ?>
+                      <?php foreach ($summaryRecords as $index => $record): ?>
+                        <tr>
+                          <td class="border border-black p-1 text-center"><?php echo htmlspecialchars((string)($index + 1)); ?></td>
+                          <td class="border border-black p-1"><?php echo htmlspecialchars((string)($record["name"] !== "" ? $record["name"] : "N/A")); ?></td>
+                          <td class="border border-black p-1 text-center">
+                            <?php
+                              $weightedMean = $record["weighted_mean"];
+                              echo htmlspecialchars($formatAverage(is_numeric($weightedMean) ? (float)$weightedMean : null));
+                            ?>
+                          </td>
+                          <td class="border border-black p-1 text-center"><?php echo htmlspecialchars((string)($record["verbal_description"] ?? "")); ?></td>
+                          <td class="border border-black p-1 summary-text-cell">
+                            <?php echo $record["strengths"] !== "" ? nl2br(htmlspecialchars((string)$record["strengths"])) : "&nbsp;"; ?>
+                          </td>
+                          <td class="border border-black p-1 summary-text-cell">
+                            <?php echo $record["recommendations"] !== "" ? nl2br(htmlspecialchars((string)$record["recommendations"])) : "&nbsp;"; ?>
+                          </td>
+                        </tr>
+                      <?php endforeach; ?>
+                    <?php endif; ?>
+                  </tbody>
+                </table>
+              <?php endif; ?>
             </div>
 
+            <?php if ($showExcellentOnly && $summaryLoadError === "" && !empty($summaryRecords)): ?>
+              <div class="certificate-templates" aria-hidden="true">
+                <?php foreach ($summaryRecords as $index => $record): ?>
+                  <?php
+                    $certificateName = trim((string)($record["name"] ?? ""));
+                    $certificateName = $certificateName !== "" ? $certificateName : "Student Assistant";
+                    $certificateMean = $formatAverage(is_numeric($record["weighted_mean"] ?? null) ? (float)$record["weighted_mean"] : null);
+                    $certificateSemester = trim((string)($record["semester"] ?? ""));
+                    $certificateSemester = $certificateSemester !== "" ? $certificateSemester : $headerSemesterLabel;
+                    $certificateSchoolYear = trim((string)($record["school_year"] ?? ""));
+                    $certificateSchoolYear = $certificateSchoolYear !== "" ? $certificateSchoolYear : ($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years");
+                    $certificateDate = $formatCertificateDate();
+                  ?>
+                  <section id="certificate-<?php echo htmlspecialchars((string)$index); ?>" class="certificate-page">
+                    <div class="certificate-inner">
+                      <div class="certificate-school">
+                        <div class="certificate-logo-group">
+                          <img src="../img/SMCCNEWLOGO.png" alt="Saint Michael College of Caraga seal" />
+                          <img src="../img/admission-logo.jpg" alt="Admission and Scholarship logo" />
+                        </div>
+                        <div class="certificate-school-text">
+                          <h3>Saint Michael College of Caraga</h3>
+                          <p>Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines</p>
+                          <p>Website: www.smccnasipit.edu.ph | Tel. Nos. 085 300-2732</p>
+                          <div class="certificate-office">Office of the Admission &amp; Scholarship</div>
+                        </div>
+                        <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC certification logo" />
+                      </div>
+
+                      <div class="certificate-title">
+                        <h2>Certificate of Recognition</h2>
+                      </div>
+                      <p class="certificate-presented">This Certificate of Recognition is proudly presented to</p>
+                      <div class="certificate-name"><?php echo htmlspecialchars($certificateName); ?></div>
+
+                      <div class="certificate-body">
+                        <p>
+                          for demonstrating exemplary dedication, professionalism, and outstanding service as a Student Assistant at
+                          Saint Michael College of Caraga. With a perfect performance evaluation rating of
+                          <strong><?php echo htmlspecialchars($certificateMean); ?> (Excellent)</strong> for the
+                          <strong><?php echo htmlspecialchars($certificateSemester); ?></strong> of
+                          <strong>S.Y. <?php echo htmlspecialchars($certificateSchoolYear); ?></strong>, your commitment to excellence,
+                          work ethic, and invaluable contributions to the institution serve as an inspiration to your peers and the academic community.
+                        </p>
+                        <p>
+                          In recognition of your exceptional performance and unwavering dedication, this certificate is awarded with deep appreciation and gratitude.
+                        </p>
+                      </div>
+
+                      <p class="certificate-date">
+                        Given this <?php echo htmlspecialchars($certificateDate); ?> at Saint Michael College of Caraga, Nasipit, Agusan del Norte.
+                      </p>
+
+                      <div class="certificate-signatories">
+                        <div class="certificate-signatory">
+                          <div class="certificate-sign-line"></div>
+                          <div class="certificate-sign-name">Arlyn B. Tuyogon, MMBM</div>
+                          <div class="certificate-sign-role">Head, Admission &amp; Scholarship</div>
+                        </div>
+                        <div class="certificate-signatory">
+                          <div class="certificate-sign-line"></div>
+                          <div class="certificate-sign-name">Felmarie Manlunas, MACDDS</div>
+                          <div class="certificate-sign-role">Head, Student Affairs &amp; Services</div>
+                        </div>
+                        <div class="certificate-signatory">
+                          <div class="certificate-sign-line"></div>
+                          <div class="certificate-sign-name">Ricky E. Destacamento, RGC, MAEd</div>
+                          <div class="certificate-sign-role">Head, HRMDO</div>
+                        </div>
+                        <div class="certificate-signatory">
+                          <div class="certificate-sign-line"></div>
+                          <div class="certificate-sign-name">Beverly D. Jaminal, EdD</div>
+                          <div class="certificate-sign-role">VP for Academic Affairs &amp; Research</div>
+                        </div>
+                        <div class="certificate-signatory">
+                          <div class="certificate-sign-line"></div>
+                          <div class="certificate-sign-name">Rev. Fr. Ronniel G. Babano, STL</div>
+                          <div class="certificate-sign-role">School President</div>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+                <?php endforeach; ?>
+              </div>
+            <?php endif; ?>
+
+            <?php if (!$showExcellentOnly): ?>
             <div class="mt-8 text-sm space-y-6">
               <div>
                 <p class="font-semibold">Prepared by:</p>
@@ -771,11 +1450,102 @@ $headerSemesterLabel = $activeSemesterFilter !== "" ? $activeSemesterFilter : "A
                 </div>
               </div>
             </div>
+            <?php endif; ?>
           </div>
           </div>
         </section>
       </main>
     </div>
+
+    <?php if ($showExcellentOnly): ?>
+      <div id="certificateModal" class="certificate-modal" hidden>
+        <div class="certificate-modal-panel" role="dialog" aria-modal="true" aria-labelledby="certificateModalTitle">
+          <div class="certificate-modal-bar">
+            <div>
+              <p id="certificateModalTitle" class="text-sm font-bold text-[#052c6a]">Certificate Preview</p>
+              <p class="text-xs text-slate-500">Review or print the selected certificate.</p>
+            </div>
+            <div class="certificate-modal-actions">
+              <button id="printCertificateBtn" type="button" class="certificate-modal-btn">
+                Print Certificate
+              </button>
+              <button id="closeCertificateModal" type="button" class="certificate-modal-btn secondary">
+                Close
+              </button>
+            </div>
+          </div>
+          <div id="certificateModalContent" class="certificate-modal-content"></div>
+        </div>
+      </div>
+    <?php endif; ?>
+
+    <?php if ($showExcellentOnly): ?>
+      <script>
+        document.addEventListener("DOMContentLoaded", function () {
+          const modal = document.getElementById("certificateModal");
+          const modalContent = document.getElementById("certificateModalContent");
+          const closeButton = document.getElementById("closeCertificateModal");
+          const printButton = document.getElementById("printCertificateBtn");
+          let activeCertificateHtml = "";
+
+          if (!modal || !modalContent || !closeButton || !printButton) {
+            return;
+          }
+
+          function openCertificate(certificateId) {
+            const template = document.getElementById(certificateId);
+            if (!template) return;
+            activeCertificateHtml = template.outerHTML;
+            modalContent.innerHTML = activeCertificateHtml;
+            modal.hidden = false;
+          }
+
+          function closeCertificate() {
+            modal.hidden = true;
+            modalContent.innerHTML = "";
+            activeCertificateHtml = "";
+          }
+
+          document.querySelectorAll("[data-certificate-id]").forEach((button) => {
+            button.addEventListener("click", () => {
+              openCertificate(String(button.getAttribute("data-certificate-id") || ""));
+            });
+          });
+
+          closeButton.addEventListener("click", closeCertificate);
+          modal.addEventListener("click", (event) => {
+            if (event.target === modal) {
+              closeCertificate();
+            }
+          });
+
+          printButton.addEventListener("click", () => {
+            if (activeCertificateHtml === "") return;
+            const styleMarkup = Array.from(document.querySelectorAll("style"))
+              .map((style) => "<style>" + style.textContent + "</style>")
+              .join("");
+            const printWindow = window.open("", "_blank", "width=1200,height=850");
+            if (!printWindow) {
+              window.print();
+              return;
+            }
+
+            printWindow.document.write(
+              "<!doctype html><html><head><meta charset=\"utf-8\"><title>Certificate of Recognition</title>" +
+              styleMarkup +
+              "</head><body class=\"bg-white font-sans\"><div style=\"padding:0\">" +
+              activeCertificateHtml +
+              "</div></body></html>"
+            );
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => {
+              printWindow.print();
+            }, 350);
+          });
+        });
+      </script>
+    <?php endif; ?>
 
     <script>
       // Collapse the admin sidebar on mobile for the printable summary view.
