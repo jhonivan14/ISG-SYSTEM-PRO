@@ -476,91 +476,221 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
       }
 
       .certificate-modal-content {
+        background: linear-gradient(180deg, #f8fbff 0%, #edf5ff 100%);
         padding: 18px;
       }
 
       .certificate-page {
         position: relative;
+        isolation: isolate;
         overflow: hidden;
-        min-height: 720px;
-        border: 10px solid #052c6a;
+        box-sizing: border-box;
+        width: min(100%, 1060px);
+        aspect-ratio: 11 / 8.5;
+        min-height: 0;
+        margin: 0 auto;
+        border: 1px solid rgba(5, 44, 106, 0.22);
         background:
-          linear-gradient(78deg, #052c6a 0 4.2%, #c88921 4.2% 4.75%, #052c6a 4.75% 6.4%, transparent 6.45%) left center / 52% 100% no-repeat,
-          linear-gradient(282deg, #052c6a 0 4.2%, #c88921 4.2% 4.75%, #052c6a 4.75% 6.4%, transparent 6.45%) right center / 52% 100% no-repeat,
-          #ffffff;
-        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
-        color: #111827;
-        padding: 30px 62px 28px;
+          radial-gradient(circle at 50% 43%, rgba(252, 220, 47, 0.16), rgba(252, 220, 47, 0) 26%),
+          linear-gradient(180deg, #fffdf8 0%, #ffffff 48%, #f8fbff 100%);
+        box-shadow: 0 22px 52px rgba(15, 23, 42, 0.18);
+        color: #152238;
+        padding: 30px 54px 26px;
       }
 
       .certificate-page::before {
         content: "";
         position: absolute;
         inset: 16px;
-        border: 2px solid #fcdc2f;
+        z-index: 0;
+        border: 2px solid #d7a21f;
+        box-shadow:
+          inset 0 0 0 5px rgba(255, 255, 255, 0.96),
+          inset 0 0 0 6px rgba(5, 44, 106, 0.25);
         pointer-events: none;
       }
 
       .certificate-page::after {
         content: "";
         position: absolute;
-        inset: 42px;
-        border: 1px solid rgba(5, 44, 106, 0.25);
+        inset: 34px;
+        z-index: 0;
+        border: 1px solid rgba(5, 44, 106, 0.22);
+        background:
+          linear-gradient(90deg, transparent 0 18%, rgba(214, 162, 44, 0.22) 18% 18.35%, transparent 18.35% 81.65%, rgba(214, 162, 44, 0.22) 81.65% 82%, transparent 82%),
+          linear-gradient(0deg, transparent 0 13%, rgba(5, 44, 106, 0.12) 13% 13.3%, transparent 13.3% 86.7%, rgba(5, 44, 106, 0.12) 86.7% 87%, transparent 87%);
         pointer-events: none;
+      }
+
+      .certificate-corner {
+        position: absolute;
+        z-index: 0;
+        width: 116px;
+        height: 116px;
+        pointer-events: none;
+      }
+
+      .certificate-corner::after {
+        content: "";
+        position: absolute;
+        width: 68px;
+        height: 68px;
+        border-color: #fcdc2f;
+        border-style: solid;
+      }
+
+      .certificate-corner-top-left {
+        top: 23px;
+        left: 23px;
+        border-top: 10px solid #052c6a;
+        border-left: 10px solid #052c6a;
+      }
+
+      .certificate-corner-top-left::after {
+        top: 14px;
+        left: 14px;
+        border-width: 5px 0 0 5px;
+      }
+
+      .certificate-corner-top-right {
+        top: 23px;
+        right: 23px;
+        border-top: 10px solid #052c6a;
+        border-right: 10px solid #052c6a;
+      }
+
+      .certificate-corner-top-right::after {
+        top: 14px;
+        right: 14px;
+        border-width: 5px 5px 0 0;
+      }
+
+      .certificate-corner-bottom-left {
+        bottom: 23px;
+        left: 23px;
+        border-bottom: 10px solid #052c6a;
+        border-left: 10px solid #052c6a;
+      }
+
+      .certificate-corner-bottom-left::after {
+        bottom: 14px;
+        left: 14px;
+        border-width: 0 0 5px 5px;
+      }
+
+      .certificate-corner-bottom-right {
+        right: 23px;
+        bottom: 23px;
+        border-right: 10px solid #052c6a;
+        border-bottom: 10px solid #052c6a;
+      }
+
+      .certificate-corner-bottom-right::after {
+        right: 14px;
+        bottom: 14px;
+        border-width: 0 5px 5px 0;
+      }
+
+      .certificate-diagonal {
+        position: absolute;
+        z-index: 0;
+        width: 0;
+        height: 0;
+        pointer-events: none;
+      }
+
+      .certificate-diagonal-top-left {
+        top: 0;
+        left: 0;
+        border-top: 230px solid rgba(5, 44, 106, 0.1);
+        border-right: 230px solid transparent;
+      }
+
+      .certificate-diagonal-bottom-right {
+        right: 0;
+        bottom: 0;
+        border-bottom: 190px solid rgba(5, 44, 106, 0.1);
+        border-left: 190px solid transparent;
+      }
+
+      .certificate-watermark {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.055;
+        pointer-events: none;
+      }
+
+      .certificate-watermark img {
+        width: 410px;
+        max-width: 48%;
+        height: auto;
       }
 
       .certificate-inner {
         position: relative;
         z-index: 1;
-        min-height: 650px;
-        padding: 0 4px;
+        display: flex;
+        height: 100%;
+        min-height: 0;
+        flex-direction: column;
+        padding: 0 6px;
       }
 
       .certificate-school {
-        display: flex;
+        display: grid;
+        grid-template-columns: 150px minmax(0, 1fr) 120px;
         align-items: center;
-        justify-content: space-between;
         gap: 18px;
-        border-bottom: 2px solid #052c6a;
-        padding-bottom: 9px;
+        border-bottom: 3px double #052c6a;
+        background: rgba(255, 255, 255, 0.72);
+        padding: 7px 14px 11px;
       }
 
       .certificate-logo-group {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 9px;
       }
 
-      .certificate-school img {
-        width: 70px;
-        height: 70px;
+      .certificate-logo-group img {
+        width: 64px;
+        height: 64px;
+        object-fit: contain;
+      }
+
+      .certificate-iso-logo {
+        justify-self: end;
+        width: 98px;
+        height: 64px;
         object-fit: contain;
       }
 
       .certificate-school-text {
-        flex: 1;
         text-align: center;
-        line-height: 1.18;
+        line-height: 1.15;
       }
 
       .certificate-school-text h3 {
         margin: 0;
         color: #052c6a;
         font-family: Georgia, "Times New Roman", serif;
-        font-size: 27px;
+        font-size: 25px;
         font-weight: 800;
-        letter-spacing: 0.02em;
         text-transform: uppercase;
       }
 
       .certificate-school-text p {
         margin: 2px 0 0;
-        font-size: 12.5px;
+        font-size: 11.5px;
       }
 
       .certificate-office {
         color: #052c6a;
-        font-size: 14.5px;
+        font-size: 13px;
         font-weight: 800;
         margin-top: 4px;
         text-transform: uppercase;
@@ -572,42 +702,73 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
       }
 
       .certificate-title h2 {
-        color: #111827;
+        color: #052c6a;
         font-family: Georgia, "Times New Roman", serif;
-        font-size: 45px;
+        font-size: 44px;
         font-weight: 800;
+        line-height: 1.04;
         margin: 0;
       }
 
+      .certificate-title-rule {
+        width: 210px;
+        height: 5px;
+        margin: 8px auto 0;
+        border-radius: 999px;
+        background: linear-gradient(90deg, transparent, #fcdc2f 22%, #052c6a 50%, #fcdc2f 78%, transparent);
+      }
+
       .certificate-presented {
-        margin-top: 16px;
+        margin-top: 13px;
         text-align: center;
-        font-size: 16.5px;
+        font-size: 15.5px;
         font-weight: 700;
       }
 
+      .certificate-name-wrap {
+        position: relative;
+        width: min(100%, 720px);
+        margin: 13px auto 12px;
+        padding: 0 34px 9px;
+        text-align: center;
+      }
+
+      .certificate-name-wrap::before,
+      .certificate-name-wrap::after {
+        content: "";
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, #052c6a 18%, #d6a22c 50%, #052c6a 82%, transparent);
+      }
+
+      .certificate-name-wrap::before {
+        bottom: 6px;
+        opacity: 0.35;
+      }
+
       .certificate-name {
-        margin: 20px auto 18px;
-        max-width: 720px;
-        border-bottom: 2px solid #334155;
-        color: #1f2937;
+        color: #052c6a;
         font-family: "Brush Script MT", "Segoe Script", Georgia, serif;
-        font-size: 55px;
+        font-size: 54px;
         font-style: italic;
         line-height: 1.1;
-        text-align: center;
+        overflow-wrap: break-word;
       }
 
       .certificate-body {
         margin: 0 auto;
-        max-width: 1010px;
+        max-width: 900px;
         text-align: center;
-        font-size: 17.5px;
-        line-height: 1.55;
+        font-family: Georgia, "Times New Roman", serif;
+        font-size: 16.3px;
+        line-height: 1.48;
       }
 
       .certificate-body p {
-        margin: 0 0 18px;
+        margin: 0 0 12px;
       }
 
       .certificate-body strong {
@@ -622,38 +783,93 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
         font-weight: 700;
       }
 
+      .certificate-date[contenteditable="true"] {
+        border-radius: 8px;
+        cursor: text;
+        outline: 1px dashed transparent;
+        outline-offset: 5px;
+        transition: background-color 0.16s ease, outline-color 0.16s ease;
+      }
+
+      .certificate-date[contenteditable="true"]:hover,
+      .certificate-date[contenteditable="true"]:focus {
+        background: rgba(252, 220, 47, 0.12);
+        outline-color: rgba(5, 44, 106, 0.4);
+      }
+
       .certificate-signatories {
-        margin-top: 54px;
+        margin-top: auto;
+        padding-top: 30px;
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 42px 46px;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 22px 34px;
         text-align: center;
       }
 
+      .certificate-signatory {
+        grid-column: span 2;
+      }
+
       .certificate-signatory:nth-child(4) {
-        grid-column: 1 / span 1;
+        grid-column: 2 / span 2;
       }
 
       .certificate-signatory:nth-child(5) {
-        grid-column: 2 / span 2;
-        justify-self: center;
-        width: min(360px, 100%);
+        grid-column: 4 / span 2;
       }
 
       .certificate-sign-line {
         border-bottom: 1.5px solid #111827;
-        height: 24px;
-        margin-bottom: 7px;
+        height: 20px;
+        margin-bottom: 6px;
       }
 
       .certificate-sign-name {
-        font-size: 14.5px;
+        color: #052c6a;
+        font-size: 13px;
         font-weight: 800;
         text-transform: uppercase;
       }
 
       .certificate-sign-role {
-        font-size: 13.5px;
+        color: #334155;
+        font-size: 12.2px;
+      }
+
+      @media screen and (max-width: 920px) {
+        .certificate-page {
+          aspect-ratio: auto;
+          min-height: auto;
+          padding: 28px;
+        }
+
+        .certificate-school {
+          grid-template-columns: 1fr;
+          gap: 8px;
+          text-align: center;
+        }
+
+        .certificate-logo-group {
+          justify-content: center;
+        }
+
+        .certificate-iso-logo {
+          justify-self: center;
+        }
+
+        .certificate-name {
+          font-size: 42px;
+        }
+
+        .certificate-signatories {
+          grid-template-columns: 1fr;
+        }
+
+        .certificate-signatory,
+        .certificate-signatory:nth-child(4),
+        .certificate-signatory:nth-child(5) {
+          grid-column: auto;
+        }
       }
 
       @media print {
@@ -774,19 +990,31 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
         .certificate-page {
           width: 11in !important;
           height: 8.5in !important;
+          aspect-ratio: auto !important;
           min-height: 0 !important;
           box-sizing: border-box !important;
           box-shadow: none !important;
           break-after: page;
           page-break-after: always;
           margin: 0 auto !important;
-          padding: 0.26in 0.55in 0.24in !important;
+          padding: 30px 54px 26px !important;
+        }
+
+        .certificate-page,
+        .certificate-page *,
+        .certificate-page::before,
+        .certificate-page::after,
+        .certificate-corner,
+        .certificate-corner::after,
+        .certificate-diagonal {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
         }
 
         .certificate-inner {
-          height: auto !important;
+          height: 100% !important;
           min-height: 0 !important;
-          padding: 0 0.03in !important;
+          padding: 0 6px !important;
         }
 
         .certificate-page:last-child {
@@ -794,85 +1022,13 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
           page-break-after: auto;
         }
 
-        .certificate-school {
-          gap: 0.16in !important;
-          padding-bottom: 0.08in !important;
+        .certificate-watermark {
+          opacity: 0.07 !important;
         }
 
-        .certificate-school img {
-          width: 0.68in !important;
-          height: 0.68in !important;
-        }
-
-        .certificate-school-text h3 {
-          font-size: 26px !important;
-          line-height: 1.05 !important;
-        }
-
-        .certificate-school-text p {
-          font-size: 11.5px !important;
-          line-height: 1.1 !important;
-        }
-
-        .certificate-office {
-          font-size: 13px !important;
-          line-height: 1.1 !important;
-        }
-
-        .certificate-title {
-          margin-top: 0.2in !important;
-        }
-
-        .certificate-title h2 {
-          font-size: 42px !important;
-          line-height: 1.05 !important;
-        }
-
-        .certificate-presented {
-          margin-top: 0.13in !important;
-          font-size: 15.5px !important;
-        }
-
-        .certificate-name {
-          font-size: 52px !important;
-          line-height: 1.02 !important;
-          margin-top: 0.14in !important;
-          margin-bottom: 0.12in !important;
-          max-width: 7.15in !important;
-        }
-
-        .certificate-body {
-          font-size: 15.8px !important;
-          line-height: 1.48 !important;
-          max-width: 9.25in !important;
-        }
-
-        .certificate-body p {
-          margin-bottom: 0.14in !important;
-        }
-
-        .certificate-date {
-          margin-top: 0.18in !important;
-          padding-top: 0 !important;
-          font-size: 14.8px !important;
-        }
-
-        .certificate-signatories {
-          margin-top: 0.45in !important;
-          gap: 0.24in 0.38in !important;
-        }
-
-        .certificate-sign-line {
-          height: 0.17in !important;
-          margin-bottom: 0.04in !important;
-        }
-
-        .certificate-sign-name {
-          font-size: 12.2px !important;
-        }
-
-        .certificate-sign-role {
-          font-size: 11.2px !important;
+        .certificate-date[contenteditable="true"] {
+          background: transparent !important;
+          outline: none !important;
         }
       }
           #sidebar > nav > ul {
@@ -1347,6 +1503,15 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                     $certificateDate = $formatCertificateDate();
                   ?>
                   <section id="certificate-<?php echo htmlspecialchars((string)$index); ?>" class="certificate-page">
+                    <span class="certificate-diagonal certificate-diagonal-top-left" aria-hidden="true"></span>
+                    <span class="certificate-diagonal certificate-diagonal-bottom-right" aria-hidden="true"></span>
+                    <span class="certificate-corner certificate-corner-top-left" aria-hidden="true"></span>
+                    <span class="certificate-corner certificate-corner-top-right" aria-hidden="true"></span>
+                    <span class="certificate-corner certificate-corner-bottom-left" aria-hidden="true"></span>
+                    <span class="certificate-corner certificate-corner-bottom-right" aria-hidden="true"></span>
+                    <div class="certificate-watermark" aria-hidden="true">
+                      <img src="../img/SMCCNEWLOGO.png" alt="" />
+                    </div>
                     <div class="certificate-inner">
                       <div class="certificate-school">
                         <div class="certificate-logo-group">
@@ -1359,14 +1524,17 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                           <p>Website: www.smccnasipit.edu.ph | Tel. Nos. 085 300-2732</p>
                           <div class="certificate-office">Office of the Admission &amp; Scholarship</div>
                         </div>
-                        <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC certification logo" />
+                        <img class="certificate-iso-logo" src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC certification logo" />
                       </div>
 
                       <div class="certificate-title">
                         <h2>Certificate of Recognition</h2>
+                        <div class="certificate-title-rule" aria-hidden="true"></div>
                       </div>
                       <p class="certificate-presented">This Certificate of Recognition is proudly presented to</p>
-                      <div class="certificate-name"><?php echo htmlspecialchars($certificateName); ?></div>
+                      <div class="certificate-name-wrap">
+                        <div class="certificate-name"><?php echo htmlspecialchars($certificateName); ?></div>
+                      </div>
 
                       <div class="certificate-body">
                         <p>
@@ -1382,7 +1550,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                         </p>
                       </div>
 
-                      <p class="certificate-date">
+                      <p class="certificate-date" contenteditable="true" spellcheck="false" aria-label="Editable certificate date and venue">
                         Given this <?php echo htmlspecialchars($certificateDate); ?> at Saint Michael College of Caraga, Nasipit, Agusan del Norte.
                       </p>
 
@@ -1521,6 +1689,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
 
           printButton.addEventListener("click", () => {
             if (activeCertificateHtml === "") return;
+            const printableCertificateHtml = modalContent.innerHTML || activeCertificateHtml;
             const styleMarkup = Array.from(document.querySelectorAll("style"))
               .map((style) => "<style>" + style.textContent + "</style>")
               .join("");
@@ -1534,7 +1703,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
               "<!doctype html><html><head><meta charset=\"utf-8\"><title>Certificate of Recognition</title>" +
               styleMarkup +
               "</head><body class=\"bg-white font-sans\"><div style=\"padding:0\">" +
-              activeCertificateHtml +
+              printableCertificateHtml +
               "</div></body></html>"
             );
             printWindow.document.close();
