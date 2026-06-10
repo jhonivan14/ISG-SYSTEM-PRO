@@ -10,8 +10,7 @@ $_SESSION["from_index"] = true;
   <title>ISG Management System</title>
   <link rel="icon" type="image/x-icon" href="img/SMCCNEWLOGO.png" />
   <base href="/isg-system/" />
-
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="assets/css/tailwind.css">
   <link
     rel="stylesheet"
     href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"

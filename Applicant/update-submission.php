@@ -593,7 +593,7 @@ $showStudentAssistantProgramSelect = updateUsesStudentAssistantPrograms($grantId
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Update Submission</title>
   <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="../assets/css/tailwind.css">
   <style>
     body { font-family: "IBM Plex Sans", sans-serif; background: linear-gradient(180deg, #e8f3ff 0%, #f8fbff 38%, #eef6ff 100%); }
 

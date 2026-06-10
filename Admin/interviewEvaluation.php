@@ -164,7 +164,7 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>Interview Evaluation</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"
@@ -182,9 +182,6 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
       @page {
         size: Legal;
         margin: 12mm 10mm 12mm 10mm;
-      }
-      body, .paper {
-        font-family: "Times New Roman", serif;
       }
       .paper h1,
       .paper h2,

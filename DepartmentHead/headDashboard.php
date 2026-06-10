@@ -445,7 +445,7 @@ if ($requestedTab === "my-sas") {
     <meta content="width=device-width, initial-scale=1" name="viewport" />
     <title>Head of Office Dashboard</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"
       rel="stylesheet"

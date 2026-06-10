@@ -315,7 +315,7 @@ if (empty($errors)) {
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Submission Status</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="../assets/css/tailwind.css">
   
 </head>
 <body class="min-h-screen bg-gradient-to-b from-[#e0f2ff] via-white to-[#e0f2ff] flex items-center justify-center px-4">
