@@ -126,14 +126,14 @@ $postId = (int)($_POST["application_id"] ?? 0);
 $postBatch = trim((string)($_POST["application_batch"] ?? ""));
 // Process approve or decline actions after validating the selected application and batch rules.
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-  if ($postId <= 0 || ($postAction !== "approve" && $postAction !== "decline")) {
+  if ($postId <= 0 || ($postAction !== "approve" && $postAction !== "decline" && $postAction !== "reserve")) {
     $actionMessage = "Invalid action request.";
   } elseif ($postAction === "approve" && $isStudentAssistantApplicant && !$batchColumnExists) {
     $actionMessage = "Batch assignment is not yet configured. Please add a 'batch' column to the applications table first.";
   } elseif ($postAction === "approve" && $isStudentAssistantApplicant && ($postBatch === "" || !in_array($postBatch, $batchOptions, true))) {
     $actionMessage = "Please select a valid batch before approving.";
   } else {
-    $newStatus = $postAction === "approve" ? "Approved" : "Rejected";
+    $newStatus = $postAction === "approve" ? "Approved" : ($postAction === "reserve" ? "Reserved" : "Rejected");
     $shouldUpdateBatch = $postAction === "approve" && $isStudentAssistantApplicant;
     $canRecordApprovalTimestamp = $postAction === "approve" && adminEnsureApplicationApprovedAtColumn($conn);
     if ($shouldUpdateBatch && $canRecordApprovalTimestamp) {
@@ -227,7 +227,7 @@ foreach ($uploadedRequirements as $upload) {
       }
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #93d7ff 0%, #2e9bd7 100%); border-radius: 999px; }
-      body { font-family: "Times New Roman", serif; }
+      .print-area { font-family: "Times New Roman", serif; }
       header { margin-bottom: 1rem; text-align: center; }
       .header-top { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem; }
       .header-left { display: flex; align-items: center; gap: 0.5rem; }
@@ -392,6 +392,11 @@ foreach ($uploadedRequirements as $upload) {
                     </a>
                   </li>
                   <li>
+                    <a href="reserved-applicants.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      Reserved Applicants
+                    </a>
+                  </li>
+                  <li>
                     <a href="summary-of-applicants.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
                       Summary of Applicants
                     </a>
@@ -538,12 +543,12 @@ foreach ($uploadedRequirements as $upload) {
                     <div class="header-left-text">
                       <h1 class="text-center">Saint Michael College of Caraga</h1>
                       <p class="text-center">
-                        Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
-                        District 8, Brgy. Triangulo, Nasipit, Agusan del Norte, Philippines
+                        Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines<br />
+                        
                       </p>
-                      <p class="text-center">Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
+                     
                       <p class="text-center">
-                        <a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a>
+                        <a>Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</a>
                       </p>
                     </div>
                   </div>
@@ -561,35 +566,47 @@ foreach ($uploadedRequirements as $upload) {
               <form>
                 <fieldset class="max-w-3xl mx-auto">
                   <legend class="font-semibold text-sm mb-2">Type of Scholarship/Grant:</legend>
-                  <div class="flex flex-wrap justify-between max-w-3xl mx-auto">
-                    <div class="flex flex-col space-y-1 w-1/2 min-w-[180px]">
-                      <label class="inline-flex items-center space-x-2">
+                  <div style="max-width:48rem;margin:0 auto;">
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.25rem 1rem;margin-bottom:0.25rem;">
+                      <label style="display:inline-flex;align-items:center;gap:0.5rem;">
                         <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $scholarshipType === "academic" ? "checked" : "" ?> />
                         <span class="text-sm">Academic</span>
                       </label>
-                      <label class="inline-flex items-center space-x-2">
+                      <label style="display:inline-flex;align-items:center;gap:0.5rem;">
+                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $scholarshipType === "student assistance" ? "checked" : "" ?> />
+                        <span class="text-sm">Student Assistant</span>
+                      </label>
+                      <label style="display:inline-flex;align-items:center;gap:0.5rem;">
+                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $grantId === 8 ? "checked" : "" ?> />
+                        <span class="text-sm">Sibling of an Employee</span>
+                      </label>
+                      <label style="display:inline-flex;align-items:center;gap:0.5rem;">
+                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $grantId === 7 ? "checked" : "" ?> />
+                        <span class="text-sm">Child of an Employee</span>
+                      </label>
+                      <label style="display:inline-flex;align-items:center;gap:0.5rem;">
                         <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $scholarshipType === "kabayani" ? "checked" : "" ?> />
                         <span class="text-sm">Kabayani</span>
                       </label>
-                      <label class="text-xs pl-6 pt-0.5">
+                      <label style="display:inline-flex;align-items:center;gap:0.5rem;">
+                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $grantId === 14 ? "checked" : "" ?> />
+                        <span class="text-sm">Alumni Discount</span>
+                      </label>
+                      <label style="display:inline-flex;align-items:center;gap:0.5rem;">
+                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= ($scholarshipType === "others" && !in_array($grantId, [7, 8, 14])) ? "checked" : "" ?> />
+                        <span class="text-sm">Others</span>
+                      </label>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0 1rem;margin-top:0.25rem;">
+                      <label class="text-xs" style="grid-column:1/span 2;padding-left:1.5rem;">
                         Please specify:
-                        <span class="specify-line border-b border-black min-w-[9rem]">
+                        <span class="specify-line border-b border-black" style="min-width:9rem;">
                           <?= htmlspecialchars(app_value($application, "kabayani_specify")) ?>
                         </span>
                       </label>
-                    </div>
-                    <div class="flex flex-col space-y-1 w-1/2 min-w-[180px]">
-                      <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $scholarshipType === "student assistance" ? "checked" : "" ?> />
-                        <span class="text-sm">Student Assistance</span>
-                      </label>
-                      <label class="inline-flex items-center space-x-2">
-                        <input class="w-4 h-4 border border-black" type="checkbox" disabled aria-readonly="true" <?= $scholarshipType === "others" ? "checked" : "" ?> />
-                        <span class="text-sm">Others</span>
-                      </label>
-                      <label class="text-xs pl-6 pt-0.5">
+                      <label class="text-xs" style="grid-column:3/span 2;padding-left:1.5rem;">
                         Please specify:
-                        <span class="specify-line border-b border-black min-w-[11rem]">
+                        <span class="specify-line border-b border-black" style="min-width:11rem;">
                           <?= htmlspecialchars(app_value($application, "others_specify")) ?>
                         </span>
                       </label>
@@ -610,14 +627,14 @@ foreach ($uploadedRequirements as $upload) {
                       </span>
                     </div>
                     <div class="flex items-center">
-                      <label class="w-44">Program/Course Enrolled</label>
+                      <label class="w-44">Grade/Program/Course Enrolled</label>
                       <span>:</span>
                       <span class="data-value border-b border-black flex-grow ml-2 h-4">
                         <?= htmlspecialchars(app_value($application, "program_course")) ?>
                       </span>
                     </div>
                     <div class="flex items-center">
-                      <label class="w-44">Year Level</label>
+                      <label class="w-44">Grade/Year Level</label>
                       <span>:</span>
                       <span class="data-value border-b border-black flex-grow ml-2 h-4">
                         <?= htmlspecialchars(app_value($application, "year_level")) ?>
@@ -763,7 +780,17 @@ foreach ($uploadedRequirements as $upload) {
                   </div>
                 </div>
 
-                <p class="certify-text text-xs font-serif mt-6 mb-6 max-w-3xl mx-auto">I certify that the above information is true and correct.</p>
+                <div class="certify-text text-xs font-serif mt-6 mb-6 max-w-3xl mx-auto">
+                  <label style="display:inline-flex;align-items:flex-start;gap:0.5rem;">
+                    <input type="checkbox" checked disabled style="margin-top:0.15rem;flex-shrink:0;width:1rem;height:1rem;" />
+                    <span>
+                      I confirm that the information I have given in this form is true and accurate.
+                      I agree to fill-out this Application Form and hereby authorize sharing of the
+                      information furnished on this form with Saint Michael College of Caraga in
+                      accordance with the Philippine Data Privacy Act of 2012.
+                    </span>
+                  </label>
+                </div>
 
                 <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8 signature-group">
                   <div class="w-full sm:w-[45%] signature-block">
@@ -776,6 +803,24 @@ foreach ($uploadedRequirements as $upload) {
                       Name and signature of personnel<br />
                       <span class="text-[10px]">(If the scholar/grantee is personnel dependent)</span>
                     </p>
+                  </div>
+                </div>
+
+                <div class="max-w-3xl mx-auto mt-6 text-xs font-serif">
+                  <p class="font-semibold mb-2">Action Taken:</p>
+                  <div style="display:flex;gap:2rem;align-items:center;">
+                    <label style="display:inline-flex;align-items:center;gap:0.4rem;">
+                      <input type="checkbox" disabled style="width:1rem;height:1rem;" <?= app_value($application, "status") === "Approved" ? "checked" : "" ?> />
+                      <span>Accepted</span>
+                    </label>
+                    <label style="display:inline-flex;align-items:center;gap:0.4rem;">
+                      <input type="checkbox" disabled style="width:1rem;height:1rem;" <?= app_value($application, "status") === "Reserved" ? "checked" : "" ?> />
+                      <span>Reserved</span>
+                    </label>
+                    <label style="display:inline-flex;align-items:center;gap:0.4rem;">
+                      <input type="checkbox" disabled style="width:1rem;height:1rem;" <?= app_value($application, "status") === "Rejected" ? "checked" : "" ?> />
+                      <span>Rejected</span>
+                    </label>
                   </div>
                 </div>
 
@@ -794,14 +839,14 @@ foreach ($uploadedRequirements as $upload) {
 
                 <div class="max-w-3xl mx-auto mt-6">
                   <div class="flex items-center">
-                    <img src="../img/box.png" alt="Box" class="w-48 h-auto box-print" />
+                    <img src="../img/newisoapplication.png" alt="Box" class="w-48 h-auto box-print" />
                   </div>
                 </div>
               </form>
-
+              <br />
               <footer class="max-w-3xl mx-auto mt-6 footer-print">
                 <div class="flex items-center justify-between text-[10px] font-semibold text-black">
-                  <img src="../img/footer.png" alt="Footer" />
+                  <img src="../img/newfooter.jpg" alt="Footer" />
                 </div>
               </footer>
             </div>
@@ -972,6 +1017,13 @@ foreach ($uploadedRequirements as $upload) {
                   Approve Application
                 </button>
                 <button
+                  class="rounded border border-[#f59e0b] px-4 py-2 text-xs font-semibold text-[#f59e0b] hover:bg-[#f59e0b] hover:text-white transition"
+                  type="button"
+                  data-action="reserve"
+                >
+                  Reserve Application
+                </button>
+                <button
                   class="rounded border border-[#f44336] px-4 py-2 text-xs font-semibold text-[#f44336] hover:bg-[#f44336] hover:text-white transition"
                   type="button"
                   data-action="decline"
@@ -1129,6 +1181,11 @@ foreach ($uploadedRequirements as $upload) {
             text: "This applicant will move to declined list.",
             confirm: "Yes, decline",
           },
+          reserve: {
+            title: "Reserve application?",
+            text: "This applicant will be marked as reserved.",
+            confirm: "Yes, reserve",
+          },
         };
 
         if (!form || !actionInput || actionButtons.length === 0) return;
@@ -1187,6 +1244,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const sidebarAliases = {
     "summary-of-applicants.php": "applicant.php",
     "declined-applicants.php": "applicant.php",
+    "reserved-applicants.php": "applicant.php",
     "view-application.php": "applicant.php",
     "department-evaluation-indi.php": "department-evaluation-list.php",
     "summary-reports.php": "summary-report.php",
@@ -1213,6 +1271,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const applicantPages = new Set([
           "applicant.php",
           "declined-applicants.php",
+          "reserved-applicants.php",
           "summary-of-applicants.php",
           "view-application.php"
         ]);

@@ -152,16 +152,6 @@ $hasRequirements = $selected && !empty($selected["requirements"]);
   <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
   <link rel="stylesheet" href="../assets/css/tailwind.css">
   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-  <style>
-    body {
-      font-family: 'Roboto Slab', serif;
-    }
-
-    .top-brand,
-    .top-brand * {
-      font-family: sans-serif;
-    }
-  </style>
 </head>
 
 <body class="bg-gradient-to-b from-[#e0f2ff] via-white to-[#e0f2ff] min-h-screen font-sans">

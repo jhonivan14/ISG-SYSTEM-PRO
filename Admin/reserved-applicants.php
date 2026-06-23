@@ -1,72 +1,48 @@
 <?php
-// Guide: Dedicated admin page for declined applicant history.
-// Trace: bootstrap filters -> backfill declined snapshots -> query history -> render table.
+// Guide: Dedicated admin page for reserved applicants.
+// Trace: bootstrap filters -> query reserved applications -> render table.
 
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
-require_once __DIR__ . "/includes/application-decline-history.php";
 require_once "../scholarship-grants.php";
 
-$grantLabels = [
-  1 => "Student Assistant",
-  2 => "Academic Scholarship Program",
-  3 => "Executive Student Government (ESG) President Scholarship Program",
-  4 => "Kabayani Scholarship Program",
-  5 => "Kabayani Loyalty Grant",
-  6 => "Discount for Persons with Disability (PWD)",
-  7 => "Discount for Children of Employees",
-  8 => "Discount for Sibling of Employees",
-  9 => "Sibling Discount",
-  10 => "DXSM-FM Grant",
-  11 => "Michaelinian Mirror Grant (Editor-in-Chief)",
-  12 => "Grant for the Dependents of a Lot Donor",
-  13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
-  14 => "SMCC Alumni Discount",
-  15 => "Michaelinian Stakeholders Grant",
-];
 $grantLabels = isg_load_scholarship_grant_names($conn, true);
 
-applicationDeclineHistoryBackfillCurrent($conn);
-
-$filterClauses = [];
+$filterClauses = ["a.status = 'Reserved'"];
 $filterParams = [];
 $filterTypes = "";
 if ($activeSchoolYearFilter !== "") {
-  $filterClauses[] = "h.school_year = ?";
+  $filterClauses[] = "a.school_year = ?";
   $filterParams[] = $activeSchoolYearFilter;
   $filterTypes .= "s";
 }
 if ($activeSemesterFilter !== "") {
-  $filterClauses[] = "h.semester = ?";
+  $filterClauses[] = "a.semester = ?";
   $filterParams[] = $activeSemesterFilter;
   $filterTypes .= "s";
 }
 
-$declinedApplicants = [];
-$historyQuery = "
+$reservedApplicants = [];
+$query = "
   SELECT
-    h.id,
-    h.application_id,
-    h.reference_number,
-    h.applicant_name,
-    h.program_course,
-    h.grant_id,
-    h.school_year,
-    h.semester,
-    h.status,
-    h.declined_at
-  FROM application_decline_history h
-  LEFT JOIN applications a ON a.id = h.application_id
+    a.id,
+    a.reference_number,
+    a.applicant_name,
+    a.program_course,
+    a.grant_id,
+    a.school_year,
+    a.semester,
+    a.status,
+    a.created_at
+  FROM applications a
+  WHERE " . implode(" AND ", $filterClauses) . "
+  ORDER BY a.created_at DESC, a.id DESC
 ";
-if (!empty($filterClauses)) {
-  $historyQuery .= " WHERE " . implode(" AND ", $filterClauses);
-}
-$historyQuery .= " ORDER BY h.declined_at DESC, h.id DESC";
 
-if ($stmt = $conn->prepare($historyQuery)) {
+if ($stmt = $conn->prepare($query)) {
   if (!empty($filterParams)) {
     $stmt->bind_param($filterTypes, ...$filterParams);
   }
@@ -75,17 +51,16 @@ if ($stmt = $conn->prepare($historyQuery)) {
   if ($result instanceof mysqli_result) {
     while ($row = $result->fetch_assoc()) {
       $grantId = (int)($row["grant_id"] ?? 0);
-      $declinedAtRaw = (string)($row["declined_at"] ?? "");
-      $declinedApplicants[] = [
-        "history_id" => (int)($row["id"] ?? 0),
-        "application_id" => (int)($row["application_id"] ?? 0),
-        "declined_at" => $declinedAtRaw !== "" ? date("Y-m-d h:i A", strtotime($declinedAtRaw)) : "",
-        "name" => (string)($row["applicant_name"] ?? ""),
+      $createdAtRaw = (string)($row["created_at"] ?? "");
+      $reservedApplicants[] = [
+        "application_id" => (int)($row["id"] ?? 0),
+        "reserved_on"    => $createdAtRaw !== "" ? date("Y-m-d h:i A", strtotime($createdAtRaw)) : "",
+        "name"           => (string)($row["applicant_name"] ?? ""),
         "program_course" => (string)($row["program_course"] ?? ""),
         "reference_number" => (string)($row["reference_number"] ?? ""),
-        "grant" => $grantLabels[$grantId] ?? "Others",
-        "term" => trim((string)($row["semester"] ?? "") . " " . (string)($row["school_year"] ?? "")),
-        "status" => trim((string)($row["status"] ?? "Rejected")) ?: "Rejected",
+        "grant"          => $grantLabels[$grantId] ?? "Others",
+        "term"           => trim((string)($row["semester"] ?? "") . " " . (string)($row["school_year"] ?? "")),
+        "status"         => trim((string)($row["status"] ?? "Reserved")) ?: "Reserved",
       ];
     }
     $result->free();
@@ -93,7 +68,7 @@ if ($stmt = $conn->prepare($historyQuery)) {
   $stmt->close();
 }
 
-$totalDeclined = count($declinedApplicants);
+$totalReserved = count($reservedApplicants);
 $applicantPageParams = [];
 if ($activeSchoolYearFilter !== "") {
   $applicantPageParams["school_year"] = $activeSchoolYearFilter;
@@ -102,23 +77,20 @@ if ($activeSemesterFilter !== "") {
   $applicantPageParams["semester"] = $activeSemesterFilter;
 }
 $applicantPageSuffix = !empty($applicantPageParams) ? "?" . http_build_query($applicantPageParams) : "";
-$pendingPageUrl = "applicant.php" . $applicantPageSuffix;
-$declinedPageUrl = "declined-applicants.php" . $applicantPageSuffix;
-$summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
 ?>
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
-    <title>Declined Applicants</title>
+    <title>Reserved Applicants</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet" />
     <style>
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-thumb {
-        background: linear-gradient(180deg, #ffb4b4 0%, #e94a4a 100%);
+        background: linear-gradient(180deg, #fde68a 0%, #f59e0b 100%);
         border-radius: 999px;
       }
       #sidebar > nav > ul { padding: 0.35rem 0.5rem 5.5rem; }
@@ -142,7 +114,7 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
         border-spacing: 0;
       }
       .app-table thead tr {
-        background: linear-gradient(90deg, #ba2a2a 0%, #e94a4a 100%);
+        background: linear-gradient(90deg, #b45309 0%, #f59e0b 100%);
       }
       .app-table thead th {
         color: #ffffff;
@@ -154,12 +126,12 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
       }
       .app-table tbody td {
         padding: 11px 8px;
-        border-right: 1px solid rgba(186, 42, 42, 0.16);
-        border-bottom: 1px solid rgba(186, 42, 42, 0.14);
+        border-right: 1px solid rgba(180, 83, 9, 0.16);
+        border-bottom: 1px solid rgba(180, 83, 9, 0.14);
         color: #052c6a;
       }
-      .app-table tbody tr:nth-child(even) { background-color: #fff5f5; }
-      .app-table tbody tr:hover { background-color: #ffeaea; }
+      .app-table tbody tr:nth-child(even) { background-color: #fffbeb; }
+      .app-table tbody tr:hover { background-color: #fef3c7; }
     </style>
   </head>
   <body class="bg-white font-sans">
@@ -252,7 +224,6 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
         <div class="absolute bottom-0 left-0 w-full p-2">
           <div class="rounded-xl border border-white/20 bg-white/10 backdrop-blur-sm overflow-hidden">
             <div class="h-px w-full bg-gradient-to-r from-transparent via-[#8bcfff] to-transparent opacity-80"></div>
-
             <div class="px-4 pt-2 pb-1 flex items-center gap-2 text-[11px] text-blue-100/90">
               <div class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
                 <i class="fas fa-user-shield text-[12px]"></i>
@@ -262,7 +233,6 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
                 <p class="text-[10px] text-blue-200/80">Institutional Scholarship</p>
               </div>
             </div>
-
             <div class="px-3 pb-3 pt-1">
               <button
                 onclick="window.location.href='../logout.php'"
@@ -284,18 +254,18 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
               <i class="fas fa-bars"></i>
             </button>
             <h2 class="text-slate-800 text-lg font-semibold flex items-center gap-2">
-              <i class="fas fa-user-times"></i>
-              DECLINED APPLICANTS
+              <i class="fas fa-bookmark"></i>
+              RESERVED APPLICANTS
             </h2>
           </div>
         </section>
 
-        <form class="px-4 sm:px-6 mt-4 flex flex-wrap justify-end gap-2" method="get" action="declined-applicants.php">
+        <form class="px-4 sm:px-6 mt-4 flex flex-wrap justify-end gap-2" method="get" action="reserved-applicants.php">
           <a href="applicant.php" class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm">
             <i class="fas fa-arrow-left"></i>
             Back to Applicants
           </a>
-          <select class="rounded-full border border-[#f44336] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none" name="school_year" onchange="this.form.submit()">
+          <select class="rounded-full border border-[#f59e0b] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none" name="school_year" onchange="this.form.submit()">
             <option value="" <?= $rawSelectedSchoolYear !== null && $activeSchoolYearFilter === "" ? "selected" : ""; ?>>All School Years</option>
             <?php foreach ($schoolYearOptions as $option): ?>
               <option value="<?= htmlspecialchars($option) ?>" <?= $activeSchoolYearFilter === $option ? "selected" : ""; ?>>
@@ -303,7 +273,7 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
               </option>
             <?php endforeach; ?>
           </select>
-          <select class="rounded-full border border-[#f44336] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none" name="semester" onchange="this.form.submit()">
+          <select class="rounded-full border border-[#f59e0b] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none" name="semester" onchange="this.form.submit()">
             <option value="" <?= $activeSemesterFilter === "" ? "selected" : ""; ?>>All Semesters</option>
             <?php foreach ($semesterOptions as $option): ?>
               <option value="<?= htmlspecialchars($option) ?>" <?= $activeSemesterFilter === $option ? "selected" : ""; ?>>
@@ -312,26 +282,26 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
             <?php endforeach; ?>
           </select>
           <?php if ($rawSelectedSchoolYear !== null || $rawSelectedSemester !== null): ?>
-            <a href="declined-applicants.php" class="inline-flex items-center rounded-full border border-[#f44336] bg-white px-3 py-2 text-xs font-semibold text-[#f44336] shadow-sm">Clear</a>
+            <a href="reserved-applicants.php" class="inline-flex items-center rounded-full border border-[#f59e0b] bg-white px-3 py-2 text-xs font-semibold text-[#f59e0b] shadow-sm">Clear</a>
           <?php endif; ?>
         </form>
 
         <section class="px-4 sm:px-6 pb-10 mt-4">
-          <div class="rounded-lg border border-[#f44336] bg-white p-4 shadow-sm">
+          <div class="rounded-lg border border-[#f59e0b] bg-white p-4 shadow-sm">
             <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <p class="text-[#f44336] text-sm font-semibold">Declined Applicant History</p>
+                <p class="text-[#b45309] text-sm font-semibold">Reserved Applicants</p>
                 <p class="text-xs text-[#052c6a]">
-                  Showing <?= htmlspecialchars((string)$totalDeclined) ?> declined records. Reapplied applicants remain listed here for monitoring.
+                  Showing <?= htmlspecialchars((string)$totalReserved) ?> reserved applicant(s).
                 </p>
               </div>
             </div>
 
-            <div class="mt-4 overflow-x-auto rounded-[18px] border border-red-200 shadow-sm">
+            <div class="mt-4 overflow-x-auto rounded-[18px] border border-amber-200 shadow-sm">
               <table class="app-table min-w-full text-xs text-center">
                 <thead>
                   <tr>
-                    <th>Declined At</th>
+                    <th>Reserved On</th>
                     <th>Applicant Name</th>
                     <th>Program / Course</th>
                     <th>Reference Number</th>
@@ -342,30 +312,26 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
                   </tr>
                 </thead>
                 <tbody>
-                  <?php if (empty($declinedApplicants)): ?>
+                  <?php if (empty($reservedApplicants)): ?>
                     <tr>
-                      <td colspan="8" class="py-3 text-center text-[#052c6a]">No declined applicant history yet.</td>
+                      <td colspan="8" class="py-3 text-center text-[#052c6a]">No reserved applicants yet.</td>
                     </tr>
                   <?php else: ?>
-                    <?php foreach ($declinedApplicants as $applicant): ?>
+                    <?php foreach ($reservedApplicants as $applicant): ?>
                       <tr>
-                        <td class="text-left"><?= htmlspecialchars($applicant["declined_at"]) ?></td>
+                        <td class="text-left"><?= htmlspecialchars($applicant["reserved_on"]) ?></td>
                         <td class="text-left"><?= htmlspecialchars($applicant["name"]) ?></td>
                         <td class="text-left"><?= htmlspecialchars($applicant["program_course"]) ?></td>
                         <td class="text-left"><?= htmlspecialchars($applicant["reference_number"]) ?></td>
                         <td class="text-left"><?= htmlspecialchars($applicant["grant"]) ?></td>
                         <td class="text-left"><?= htmlspecialchars($applicant["term"]) ?></td>
                         <td>
-                          <span class="inline-flex rounded bg-red-500 px-2 py-0.5 text-white"><?= htmlspecialchars($applicant["status"]) ?></span>
+                          <span class="inline-flex rounded bg-amber-500 px-2 py-0.5 text-white"><?= htmlspecialchars($applicant["status"]) ?></span>
                         </td>
                         <td>
-                          <?php if ((int)$applicant["application_id"] > 0): ?>
-                            <button class="rounded bg-[#0d8ddb] px-3 py-1 text-xs text-white" type="button" onclick="window.location.href='view-application.php?id=<?= htmlspecialchars((string)$applicant["application_id"]) ?>'">
-                              View Details
-                            </button>
-                          <?php else: ?>
-                            <span class="text-slate-500">N/A</span>
-                          <?php endif; ?>
+                          <button class="rounded bg-[#0d8ddb] px-3 py-1 text-xs text-white" type="button" onclick="window.location.href='view-application.php?id=<?= htmlspecialchars((string)$applicant["application_id"]) ?>'">
+                            View Details
+                          </button>
                         </td>
                       </tr>
                     <?php endforeach; ?>
@@ -443,11 +409,6 @@ $summaryPageUrl = "summary-of-applicants.php" . $applicantPageSuffix;
           link.classList.toggle("hover:bg-white/15", !isActive);
         });
       });
-    </script>  </body>
+    </script>
+  </body>
 </html>
-
-
-
-
-
-

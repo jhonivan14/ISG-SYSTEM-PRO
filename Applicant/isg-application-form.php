@@ -1118,6 +1118,23 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           </div>
         </fieldset>
 
+        <!-- CONSENT CHECKBOX -->
+        <div class="mt-4 mb-2">
+          <label class="inline-flex items-start gap-3 cursor-pointer select-none">
+            <input
+              id="consentCheckbox"
+              type="checkbox"
+              class="mt-0.5 w-4 h-4 flex-shrink-0 border border-black accent-[#052c6a]"
+            />
+            <span class="text-xs text-[#052c6a] leading-relaxed">
+              I confirm that the information I have given in this form is true and accurate.
+              I agree to fill-out this Application Form and hereby authorize sharing of the
+              information furnished on this form with Saint Michael College of Caraga in
+              accordance with the Philippine Data Privacy Act of 2012.
+            </span>
+          </label>
+        </div>
+
         <!-- BUTTONS -->
         <div class="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3">
           <p class="text-[11px] sm:text-xs text-[#052c6a]/70 text-center sm:text-left">
@@ -1127,15 +1144,38 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           </p>
 
           <button
+            id="submitBtn"
             class="w-full sm:w-auto inline-flex items-center justify-center gap-2
                    bg-[#0d8ddb] text-white font-semibold px-8 py-2.5 rounded-full
-                   shadow-md hover:bg-[#0b63d1] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#0d8ddb] focus:ring-offset-white transition"
+                   shadow-md focus:outline-none transition"
+            style="opacity:0.45;cursor:not-allowed;pointer-events:none;"
             type="submit"
+            disabled
           >
             <span>Submit &amp; Go to Step 3</span>
             <i class="fas fa-arrow-right text-xs"></i>
           </button>
         </div>
+
+        <script>
+          (function () {
+            var checkbox = document.getElementById('consentCheckbox');
+            var btn = document.getElementById('submitBtn');
+            checkbox.addEventListener('change', function () {
+              if (this.checked) {
+                btn.disabled = false;
+                btn.style.opacity = '1';
+                btn.style.cursor = 'pointer';
+                btn.style.pointerEvents = 'auto';
+              } else {
+                btn.disabled = true;
+                btn.style.opacity = '0.45';
+                btn.style.cursor = 'not-allowed';
+                btn.style.pointerEvents = 'none';
+              }
+            });
+          })();
+        </script>
       </form>
     </section>
   </main>

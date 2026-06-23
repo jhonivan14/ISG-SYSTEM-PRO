@@ -444,6 +444,11 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
                     </a>
                   </li>
                   <li>
+                    <a href="reserved-applicants.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
+                      Reserved Applicants
+                    </a>
+                  </li>
+                  <li>
                     <a href="summary-of-applicants.php" class="block rounded-lg px-3 py-2 text-blue-50 hover:bg-white/15">
                       Summary of Applicants
                     </a>
@@ -874,6 +879,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const sidebarAliases = {
     "summary-of-applicants.php": "applicant.php",
     "declined-applicants.php": "applicant.php",
+    "reserved-applicants.php": "applicant.php",
     "view-application.php": "applicant.php",
     "department-evaluation-indi.php": "department-evaluation-list.php",
     "summary-reports.php": "summary-report.php",
@@ -976,6 +982,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const applicantPages = new Set([
           "applicant.php",
           "declined-applicants.php",
+          "reserved-applicants.php",
           "summary-of-applicants.php",
           "view-application.php"
         ]);
