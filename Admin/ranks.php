@@ -1091,7 +1091,7 @@ if (!empty($rankRows)) {
             <div class="mt-8 text-[12px] space-y-8">
               <div>
                 <p class="mb-10">Prepared by:</p>
-                <p class="font-semibold border-t border-black inline-block pt-1">ARLYN B. TUYOGON, MMBM</p>
+                <p class="font-semibold border-t border-black inline-block pt-1">ARLYN B. TUYOGON, MM</p>
                 <p class="text-[11px]">Head, Admission & Scholarship</p>
               </div>
               <div>

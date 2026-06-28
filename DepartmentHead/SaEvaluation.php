@@ -41,6 +41,7 @@ foreach ($ratingFieldNames as $fieldName) {
   $formRatings[$fieldName] = null;
 }
 $strengthsInput = "";
+$areasImprovementInput = "";
 $recommendationsInput = "";
 $signatureDataInput = "";
 $saveSuccess = "";
@@ -82,6 +83,7 @@ function saEnsureDepartmentHeadEvaluationTable(mysqli $conn): bool
     section_c_total INT NOT NULL DEFAULT 0,
     overall_total INT NOT NULL DEFAULT 0,
     strengths TEXT DEFAULT NULL,
+    areas_improvement TEXT DEFAULT NULL,
     recommendations TEXT DEFAULT NULL,
     signature_data LONGTEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -130,6 +132,13 @@ function saEnsureDepartmentHeadEvaluationTable(mysqli $conn): bool
     if ($conn->query($addIndexSql) !== true) {
       return false;
     }
+  }
+
+  $aiColResult = $conn->query("SHOW COLUMNS FROM department_head_evaluations LIKE 'areas_improvement'");
+  $hasAiCol = $aiColResult instanceof mysqli_result && $aiColResult->num_rows > 0;
+  if ($aiColResult instanceof mysqli_result) { $aiColResult->free(); }
+  if (!$hasAiCol) {
+    $conn->query("ALTER TABLE department_head_evaluations ADD COLUMN areas_improvement TEXT DEFAULT NULL AFTER strengths");
   }
 
   return true;
@@ -344,7 +353,7 @@ if ($loadError === "" && ($conn ?? null) instanceof mysqli) {
 
 if ($loadError === "" && $hasEvaluationTable) {
   $existingStmt = $conn->prepare(
-    "SELECT ratings_json, strengths, recommendations, signature_data, evaluation_date
+    "SELECT ratings_json, strengths, areas_improvement, recommendations, signature_data, evaluation_date
      FROM department_head_evaluations
      WHERE application_id = ? AND head_username = ? AND semester = ? AND school_year = ?
      LIMIT 1"
@@ -365,12 +374,13 @@ if ($loadError === "" && $hasEvaluationTable) {
         if (is_array($decodedRatings)) {
           foreach ($formRatings as $fieldName => $unusedValue) {
             $ratingValue = isset($decodedRatings[$fieldName]) ? (int)$decodedRatings[$fieldName] : 0;
-            if ($ratingValue >= 1 && $ratingValue <= 4) {
+            if ($ratingValue >= 1 && $ratingValue <= 5) {
               $formRatings[$fieldName] = $ratingValue;
             }
           }
         }
         $strengthsInput = trim((string)($existingRow["strengths"] ?? ""));
+        $areasImprovementInput = trim((string)($existingRow["areas_improvement"] ?? ""));
         $recommendationsInput = trim((string)($existingRow["recommendations"] ?? ""));
         $signatureDataInput = trim((string)($existingRow["signature_data"] ?? ""));
         $existingDate = trim((string)($existingRow["evaluation_date"] ?? ""));
@@ -388,6 +398,7 @@ if ($loadError === "" && $hasEvaluationTable) {
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $strengthsInput = trim((string)($_POST["strengths"] ?? ""));
+  $areasImprovementInput = trim((string)($_POST["areas_improvement"] ?? ""));
   $recommendationsInput = trim((string)($_POST["recommendations"] ?? ""));
   $signatureDataInput = trim((string)($_POST["signature_data"] ?? ""));
   $evaluationDateValue = date("Y-m-d");
@@ -395,7 +406,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   $invalidRatings = [];
   foreach ($formRatings as $fieldName => $unusedValue) {
     $ratingValue = isset($_POST[$fieldName]) ? (int)$_POST[$fieldName] : 0;
-    if ($ratingValue < 1 || $ratingValue > 4) {
+    if ($ratingValue < 1 || $ratingValue > 5) {
       $formRatings[$fieldName] = null;
       $invalidRatings[] = $fieldName;
     } else {
@@ -430,6 +441,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $ratingsJson = json_encode($formRatings, JSON_UNESCAPED_SLASHES);
     $strengthsValue = $strengthsInput !== "" ? $strengthsInput : null;
+    $areasImprovementValue = $areasImprovementInput !== "" ? $areasImprovementInput : null;
     $recommendationsValue = $recommendationsInput !== "" ? $recommendationsInput : null;
     $assignedOfficeValue = $applicationProfile["assigned_office"] !== ""
       ? $applicationProfile["assigned_office"]
@@ -439,8 +451,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       "INSERT INTO department_head_evaluations (
         application_id, applicant_name, semester, school_year, assigned_office, head_username, head_name,
         evaluation_date, ratings_json, section_a_total, section_b_total, section_c_total, overall_total,
-        strengths, recommendations, signature_data
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        strengths, areas_improvement, recommendations, signature_data
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         applicant_name = VALUES(applicant_name),
         semester = VALUES(semester),
@@ -454,13 +466,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         section_c_total = VALUES(section_c_total),
         overall_total = VALUES(overall_total),
         strengths = VALUES(strengths),
+        areas_improvement = VALUES(areas_improvement),
         recommendations = VALUES(recommendations),
         signature_data = VALUES(signature_data)"
     );
 
     if ($saveStmt) {
       $saveStmt->bind_param(
-        "issssssssiiiisss",
+        "issssssssiiiissss",
         $applicationId,
         $applicationProfile["applicant_name"],
         $applicationProfile["semester"],
@@ -475,6 +488,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $sectionCTotal,
         $overallTotal,
         $strengthsValue,
+        $areasImprovementValue,
         $recommendationsValue,
         $signatureDataInput
       );
@@ -752,16 +766,21 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                     </thead>
                     <tbody>
                         <tr>
-                            <td class="border border-slate-300 px-3 py-3 font-semibold">4</td>
+                            <td class="border border-slate-300 px-3 py-3 font-semibold">5</td>
                             <td class="border border-slate-300 px-3 py-3">Excellent</td>
                             <td class="border border-slate-300 px-3 py-3 text-xs leading-5">This rating is given to student assistants who consistently exceed expectations and demonstrate outstanding performance in their assigned tasks.</td>
                         </tr>
                         <tr class="bg-slate-50">
+                            <td class="border border-slate-300 px-3 py-3 font-semibold">4</td>
+                            <td class="border border-slate-300 px-3 py-3">Very Good</td>
+                            <td class="border border-slate-300 px-3 py-3 text-xs leading-5">This rating is given to student assistants who frequently exceed expectations and demonstrate a high level of performance in their assigned tasks.</td>
+                        </tr>
+                        <tr>
                             <td class="border border-slate-300 px-3 py-3 font-semibold">3</td>
                             <td class="border border-slate-300 px-3 py-3">Good</td>
                             <td class="border border-slate-300 px-3 py-3 text-xs leading-5">This rating is given to student assistants who consistently meet expectations and perform their assigned tasks satisfactorily.</td>
                         </tr>
-                        <tr>
+                        <tr class="bg-slate-50">
                             <td class="border border-slate-300 px-3 py-3 font-semibold">2</td>
                             <td class="border border-slate-300 px-3 py-3">Fair</td>
                             <td class="border border-slate-300 px-3 py-3 text-xs leading-5">This rating is given to student assistants who occasionally meet expectations but may have some areas for improvement.</td>
@@ -789,7 +808,8 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                         <tr class="bg-slate-100">
                             <th class="w-16 border border-slate-300 px-3 py-2 text-left font-semibold"></th>
                             <th class="border border-slate-300 px-3 py-2 text-left font-semibold">Criteria</th>
-                            <th class="w-24 border border-slate-300 px-3 py-2 text-center font-semibold">Excellent<br><span class="text-xs">(4)</span></th>
+                            <th class="w-24 border border-slate-300 px-3 py-2 text-center font-semibold">Excellent<br><span class="text-xs">(5)</span></th>
+                            <th class="w-24 border border-slate-300 px-3 py-2 text-center font-semibold">Very Good<br><span class="text-xs">(4)</span></th>
                             <th class="w-24 border border-slate-300 px-3 py-2 text-center font-semibold">Good<br><span class="text-xs">(3)</span></th>
                             <th class="w-24 border border-slate-300 px-3 py-2 text-center font-semibold">Fair<br><span class="text-xs">(2)</span></th>
                             <th class="w-24 border border-slate-300 px-3 py-2 text-center font-semibold">Poor<br><span class="text-xs">(1)</span></th>
@@ -797,11 +817,14 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                     </thead>
                     <tbody>
                         <tr class="bg-blue-50/60 font-semibold">
-                            <td colspan="6" class="border border-slate-300 px-3 py-2">A. Quality and Quantity of Work</td>
+                            <td colspan="7" class="border border-slate-300 px-3 py-2">A. Quality and Quantity of Work</td>
                         </tr>
                         <tr>
                             <td class="border border-slate-300 px-3 py-2">A.1</td>
                             <td class="border border-slate-300 px-3 py-2">Accurate at work assigned</td>
+                            <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-a1" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
                             <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-a1" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
@@ -819,6 +842,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                             <td class="border border-slate-300 px-3 py-2">A.2</td>
                             <td class="border border-slate-300 px-3 py-2">Always completes tasks</td>
                             <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-a2" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
+                            <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-a2" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
                             <td class="border border-slate-300 text-center">
@@ -834,6 +860,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                         <tr>
                             <td class="border border-slate-300 px-3 py-2">A.3</td>
                             <td class="border border-slate-300 px-3 py-2">Works in a timely manner</td>
+                            <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-a3" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
                             <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-a3" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
@@ -851,6 +880,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                             <td class="border border-slate-300 px-3 py-2">A.4</td>
                             <td class="border border-slate-300 px-3 py-2">Asks for more work when assigned tasks are done</td>
                             <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-a4" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
+                            <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-a4" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
                             <td class="border border-slate-300 text-center">
@@ -867,6 +899,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                             <td class="border border-slate-300 px-3 py-2">A.5</td>
                             <td class="border border-slate-300 px-3 py-2">Easily accepts new responsibilities</td>
                             <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-a5" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
+                            <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-a5" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
                             <td class="border border-slate-300 text-center">
@@ -881,15 +916,18 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                         </tr>
                         <tr class="bg-slate-100 font-semibold">
                             <td class="border border-slate-300 px-3 py-2" colspan="2">Total</td>
-                            <td id="section-a-total" colspan="4" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">0</td>
+                            <td id="section-a-total" colspan="5" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">0</td>
                         </tr>
 
                         <tr class="bg-blue-50/60 font-semibold">
-                            <td colspan="6" class="border border-slate-300 px-3 py-2">B. Interpersonal Skills</td>
+                            <td colspan="7" class="border border-slate-300 px-3 py-2">B. Interpersonal Skills</td>
                         </tr>
                         <tr>
                             <td class="border border-slate-300 px-3 py-2">B.1</td>
                             <td class="border border-slate-300 px-3 py-2">Answers patrons&#39; questions accurately</td>
+                            <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-b1" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
                             <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-b1" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
@@ -907,6 +945,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                             <td class="border border-slate-300 px-3 py-2">B.2</td>
                             <td class="border border-slate-300 px-3 py-2">Deals with patrons well</td>
                             <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-b2" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
+                            <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-b2" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
                             <td class="border border-slate-300 text-center">
@@ -922,6 +963,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                         <tr>
                             <td class="border border-slate-300 px-3 py-2">B.3</td>
                             <td class="border border-slate-300 px-3 py-2">Deals with personnel well</td>
+                            <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-b3" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
                             <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-b3" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
@@ -939,6 +983,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                             <td class="border border-slate-300 px-3 py-2">B.4</td>
                             <td class="border border-slate-300 px-3 py-2">Knows how to effectively communicate with others</td>
                             <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-b4" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
+                            <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-b4" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
                             <td class="border border-slate-300 text-center">
@@ -955,6 +1002,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                             <td class="border border-slate-300 px-3 py-2">B.5</td>
                             <td class="border border-slate-300 px-3 py-2">Has a good relationship with other student assistants</td>
                             <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-b5" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
+                            <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-b5" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
                             <td class="border border-slate-300 text-center">
@@ -969,15 +1019,18 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                         </tr>
                         <tr class="bg-slate-100 font-semibold">
                             <td class="border border-slate-300 px-3 py-2" colspan="2">Total</td>
-                            <td id="section-b-total" colspan="4" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">0</td>
+                            <td id="section-b-total" colspan="5" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">0</td>
                         </tr>
 
                         <tr class="bg-blue-50/60 font-semibold">
-                            <td colspan="6" class="border border-slate-300 px-3 py-2">C. Attendance and Reliability</td>
+                            <td colspan="7" class="border border-slate-300 px-3 py-2">C. Attendance and Reliability</td>
                         </tr>
                         <tr>
                             <td class="border border-slate-300 px-3 py-2">C.1</td>
                             <td class="border border-slate-300 px-3 py-2">Perfect attendance</td>
+                            <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-c1" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
                             <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-c1" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
@@ -995,6 +1048,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                             <td class="border border-slate-300 px-3 py-2">C.2</td>
                             <td class="border border-slate-300 px-3 py-2">Reports duty on time; rarely comes late</td>
                             <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-c2" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
+                            <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-c2" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
                             <td class="border border-slate-300 text-center">
@@ -1010,6 +1066,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                         <tr>
                             <td class="border border-slate-300 px-3 py-2">C.3</td>
                             <td class="border border-slate-300 px-3 py-2">Following assigned schedule</td>
+                            <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-c3" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
                             <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-c3" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
@@ -1027,6 +1086,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                             <td class="border border-slate-300 px-3 py-2">C.4</td>
                             <td class="border border-slate-300 px-3 py-2">Able to work without direct supervision</td>
                             <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-c4" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
+                            <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-c4" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
                             <td class="border border-slate-300 text-center">
@@ -1043,6 +1105,9 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                             <td class="border border-slate-300 px-3 py-2">C.5</td>
                             <td class="border border-slate-300 px-3 py-2">Carries out instructions successfully</td>
                             <td class="border border-slate-300 text-center">
+                                <input type="radio" name="score-c5" value="5" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
+                            </td>
+                            <td class="border border-slate-300 text-center">
                                 <input type="radio" name="score-c5" value="4" class="h-4 w-4 text-slate-900 focus:ring-yellow-400" />
                             </td>
                             <td class="border border-slate-300 text-center">
@@ -1057,19 +1122,19 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                         </tr>
                         <tr class="bg-slate-100 font-semibold">
                             <td class="border border-slate-300 px-3 py-2" colspan="2">Total</td>
-                            <td id="section-c-total" colspan="4" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">0</td>
+                            <td id="section-c-total" colspan="5" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-800">0</td>
                         </tr>
 
                         <tr class="bg-slate-100 font-semibold">
                             <td class="border border-slate-300 px-3 py-2" colspan="2">Over-all Total</td>
-                            <td id="overall-total" colspan="4" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-900">0</td>
+                            <td id="overall-total" colspan="5" class="border border-slate-300 px-3 py-2 text-center font-semibold text-slate-900">0</td>
                         </tr>
                     </tbody>
                 </table>
 
             <div class="mt-8 space-y-6 text-sm text-slate-700">
                 <div>
-                    <p class="font-semibold">D. Strength(s)/Areas for Improvement:</p>
+                    <p class="font-semibold">D. Strength(s):</p>
                     <textarea
                       name="strengths"
                       rows="3"
@@ -1077,7 +1142,15 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
                     ><?= htmlspecialchars($strengthsInput) ?></textarea>
                 </div>
                 <div>
-                    <p class="font-semibold">E. Evaluator&#39;s Comment(s)/Recommendation:</p>
+                    <p class="font-semibold">E. Area(s) for Improvement:</p>
+                    <textarea
+                      name="areas_improvement"
+                      rows="3"
+                      class="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none focus:ring focus:ring-blue-500/20"
+                    ><?= htmlspecialchars($areasImprovementInput) ?></textarea>
+                </div>
+                <div>
+                    <p class="font-semibold">F. Evaluator&#39;s Comment(s)/Recommendation:</p>
                     <textarea
                       name="recommendations"
                       rows="3"
@@ -1166,7 +1239,7 @@ $displayEvaluationDate = date("F j, Y", strtotime($evaluationDateValue));
 
         Object.entries(savedRatings).forEach(([fieldName, ratingValue]) => {
           const value = parseInt(String(ratingValue ?? ""), 10);
-          if (Number.isNaN(value) || value < 1 || value > 4) return;
+          if (Number.isNaN(value) || value < 1 || value > 5) return;
           const selectedInput = document.querySelector(`input[type="radio"][name="${fieldName}"][value="${value}"]`);
           if (selectedInput) {
             selectedInput.checked = true;

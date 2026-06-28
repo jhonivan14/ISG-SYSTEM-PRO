@@ -20,6 +20,7 @@ $displayAreaOfAssignment = "";
 $displayHeadOfOffice = "";
 $displayEvaluationDate = "";
 $displayStrengths = "";
+$displayAreasImprovement = "";
 $displayRecommendations = "";
 $displaySignatureData = "";
 $displayProgramYearLevel = "";
@@ -50,11 +51,11 @@ $sectionFields = [
 ];
 
 $sectionWeightedTotals = [
-  "a" => [4 => 0, 3 => 0, 2 => 0, 1 => 0],
-  "b" => [4 => 0, 3 => 0, 2 => 0, 1 => 0],
-  "c" => [4 => 0, 3 => 0, 2 => 0, 1 => 0],
+  "a" => [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0],
+  "b" => [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0],
+  "c" => [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0],
 ];
-$overallWeightedTotals = [4 => 0, 3 => 0, 2 => 0, 1 => 0];
+$overallWeightedTotals = [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0];
 $resolvedScholarRow = null;
 $loadedByEvaluationId = false;
 
@@ -122,6 +123,7 @@ if (($conn ?? null) instanceof mysqli && $evaluationId > 0) {
       dhe.evaluation_date,
       dhe.ratings_json,
       dhe.strengths,
+      dhe.areas_improvement,
       dhe.recommendations,
       dhe.signature_data,
       COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_year,
@@ -181,6 +183,7 @@ if (($conn ?? null) instanceof mysqli && $evaluationId > 0) {
         }
         $displayHeadAccountLastName = trim((string)($evaluationRow["head_account_lastname"] ?? ""));
         $displayStrengths = trim((string)($evaluationRow["strengths"] ?? ""));
+        $displayAreasImprovement = trim((string)($evaluationRow["areas_improvement"] ?? ""));
         $displayRecommendations = trim((string)($evaluationRow["recommendations"] ?? ""));
         $displaySignatureData = trim((string)($evaluationRow["signature_data"] ?? ""));
         $displayProgramYearLevel = trim((string)($evaluationRow["program_year"] ?? ""));
@@ -195,7 +198,7 @@ if (($conn ?? null) instanceof mysqli && $evaluationId > 0) {
         if (is_array($decodedRatings)) {
           foreach ($ratings as $field => $unusedValue) {
             $score = isset($decodedRatings[$field]) ? (int)$decodedRatings[$field] : 0;
-            if ($score >= 1 && $score <= 4) {
+            if ($score >= 1 && $score <= 5) {
               $ratings[$field] = $score;
             }
           }
@@ -245,6 +248,7 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
         evaluation_date,
         ratings_json,
         strengths,
+        areas_improvement,
         recommendations,
         signature_data,
         (
@@ -310,6 +314,7 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
           }
           $displayHeadAccountLastName = trim((string)($row["head_account_lastname"] ?? ""));
           $displayStrengths = trim((string)($row["strengths"] ?? ""));
+          $displayAreasImprovement = trim((string)($row["areas_improvement"] ?? ""));
           $displayRecommendations = trim((string)($row["recommendations"] ?? ""));
           $displaySignatureData = trim((string)($row["signature_data"] ?? ""));
 
@@ -323,7 +328,7 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
           if (is_array($decodedRatings)) {
             foreach ($ratings as $field => $unusedValue) {
               $score = isset($decodedRatings[$field]) ? (int)$decodedRatings[$field] : 0;
-              if ($score >= 1 && $score <= 4) {
+              if ($score >= 1 && $score <= 5) {
                 $ratings[$field] = $score;
               }
             }
@@ -402,7 +407,7 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
 foreach ($sectionFields as $sectionKey => $fields) {
   foreach ($fields as $field) {
     $score = (int)($ratings[$field] ?? 0);
-    if ($score >= 1 && $score <= 4) {
+    if ($score >= 1 && $score <= 5) {
       $sectionWeightedTotals[$sectionKey][$score] += $score;
       $overallWeightedTotals[$score] += $score;
     }
@@ -423,7 +428,7 @@ $sectionRatedCounts = ["a" => 0, "b" => 0, "c" => 0];
 foreach ($sectionFields as $sectionKey => $fields) {
   foreach ($fields as $field) {
     $score = (int)($ratings[$field] ?? 0);
-    if ($score >= 1 && $score <= 4) {
+    if ($score >= 1 && $score <= 5) {
       $sectionScoreTotals[$sectionKey] += $score;
       $sectionRatedCounts[$sectionKey]++;
     }
@@ -461,8 +466,11 @@ $verbalFromAverage = static function (?float $value): string {
     return "";
   }
 
-  if ($value >= 4.0) {
+  if ($value >= 5.0) {
     return "Excellent";
+  }
+  if ($value >= 4.0) {
+    return "Very Good";
   }
   if ($value >= 3.0) {
     return "Good";
@@ -748,7 +756,7 @@ if ($assistantFullName !== "") {
       }
 
       .eval-page footer {
-        margin-top: 1.5rem;
+        margin-top: 0rem;
       }
 
       .eval-page footer img {
@@ -758,14 +766,14 @@ if ($assistantFullName !== "") {
       }
 
       .eval-page .footer-box {
-        margin-top: 1.5rem;
+        margin-top: 0rem;
         display: flex;
         justify-content: flex-start;
         padding-left: 0.25rem;
       }
 
       .eval-page .footer-box img {
-        width: 18rem;
+        width: 13rem;
         max-width: calc(100% - 0.5rem);
         height: auto;
         object-fit: contain;
@@ -801,20 +809,67 @@ if ($assistantFullName !== "") {
           print-color-adjust: exact;
         }
 
+        /* Hide all page chrome — sidebar, topbar, buttons, separator */
+        body.is-printing #sidebar,
+        body.is-printing .page-header,
+        body.is-printing main > header {
+          display: none !important;
+        }
+
+        body.is-printing main {
+          margin-left: 0 !important;
+          padding-top: 0 !important;
+          background: white !important;
+        }
+
+        body.is-printing #evaluation-details {
+          margin-top: 0 !important;
+          padding: 0 !important;
+          background: none !important;
+        }
+
+        /* Hide print buttons, separator, and doc label (everything that isn't a print section) */
+        body.is-printing #evaluation-details > div:not(#print-eval-form):not(#print-eval-result) {
+          display: none !important;
+        }
+
+        /* Hide the non-target document */
+        body.printing-eval-form #print-eval-result {
+          display: none !important;
+        }
+
+        body.printing-eval-result #print-eval-form {
+          display: none !important;
+        }
+
+        /* Reset outer wrappers — @page margins handle all spacing */
+        #print-eval-form,
+        #print-eval-result {
+          max-width: 100% !important;
+          width: 100% !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          border: none !important;
+          background: #ffffff !important;
+        }
+
         .eval-page {
           background: #ffffff;
         }
 
-        /* Tighter spacing for document 1 so it fits on one page */
+        /* ── Document 1: Evaluation Form (portrait 8.5in × 13in) ─────────── */
+
         #print-eval-form .eval-page {
           font-size: 10px;
           line-height: 1.2;
         }
 
         #print-eval-form .header-top {
-          margin-top: 1.2rem;
+          margin-top: 0;
           gap: 0.4rem;
-          margin-bottom: 0.25rem;
+          margin-bottom: 0.3rem;
         }
 
         #print-eval-form .header-logo img,
@@ -832,63 +887,63 @@ if ($assistantFullName !== "") {
         }
 
         #print-eval-form .paper {
-          border: none;
-          padding: 0.4rem 0.5rem 0.7rem;
+          padding: 0.3rem 0.5rem 0.4rem;
         }
 
         #print-eval-form .title {
-          font-size: 12px;
-          margin-bottom: 0.45rem;
+          font-size: 11.5px;
+          margin-bottom: 0.35rem;
         }
 
         #print-eval-form .info-block {
-          margin-bottom: 0.5rem;
+          margin-bottom: 0.35rem;
           font-size: 10px;
         }
 
         #print-eval-form .info-row {
-          grid-template-columns: 215px minmax(0, 280px);
+          grid-template-columns: 210px minmax(0, 260px);
           gap: 0.25rem;
-          margin-bottom: 0.12rem;
+          margin-bottom: 0.1rem;
         }
 
         #print-eval-form .info-value {
-          min-height: 0.65rem;
+          min-height: 0.6rem;
         }
 
         #print-eval-form .direction {
           font-size: 10px;
-          line-height: 1.28;
+          line-height: 1.25;
           margin-bottom: 0.25rem;
         }
 
         #print-eval-form table th,
         #print-eval-form table td {
-          padding: 0.14rem 0.28rem;
+          padding: 0.13rem 0.25rem;
           font-size: 10px;
         }
 
         #print-eval-form .scale-table {
-          margin-bottom: 0.4rem;
-        }
-
-        #print-eval-form section.pt-4 {
-          padding-top: 0.2rem !important;
+          margin-bottom: 0.35rem;
         }
 
         #print-eval-form .scale-table td {
           font-size: 9.5px;
-          padding: 0.14rem 0.28rem;
+          padding: 0.1rem 0.25rem;
         }
 
         #print-eval-form .rating-table td {
           height: 1.25rem;
         }
 
+        #print-eval-form section.pt-4,
+        #print-eval-form section.pt-6 {
+          padding-top: 0.2rem !important;
+        }
+
         #print-eval-form .comment-box {
-          min-height: 2.1rem;
-          padding: 0.3rem 0.45rem;
-          line-height: 1.28;
+          min-height: 2.2rem;
+          padding: 0.25rem 0.4rem;
+          line-height: 1.2;
         }
 
         #print-eval-form .signature-row {
@@ -900,53 +955,63 @@ if ($assistantFullName !== "") {
         }
 
         #print-eval-form .footer-box {
-          margin-top: 0.12rem;
-          padding-bottom: 0.05rem;
+          margin-top: 0.2rem;
         }
 
         #print-eval-form footer {
-          margin-top: 0.24rem;
+          margin-top: 0.2rem;
           padding-top: 0.05rem;
         }
 
-        /* Tighter print fit for the evaluation result (second document) */
-        #print-eval-result {
-          transform: scale(0.88);
-          transform-origin: top center;
-          box-shadow: none !important;
-          border: none !important;
-          background: #ffffff !important;
-          border-radius: 0 !important;
-        }
+        /* ── Document 2: Copy of Evaluation (landscape 11in × 8.5in) ─────── */
+
         #print-eval-result .eval-result {
-          padding: 0.26in 0.28in 0.22in;
-          font-size: 11px;
-          line-height: 1.25;
+          padding: 1rem 1.5rem;
+          font-size: 12px;
+          line-height: 1.4;
           box-shadow: none !important;
           border: none !important;
           background: transparent !important;
         }
-        #print-eval-result h1,
-        #print-eval-result h2,
-        #print-eval-result p {
-          margin-top: 0.12rem;
-          margin-bottom: 0.12rem;
+
+        #print-eval-result header.text-center {
+          margin-bottom: 0.7rem !important;
         }
-        #print-eval-result .space-y-2 > * + * {
-          margin-top: 0.15rem;
+
+        #print-eval-result .mb-4 {
+          margin-bottom: 0.6rem !important;
         }
-        #print-eval-result .result-table th,
-        #print-eval-result .result-table td {
-          padding: 3px 5px;
+
+        #print-eval-result .mb-6 {
+          margin-bottom: 1rem !important;
         }
+
+        #print-eval-result .mt-6 {
+          margin-top: 1rem !important;
+        }
+
+        #print-eval-result .mt-10 {
+          margin-top: 1.2rem !important;
+        }
+
+        #print-eval-result .gap-8 {
+          gap: 1.5rem !important;
+        }
+
         #print-eval-result .result-table {
           border-collapse: collapse;
         }
-        #print-eval-result .grid {
-          margin-top: 0.6rem !important;
+
+        #print-eval-result .result-table th,
+        #print-eval-result .result-table td {
+          padding: 5px 8px;
+          font-size: 12px;
         }
-        #print-eval-result .max-w-4xl.mx-auto.mt-10 {
-          margin-top: 1rem !important;
+
+        /* Tall enough to fill the page without overflowing landscape height */
+        #print-eval-result .result-table .h-16 {
+          height: 3rem !important;
+          min-height: 0 !important;
         }
       }
           #sidebar > nav > ul {
@@ -1308,9 +1373,14 @@ if ($assistantFullName !== "") {
                     </thead>
                     <tbody>
                       <tr>
-                        <td>4</td>
+                        <td>5</td>
                         <td>Excellent</td>
                         <td>This rating is given to student assistants who consistently exceed expectations and demonstrate outstanding performance in their assigned tasks.</td>
+                      </tr>
+                      <tr>
+                        <td>4</td>
+                        <td>Very Good</td>
+                        <td>This rating is given to student assistants who frequently exceed expectations and demonstrate a high level of performance in their assigned tasks.</td>
                       </tr>
                       <tr>
                         <td>3</td>
@@ -1336,10 +1406,11 @@ if ($assistantFullName !== "") {
                     <thead>
                       <tr>
                         <th rowspan="2" style="width: 47%;">Performance Indicators</th>
-                        <th colspan="4">Rating</th>
+                        <th colspan="5">Rating</th>
                       </tr>
                       <tr>
-                        <th>Excellent (4)</th>
+                        <th>Excellent (5)</th>
+                        <th>Very Good (4)</th>
                         <th>Good (3)</th>
                         <th>Fair (2)</th>
                         <th>Poor (1)</th>
@@ -1348,10 +1419,11 @@ if ($assistantFullName !== "") {
                     <tbody>
                       <tr>
                         <td class="section-label">A. Quality and Quantity of Work</td>
-                        <td></td><td></td><td></td><td></td>
+                        <td></td><td></td><td></td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>A.1 Accurate at work assigned</td>
+                        <td><?= $checkMark($ratings, "score-a1", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-a1", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-a1", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-a1", 2) ?></td>
@@ -1359,6 +1431,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>A.2 Always completes tasks</td>
+                        <td><?= $checkMark($ratings, "score-a2", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-a2", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-a2", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-a2", 2) ?></td>
@@ -1366,6 +1439,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>A.3 Works in a timely manner</td>
+                        <td><?= $checkMark($ratings, "score-a3", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-a3", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-a3", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-a3", 2) ?></td>
@@ -1373,6 +1447,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>A.4 Asks for more work when assigned tasks are done</td>
+                        <td><?= $checkMark($ratings, "score-a4", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-a4", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-a4", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-a4", 2) ?></td>
@@ -1380,6 +1455,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>A.5 Easily accepts new responsibilities</td>
+                        <td><?= $checkMark($ratings, "score-a5", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-a5", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-a5", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-a5", 2) ?></td>
@@ -1387,6 +1463,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td class="subtotal">Total</td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 5)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 4)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 3)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 2)) ?></td>
@@ -1395,10 +1472,11 @@ if ($assistantFullName !== "") {
 
                       <tr>
                         <td class="section-label">B. Interpersonal Skills</td>
-                        <td></td><td></td><td></td><td></td>
+                        <td></td><td></td><td></td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>B.1 Answers patron's questions accurately</td>
+                        <td><?= $checkMark($ratings, "score-b1", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-b1", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-b1", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-b1", 2) ?></td>
@@ -1406,6 +1484,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>B.2 Deals with patrons well</td>
+                        <td><?= $checkMark($ratings, "score-b2", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-b2", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-b2", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-b2", 2) ?></td>
@@ -1413,6 +1492,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>B.3 Deals with personnel well</td>
+                        <td><?= $checkMark($ratings, "score-b3", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-b3", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-b3", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-b3", 2) ?></td>
@@ -1420,6 +1500,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>B.4 Knows how to effectively communicate with others</td>
+                        <td><?= $checkMark($ratings, "score-b4", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-b4", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-b4", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-b4", 2) ?></td>
@@ -1427,6 +1508,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>B.5 Has a good relationship with other student assistants</td>
+                        <td><?= $checkMark($ratings, "score-b5", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-b5", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-b5", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-b5", 2) ?></td>
@@ -1434,6 +1516,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td class="subtotal">Total</td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 5)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 4)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 3)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 2)) ?></td>
@@ -1442,10 +1525,11 @@ if ($assistantFullName !== "") {
 
                       <tr>
                         <td class="section-label">C. Attendance and Reliability</td>
-                        <td></td><td></td><td></td><td></td>
+                        <td></td><td></td><td></td><td></td><td></td>
                       </tr>
                       <tr>
                         <td>C.1 Perfect attendance</td>
+                        <td><?= $checkMark($ratings, "score-c1", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-c1", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-c1", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-c1", 2) ?></td>
@@ -1453,6 +1537,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>C.2 Reports duty on time, rarely comes late</td>
+                        <td><?= $checkMark($ratings, "score-c2", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-c2", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-c2", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-c2", 2) ?></td>
@@ -1460,6 +1545,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>C.3 Following assigned schedule</td>
+                        <td><?= $checkMark($ratings, "score-c3", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-c3", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-c3", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-c3", 2) ?></td>
@@ -1467,6 +1553,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>C.4 Able to work without direct supervision</td>
+                        <td><?= $checkMark($ratings, "score-c4", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-c4", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-c4", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-c4", 2) ?></td>
@@ -1474,6 +1561,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td>C.5 Carries out instructions successfully</td>
+                        <td><?= $checkMark($ratings, "score-c5", 5) ?></td>
                         <td><?= $checkMark($ratings, "score-c5", 4) ?></td>
                         <td><?= $checkMark($ratings, "score-c5", 3) ?></td>
                         <td><?= $checkMark($ratings, "score-c5", 2) ?></td>
@@ -1481,6 +1569,7 @@ if ($assistantFullName !== "") {
                       </tr>
                       <tr>
                         <td class="subtotal">Total</td>
+                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 5)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 4)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 3)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 2)) ?></td>
@@ -1489,6 +1578,7 @@ if ($assistantFullName !== "") {
 
                       <tr>
                         <td class="subtotal">Over-all Total</td>
+                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 5)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 4)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 3)) ?></td>
                         <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 2)) ?></td>
@@ -1499,9 +1589,13 @@ if ($assistantFullName !== "") {
                 </section>
 
                 <section class="pt-6 text-[12px]">
-                  <p class="font-semibold">D. Strength(s)/Areas for Improvement:</p>
+                  <p class="font-semibold">D. Strength(s) / Area(s) for Improvement:</p>
                   <div class="comment-box">
-                    <?= $displayStrengths !== "" ? nl2br(htmlspecialchars($displayStrengths)) : "&nbsp;" ?>
+                    <?php
+                      $combinedStrAreas = array_filter([$displayStrengths, $displayAreasImprovement], fn($s) => $s !== "");
+                      $combinedStrAreas = implode(" / ", $combinedStrAreas);
+                      echo $combinedStrAreas !== "" ? nl2br(htmlspecialchars($combinedStrAreas)) : "&nbsp;";
+                    ?>
                   </div>
                 </section>
 
@@ -1653,8 +1747,11 @@ if ($assistantFullName !== "") {
                       <td><?= htmlspecialchars($verbalFromAverage($overallAvg)) ?></td>
                     </tr>
                     <tr>
-                      <td>D. Strength(s)/Areas for Improvement</td>
-                      <td colspan="2"><div class="h-16 whitespace-pre-wrap"><?= htmlspecialchars($displayStrengths) ?></div></td>
+                      <td>D. Strength(s) / Area(s) for Improvement</td>
+                      <td colspan="2"><div class="h-16 whitespace-pre-wrap"><?php
+                        $combinedStrAreas2 = array_filter([$displayStrengths, $displayAreasImprovement], fn($s) => $s !== "");
+                        echo htmlspecialchars(implode(" / ", $combinedStrAreas2));
+                      ?></div></td>
                     </tr>
                     <tr>
                       <td>E. Evaluator's Comment(s)/Recommendation</td>
@@ -1667,7 +1764,7 @@ if ($assistantFullName !== "") {
               <div class="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-8 mt-6 text-[12px] font-serif">
                 <div>
                   <p class="mb-8">Prepared by:</p>
-                  <p class="font-bold">ARLYN B. TUYOGON, MMBM</p>
+                  <p class="font-bold">ARLYN B. TUYOGON, MM</p>
                   <p>Head, Admission &amp; Scholarship</p>
                 </div>
                 <div>
@@ -1758,50 +1855,31 @@ if ($assistantFullName !== "") {
       });
 
       function printSection(sectionId) {
-        const section = document.getElementById(sectionId);
-        if (!section) return;
+        const isResult = sectionId === "print-eval-result";
 
-        const styleTag = document.querySelector("style");
-        const styles = styleTag ? styleTag.innerHTML : "";
+        // Dynamically set the correct @page size for this document
+        let pageOverride = document.getElementById("page-size-override");
+        if (!pageOverride) {
+          pageOverride = document.createElement("style");
+          pageOverride.id = "page-size-override";
+          document.head.appendChild(pageOverride);
+        }
+        pageOverride.textContent = isResult
+          ? "@page { size: 11in 8.5in; margin: 0.2in; }"
+          : "@page { size: 8.5in 13in; margin: 0.28in; }";
 
-        const landscapePage =
-          sectionId === "print-eval-result"
-            ? "@page { size: 11in 8.5in; margin: 0.2in; }"
-            : "";
+        // Add body classes so @media print CSS knows what to show/hide
+        document.body.classList.add("is-printing", isResult ? "printing-eval-result" : "printing-eval-form");
 
-        const tailwindScript = document.querySelector('script[src*="tailwindcss"]');
-        const fontAwesome = document.querySelector('link[href*="font-awesome"]');
-        const fontFamily = document.querySelector('link[href*="Times+New+Roman"]');
-
-        const printWindow = window.open("", "_blank", "width=900,height=1200");
-        if (!printWindow) return;
-
-        const baseHref = document.baseURI || window.location.href;
-
-        printWindow.document.write("<html><head><title>Print</title>");
-        printWindow.document.write('<base href="' + baseHref + '" />');
-        if (tailwindScript) printWindow.document.write(tailwindScript.outerHTML);
-        if (fontAwesome) printWindow.document.write(fontAwesome.outerHTML);
-        if (fontFamily) printWindow.document.write(fontFamily.outerHTML);
-        printWindow.document.write("<style>" + styles + landscapePage + "</style>");
-        printWindow.document.write("</head><body class='bg-white'>");
-        printWindow.document.write(section.outerHTML);
-        printWindow.document.write("</body></html>");
-        printWindow.document.close();
-
-        const handleAfterPrint = () => {
-          printWindow.close();
+        // Clean up after print dialog closes
+        const cleanup = () => {
+          document.body.classList.remove("is-printing", "printing-eval-form", "printing-eval-result");
+          pageOverride.textContent = "";
+          window.removeEventListener("afterprint", cleanup);
         };
+        window.addEventListener("afterprint", cleanup);
 
-        printWindow.onafterprint = handleAfterPrint;
-        printWindow.addEventListener("afterprint", handleAfterPrint);
-
-        printWindow.onload = () => {
-          printWindow.focus();
-          setTimeout(() => {
-            printWindow.print();
-          }, 50);
-        };
+        window.print();
       }
     </script>
     <script>

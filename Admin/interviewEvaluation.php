@@ -772,7 +772,7 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
               <div class="mt-6 grid grid-cols-1 gap-6 max-w-3xl">
                 <div>
                   <div class="text-[10pt] mb-1">Prepared by:</div>
-                  <div class="font-semibold">ARLYN B. TUYOGON, MMBM</div>
+                  <div class="font-semibold">ARLYN B. TUYOGON, MM</div>
                   <div class="sig-role">Head, Admission &amp; Scholarship</div>
                 </div>
 

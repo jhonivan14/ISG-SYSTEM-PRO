@@ -99,6 +99,7 @@ if ($evaluationId <= 0 && $applicationId === 0) {
             dhe.evaluation_date,
             dhe.ratings_json,
             dhe.strengths,
+            dhe.areas_improvement,
             dhe.recommendations,
             dhe.signature_data,
             COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course
@@ -130,6 +131,7 @@ if ($evaluationId <= 0 && $applicationId === 0) {
             dhe.evaluation_date,
             dhe.ratings_json,
             dhe.strengths,
+            dhe.areas_improvement,
             dhe.recommendations,
             dhe.signature_data,
             COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course
@@ -171,6 +173,7 @@ if ($evaluationId <= 0 && $applicationId === 0) {
               "head_name" => trim((string)($row["head_name"] ?? "")),
               "evaluation_date" => trim((string)($row["evaluation_date"] ?? "")),
               "strengths" => trim((string)($row["strengths"] ?? "")),
+              "areas_improvement" => trim((string)($row["areas_improvement"] ?? "")),
               "recommendations" => trim((string)($row["recommendations"] ?? "")),
               "signature_data" => trim((string)($row["signature_data"] ?? "")),
             ];
@@ -178,7 +181,7 @@ if ($evaluationId <= 0 && $applicationId === 0) {
             if (is_array($decoded)) {
               foreach ($decoded as $key => $val) {
                 $score = (int)$val;
-                if ($score >= 1 && $score <= 4) {
+                if ($score >= 1 && $score <= 5) {
                   $ratings[(string)$key] = $score;
                 }
               }
@@ -284,9 +287,48 @@ $check = static function (int $actual, int $scale): string {
       .comment-box { border: 1px solid #111827; min-height: 56px; padding: 8px; font-size: 12px; white-space: pre-wrap; }
       .no-print { display: block; }
       @media print {
-        @page { size: 8.5in 13in; margin: 0.28in; }
+        @page { size: 8.5in 11in; margin: 0.2in 0.25in; }
         .no-print, #sidebar { display: none !important; }
-        main { margin-left: 0 !important; padding-top: 0 !important; }
+        html, body { height: auto !important; min-height: 0 !important; background: none !important; }
+        body > div, body > div > * { min-height: 0 !important; height: auto !important; }
+        main { margin-left: 0 !important; padding: 0 !important; min-height: 0 !important; height: auto !important; background: none !important; display: block !important; }
+        section { padding: 0 !important; margin: 0 !important; }
+        .min-h-screen { min-height: 0 !important; height: auto !important; }
+
+        .paper { padding: 0.2rem 0.4rem !important; box-shadow: none !important; border-radius: 0 !important; }
+
+        /* Header */
+        .header-top { margin-top: 0 !important; margin-bottom: 0.1rem !important; gap: 0.3rem !important; }
+        .header-logo img { width: 48px !important; height: 48px !important; }
+        .header-cert img { width: 60px !important; height: 48px !important; }
+        .header-center h1 { font-size: 11pt !important; }
+        .header-center p { font-size: 6.5pt !important; line-height: 1.1 !important; }
+
+        /* Title */
+        .paper h2 { font-size: 9.5px !important; margin-bottom: 0.15rem !important; margin-top: 0 !important; }
+
+        /* Info rows */
+        .info-row { font-size: 8.5px !important; margin-bottom: 1px !important; gap: 3px !important; grid-template-columns: 175px 1fr !important; }
+        .info-value { min-height: 12px !important; padding-left: 3px !important; }
+        .mb-4 { margin-bottom: 0.2rem !important; }
+        .mb-3 { margin-bottom: 0.18rem !important; }
+
+        /* Direction text */
+        .paper p { font-size: 8px !important; }
+
+        /* All table cells */
+        .paper th, .paper td { padding: 1.5px 3px !important; font-size: 8px !important; }
+        .paper th { font-size: 7.5px !important; }
+
+        /* Comment boxes */
+        .comment-box { min-height: 22px !important; padding: 3px !important; font-size: 8px !important; }
+        p.text-\[12px\] { font-size: 8px !important; }
+
+        /* Signature */
+        .mt-6 { margin-top: 0.2rem !important; }
+        .h-20 { height: 2rem !important; }
+        .w-64 { width: 9rem !important; }
+        .w-64 p { font-size: 8px !important; }
       }
     </style>
   </head>
@@ -372,15 +414,21 @@ $check = static function (int $actual, int $scale): string {
               View Evaluation
             </h2>
           </div>
-          <div class="flex items-center gap-2">
-            <button type="button" class="rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700" onclick="window.location.href='show-evaluation.php'">Back</button>
-            <?php if ($evaluation !== null): ?>
-              <button type="button" class="rounded-full bg-[#052c6a] px-4 py-2 text-xs font-semibold text-white" onclick="window.print()">Print</button>
-            <?php endif; ?>
-          </div>
+          <div></div>
         </header>
+        
 
         <section class="px-4 sm:px-6 pt-6">
+          <div class="mx-auto max-w-6xl flex justify-end gap-2 mb-4 no-print">
+            <button type="button" class="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-150" onclick="window.location.href='show-evaluation.php'">
+              <i class="fas fa-arrow-left text-[10px]"></i> Back
+            </button>
+            <?php if ($evaluation !== null): ?>
+              <button type="button" class="inline-flex items-center gap-1.5 rounded-full bg-[#052c6a] px-4 py-1.5 text-xs font-semibold text-white hover:bg-[#0a3d8a] transition-colors duration-150" onclick="window.print()">
+                <i class="fas fa-print text-[10px]"></i> Print
+              </button>
+            <?php endif; ?>
+          </div>
           <?php if ($loadError !== ""): ?>
             <div class="mx-auto max-w-4xl rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><?= htmlspecialchars($loadError) ?></div>
           <?php elseif ($evaluation !== null): ?>
@@ -416,7 +464,8 @@ $check = static function (int $actual, int $scale): string {
                   <tr><th style="width: 9%;">Scale</th><th style="width: 18%;">Verbal Description</th><th>Verbal Interpretation</th></tr>
                 </thead>
                 <tbody>
-                  <tr><td class="text-center font-semibold">4</td><td>Excellent</td><td>This rating is given to student assistants who consistently exceed expectations and demonstrate outstanding performance in their assigned tasks.</td></tr>
+                  <tr><td class="text-center font-semibold">5</td><td>Excellent</td><td>This rating is given to student assistants who consistently exceed expectations and demonstrate outstanding performance in their assigned tasks.</td></tr>
+                  <tr><td class="text-center font-semibold">4</td><td>Very Good</td><td>This rating is given to student assistants who frequently exceed expectations and demonstrate a high level of performance in their assigned tasks.</td></tr>
                   <tr><td class="text-center font-semibold">3</td><td>Good</td><td>This rating is given to student assistants who consistently meet expectations and perform their assigned tasks satisfactorily.</td></tr>
                   <tr><td class="text-center font-semibold">2</td><td>Fair</td><td>This rating is given to student assistants who occasionally meet expectations but may have areas for improvement.</td></tr>
                   <tr><td class="text-center font-semibold">1</td><td>Poor</td><td>This rating is given to student assistants who consistently fail to meet expectations and demonstrate unsatisfactory performance in their assigned tasks.</td></tr>
@@ -425,31 +474,35 @@ $check = static function (int $actual, int $scale): string {
 
               <table class="mb-4">
                 <thead>
-                  <tr><th rowspan="2" style="width: 47%;">Performance Indicators</th><th colspan="4">Rating</th></tr>
-                  <tr><th>Excellent (4)</th><th>Good (3)</th><th>Fair (2)</th><th>Poor (1)</th></tr>
+                  <tr><th rowspan="2" style="width: 47%;">Performance Indicators</th><th colspan="5">Rating</th></tr>
+                  <tr><th>Excellent (5)</th><th>Very Good (4)</th><th>Good (3)</th><th>Fair (2)</th><th>Poor (1)</th></tr>
                 </thead>
                 <tbody>
-                  <tr><td class="section-label">A. Quality and Quantity of Work</td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td></tr>
+                  <tr><td class="section-label">A. Quality and Quantity of Work</td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td></tr>
                   <?php foreach ($ratingGroups["a"] as $fieldName => $label): $v = (int)($ratings[$fieldName] ?? 0); ?>
-                    <tr><td><?= htmlspecialchars($label) ?></td><td class="text-center align-middle"><?= $check($v, 4) ?></td><td class="text-center align-middle"><?= $check($v, 3) ?></td><td class="text-center align-middle"><?= $check($v, 2) ?></td><td class="text-center align-middle"><?= $check($v, 1) ?></td></tr>
+                    <tr><td><?= htmlspecialchars($label) ?></td><td class="text-center align-middle"><?= $check($v, 5) ?></td><td class="text-center align-middle"><?= $check($v, 4) ?></td><td class="text-center align-middle"><?= $check($v, 3) ?></td><td class="text-center align-middle"><?= $check($v, 2) ?></td><td class="text-center align-middle"><?= $check($v, 1) ?></td></tr>
                   <?php endforeach; ?>
-                  <tr><td class="section-label">B. Interpersonal Skills</td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td></tr>
+                  <tr><td class="section-label">B. Interpersonal Skills</td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td></tr>
                   <?php foreach ($ratingGroups["b"] as $fieldName => $label): $v = (int)($ratings[$fieldName] ?? 0); ?>
-                    <tr><td><?= htmlspecialchars($label) ?></td><td class="text-center align-middle"><?= $check($v, 4) ?></td><td class="text-center align-middle"><?= $check($v, 3) ?></td><td class="text-center align-middle"><?= $check($v, 2) ?></td><td class="text-center align-middle"><?= $check($v, 1) ?></td></tr>
+                    <tr><td><?= htmlspecialchars($label) ?></td><td class="text-center align-middle"><?= $check($v, 5) ?></td><td class="text-center align-middle"><?= $check($v, 4) ?></td><td class="text-center align-middle"><?= $check($v, 3) ?></td><td class="text-center align-middle"><?= $check($v, 2) ?></td><td class="text-center align-middle"><?= $check($v, 1) ?></td></tr>
                   <?php endforeach; ?>
-                  <tr><td class="section-label">C. Attendance and Reliability</td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td></tr>
+                  <tr><td class="section-label">C. Attendance and Reliability</td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td><td class="text-center align-middle"></td></tr>
                   <?php foreach ($ratingGroups["c"] as $fieldName => $label): $v = (int)($ratings[$fieldName] ?? 0); ?>
-                    <tr><td><?= htmlspecialchars($label) ?></td><td class="text-center align-middle"><?= $check($v, 4) ?></td><td class="text-center align-middle"><?= $check($v, 3) ?></td><td class="text-center align-middle"><?= $check($v, 2) ?></td><td class="text-center align-middle"><?= $check($v, 1) ?></td></tr>
+                    <tr><td><?= htmlspecialchars($label) ?></td><td class="text-center align-middle"><?= $check($v, 5) ?></td><td class="text-center align-middle"><?= $check($v, 4) ?></td><td class="text-center align-middle"><?= $check($v, 3) ?></td><td class="text-center align-middle"><?= $check($v, 2) ?></td><td class="text-center align-middle"><?= $check($v, 1) ?></td></tr>
                   <?php endforeach; ?>
                 </tbody>
               </table>
 
               <div class="mb-3">
-                <p class="text-[12px] font-semibold">D. Strength(s)/Areas for Improvement:</p>
+                <p class="text-[12px] font-semibold">D. Strength(s):</p>
                 <div class="comment-box"><?= htmlspecialchars($evaluation["strengths"] !== "" ? $evaluation["strengths"] : "N/A") ?></div>
               </div>
               <div class="mb-3">
-                <p class="text-[12px] font-semibold">E. Evaluator's Comment(s)/Recommendation:</p>
+                <p class="text-[12px] font-semibold">E. Area(s) for Improvement:</p>
+                <div class="comment-box"><?= htmlspecialchars($evaluation["areas_improvement"] !== "" ? $evaluation["areas_improvement"] : "N/A") ?></div>
+              </div>
+              <div class="mb-3">
+                <p class="text-[12px] font-semibold">F. Evaluator's Comment(s)/Recommendation:</p>
                 <div class="comment-box"><?= htmlspecialchars($evaluation["recommendations"] !== "" ? $evaluation["recommendations"] : "N/A") ?></div>
               </div>
 

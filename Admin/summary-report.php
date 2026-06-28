@@ -34,8 +34,11 @@ $verbalFromAverage = static function (?float $value): string {
   if ($value === null || $value <= 0) {
     return "";
   }
-  if ($value >= 4.0) {
+  if ($value >= 5.0) {
     return "Excellent";
+  }
+  if ($value >= 4.0) {
+    return "Very Good";
   }
   if ($value >= 3.0) {
     return "Good";
@@ -97,6 +100,7 @@ if (($conn ?? null) instanceof mysqli) {
         school_year,
         overall_total,
         strengths,
+        areas_improvement,
         recommendations,
         updated_at
       FROM department_head_evaluations
@@ -134,6 +138,7 @@ if (($conn ?? null) instanceof mysqli) {
             "weighted_mean" => $weightedMean,
             "verbal_description" => $verbalFromAverage($weightedMean),
             "strengths" => trim((string)($row["strengths"] ?? "")),
+            "areas_improvement" => trim((string)($row["areas_improvement"] ?? "")),
             "recommendations" => trim((string)($row["recommendations"] ?? "")),
           ];
         }
@@ -155,8 +160,7 @@ if (($conn ?? null) instanceof mysqli) {
 if (!empty($summaryRecords)) {
   if ($showExcellentOnly) {
     $summaryRecords = array_values(array_filter($summaryRecords, static function (array $record): bool {
-      $weightedMean = $record["weighted_mean"] ?? null;
-      return is_numeric($weightedMean) && abs(((float)$weightedMean) - 4.0) < 0.00001;
+      return ($record["verbal_description"] ?? "") === "Excellent";
     }));
   }
 
@@ -1404,7 +1408,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                       </tr>
                     <?php elseif (empty($summaryRecords)): ?>
                       <tr>
-                        <td class="text-center" colspan="6">No Excellent Student Assistants with a Weighted Mean of 4.00 found for the selected term.</td>
+                        <td class="text-center" colspan="6">No Excellent Student Assistants found for the selected term.</td>
                       </tr>
                     <?php else: ?>
                       <?php foreach ($summaryRecords as $index => $record): ?>
@@ -1481,7 +1485,13 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                           </td>
                           <td class="border border-black p-1 text-center"><?php echo htmlspecialchars((string)($record["verbal_description"] ?? "")); ?></td>
                           <td class="border border-black p-1 summary-text-cell">
-                            <?php echo $record["strengths"] !== "" ? nl2br(htmlspecialchars((string)$record["strengths"])) : "&nbsp;"; ?>
+                            <?php
+                              $strengthParts = [];
+                              if ($record["strengths"] !== "") $strengthParts[] = $record["strengths"];
+                              if ($record["areas_improvement"] !== "") $strengthParts[] = $record["areas_improvement"];
+                              $combinedStrength = implode(" / ", $strengthParts);
+                              echo $combinedStrength !== "" ? nl2br(htmlspecialchars($combinedStrength)) : "&nbsp;";
+                            ?>
                           </td>
                           <td class="border border-black p-1 summary-text-cell">
                             <?php echo $record["recommendations"] !== "" ? nl2br(htmlspecialchars((string)$record["recommendations"])) : "&nbsp;"; ?>
@@ -1562,7 +1572,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                       <div class="certificate-signatories">
                         <div class="certificate-signatory">
                           <div class="certificate-sign-line"></div>
-                          <div class="certificate-sign-name">Arlyn B. Tuyogon, MMBM</div>
+                          <div class="certificate-sign-name">Arlyn B. Tuyogon, MM</div>
                           <div class="certificate-sign-role">Head, Admission &amp; Scholarship</div>
                         </div>
                         <div class="certificate-signatory">
@@ -1577,7 +1587,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                         </div>
                         <div class="certificate-signatory">
                           <div class="certificate-sign-line"></div>
-                          <div class="certificate-sign-name">Beverly D. Jaminal, EdD</div>
+                          <div class="certificate-sign-name">Dr. Beverly D. Jaminal</div>
                           <div class="certificate-sign-role">VP for Academic Affairs &amp; Research</div>
                         </div>
                         <div class="certificate-signatory">
@@ -1597,7 +1607,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
               <div>
                 <p class="font-semibold">Prepared by:</p>
                 <div class="mt-2">
-                  <p class="font-bold">ARLYN B. TUYOGON, MMBM</p>
+                  <p class="font-bold">ARLYN B. TUYOGON, MM</p>
                   <p class="text-xs">Head, Admission &amp; Scholarship</p>
                 </div>
               </div>

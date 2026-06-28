@@ -1135,7 +1135,7 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
               <div class="mt-8 grid grid-cols-1 gap-6 max-w-3xl">
                 <div>
                   <div class="subtle mb-1">Prepared by:</div>
-                  <div class="font-semibold">ARLYN B. TUYOGON, MMBM</div>
+                  <div class="font-semibold">ARLYN B. TUYOGON, MM</div>
                   <div class="sig-role">Head, Admission &amp; Scholarship</div>
                 </div>
 

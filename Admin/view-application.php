@@ -100,6 +100,34 @@ if ($batchColumnResult instanceof mysqli_result) {
   $batchColumnResult->free();
 }
 
+$discountColumnResult = $conn->query("SHOW COLUMNS FROM applications LIKE 'discount_percentage'");
+if ($discountColumnResult instanceof mysqli_result) {
+  if ($discountColumnResult->num_rows === 0) {
+    $conn->query("ALTER TABLE applications ADD COLUMN discount_percentage VARCHAR(100) DEFAULT NULL");
+  }
+  $discountColumnResult->free();
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["discount_save"])) {
+  header("Content-Type: application/json");
+  $discountValue = trim((string)($_POST["discount_percentage"] ?? ""));
+  $discountAppId = (int)($_POST["application_id"] ?? 0);
+  if ($discountAppId <= 0) {
+    echo json_encode(["success" => false, "message" => "Invalid application."]);
+    exit;
+  }
+  $discountStmt = $conn->prepare("UPDATE applications SET discount_percentage = ? WHERE id = ?");
+  if ($discountStmt) {
+    $discountStmt->bind_param("si", $discountValue, $discountAppId);
+    $ok = $discountStmt->execute();
+    $discountStmt->close();
+    echo json_encode(["success" => $ok, "message" => $ok ? "Saved." : "Failed to save."]);
+  } else {
+    echo json_encode(["success" => false, "message" => "Query error."]);
+  }
+  exit;
+}
+
 if ($applicationId <= 0) {
   $loadError = "Missing application id.";
 } else {
@@ -306,6 +334,15 @@ foreach ($uploadedRequirements as $upload) {
         .print-area .signature-block { line-height: 1.8 !important; }
         .print-area .box-print { width: 160px !important; }
         .print-area .print-spacer { flex: 1 1 auto; }
+        #discountPercentageInput {
+          border: none !important;
+          border-bottom: 1px solid #000 !important;
+          background: transparent !important;
+          padding: 0 !important;
+          box-shadow: none !important;
+          font-family: "Times New Roman", serif !important;
+          font-size: inherit !important;
+        }
       }
           #sidebar > nav > ul {
         padding: 0.35rem 0.5rem 5.5rem;
@@ -496,7 +533,15 @@ foreach ($uploadedRequirements as $upload) {
         <section class="mt-12 px-4 sm:px-6 py-4 bg-[#eef2f7] print-area">
           <div class="bg-white border border-[#0d8ddb] rounded shadow-sm p-4 md:p-6">
             <div class="max-w-5xl mx-auto">
-              <div class="mb-4 flex items-center justify-end no-print">
+              <div class="mb-4 flex items-center justify-end gap-2 no-print">
+                <button
+                  id="saveDiscountBtn"
+                  class="inline-flex items-center gap-2 rounded border border-[#16a34a] px-3 py-2 text-xs font-semibold text-[#16a34a] hover:bg-[#16a34a] hover:text-white transition"
+                  type="button"
+                >
+                  <i class="fas fa-save"></i>
+                  Save
+                </button>
                 <button
                   class="inline-flex items-center gap-2 rounded border border-[#0d8ddb] px-3 py-2 text-xs font-semibold text-[#0d8ddb] hover:bg-[#0d8ddb] hover:text-white transition"
                   type="button"
@@ -616,6 +661,19 @@ foreach ($uploadedRequirements as $upload) {
 
                 <br />
 
+                <div class="max-w-3xl mx-auto mb-3">
+                  <div class="flex items-center text-sm font-serif">
+                    <label for="discountPercentageInput" style="white-space:nowrap;">Discount Percentage/Amount of Scholarship or Grant:</label>
+                    <input
+                      id="discountPercentageInput"
+                      type="text"
+                      class="border-b border-black flex-grow ml-2 bg-transparent focus:outline-none text-sm font-serif data-value"
+                      value="<?= htmlspecialchars(app_value($application, "discount_percentage")) ?>"
+                      placeholder="Enter discount percentage or amount"
+                    />
+                  </div>
+                </div>
+
                 <div class="max-w-3xl mx-auto">
                   <p class="font-serif font-semibold text-sm mb-2">Scholar/Grantee's Profile:</p>
                   <div class="space-y-1 text-xs font-serif">
@@ -645,13 +703,6 @@ foreach ($uploadedRequirements as $upload) {
                       <span>:</span>
                       <span class="data-value border-b border-black flex-grow ml-2 h-4">
                         <?= htmlspecialchars(app_value($application, "school_year")) ?>
-                      </span>
-                    </div>
-                    <div class="flex items-center">
-                      <label class="w-44">Semester</label>
-                      <span>:</span>
-                      <span class="data-value border-b border-black flex-grow ml-2 h-4">
-                        <?= htmlspecialchars(app_value($application, "semester")) ?>
                       </span>
                     </div>
                     <div class="flex items-center">
@@ -779,7 +830,7 @@ foreach ($uploadedRequirements as $upload) {
                     </div>
                   </div>
                 </div>
-
+                <br />
                 <div class="certify-text text-xs font-serif mt-6 mb-6 max-w-3xl mx-auto">
                   <label style="display:inline-flex;align-items:flex-start;gap:0.5rem;">
                     <input type="checkbox" checked disabled style="margin-top:0.15rem;flex-shrink:0;width:1rem;height:1rem;" />
@@ -791,7 +842,7 @@ foreach ($uploadedRequirements as $upload) {
                     </span>
                   </label>
                 </div>
-
+                <br />         
                 <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8 signature-group">
                   <div class="w-full sm:w-[45%] signature-block">
                     <div class="border-b border-black w-full h-4 mb-1"></div>
@@ -823,20 +874,23 @@ foreach ($uploadedRequirements as $upload) {
                     </label>
                   </div>
                 </div>
-
+                <br />
                 <div class="max-w-3xl mx-auto flex flex-wrap justify-between gap-y-8 mt-8 signature-group">
                   <div class="w-full sm:w-[45%] signature-block">
                     <p class="text-xs font-serif mb-6">Recommending approval:</p>
+                    <br />
                     <div class="border-b border-black w-full h-4 mb-1"></div>
                     <p class="text-xs font-serif">Head, Admission &amp; Scholarship</p>
                   </div>
+                  <br />
                   <div class="w-full sm:w-[45%] signature-block">
                     <p class="text-xs font-serif mb-6">Approved by:</p>
+                    <br />
                     <div class="border-b border-black w-full h-4 mb-1"></div>
                     <p class="text-xs font-serif">Head, HRMDO</p>
                   </div>
                 </div>
-
+                <br />
                 <div class="max-w-3xl mx-auto mt-6">
                   <div class="flex items-center">
                     <img src="../img/newisoapplication.png" alt="Box" class="w-48 h-auto box-print" />
@@ -1160,6 +1214,37 @@ foreach ($uploadedRequirements as $upload) {
             closeModal();
           }
         });
+      });
+
+      document.addEventListener("DOMContentLoaded", () => {
+        const saveBtn = document.getElementById("saveDiscountBtn");
+        const discountInput = document.getElementById("discountPercentageInput");
+        if (saveBtn && discountInput) {
+          saveBtn.addEventListener("click", () => {
+            const formData = new FormData();
+            formData.append("discount_save", "1");
+            formData.append("application_id", "<?= $applicationId ?>");
+            formData.append("discount_percentage", discountInput.value);
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+            fetch(window.location.href, { method: "POST", body: formData })
+              .then(r => r.json())
+              .then(data => {
+                if (data.success) {
+                  Swal.fire({ icon: "success", title: "Saved!", text: "Discount percentage saved successfully.", confirmButtonColor: "#0d8ddb", timer: 1800, showConfirmButton: false });
+                } else {
+                  Swal.fire({ icon: "error", title: "Error", text: data.message || "Failed to save.", confirmButtonColor: "#0d8ddb" });
+                }
+              })
+              .catch(() => {
+                Swal.fire({ icon: "error", title: "Error", text: "Network error. Please try again.", confirmButtonColor: "#0d8ddb" });
+              })
+              .finally(() => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+              });
+          });
+        }
       });
 
       document.addEventListener("DOMContentLoaded", () => {
