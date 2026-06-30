@@ -1360,8 +1360,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                   <div class="header-left-text">
                     <h1 class="text-center">Saint Michael College of Caraga</h1>
                     <p class="text-center">
-                      Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
-                      District 8, Brgy. Triangulo, Nasipit, Agusan del Norte, Philippines
+                      Atupan St., Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
                     </p>
                     <p class="text-center">Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
                     <p class="text-center">

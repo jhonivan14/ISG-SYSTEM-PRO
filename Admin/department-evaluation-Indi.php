@@ -1309,8 +1309,7 @@ if ($assistantFullName !== "") {
                   <div class="header-center">
                     <h1>Saint Michael College of Caraga</h1>
                     <p>
-                      Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
-                      District 8, Brgy. Triangulo, Nasipit, Agusan del Norte, Philippines
+                      Atupan St.,Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
                     </p>
                     <p>Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
                     <p>
@@ -1619,12 +1618,12 @@ if ($assistantFullName !== "") {
                 </div>
 
                 <div class="footer-box">
-                  <img src="../img/box.png" alt="footer box" />
+                  <img src="../img/newboxHead.png" alt="footer box" />
                 </div>
               </main>
 
               <footer>
-                <img src="../img/footer.png" alt="SMCC footer" />
+                <img src="../img/newfooter.jpg" alt="SMCC footer" />
               </footer>
             </div>
           </div>
@@ -1668,8 +1667,7 @@ if ($assistantFullName !== "") {
                   <div class="leading-tight text-center">
                     <h1 class="font-bold text-[16pt] m-0">Saint Michael College of Caraga</h1>
                     <p class="m-0 text-[10pt]">
-                      Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
-                      District 8, Brgy. Triangulo, Nasipit, Agusan del Norte, Philippines
+                      Atupan St.,Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
                     </p>
                     <p class="m-0 text-[10pt]">Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
                     <p class="m-0 text-[10pt]">
