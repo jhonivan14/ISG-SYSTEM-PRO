@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . "/head-auth.php";
+require_once __DIR__ . "/studentAssistant-auth.php";
 require_once "../db.php";
 
 $loginError = "";
@@ -239,3 +239,4 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 </body>
 </html>
+

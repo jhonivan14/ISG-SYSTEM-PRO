@@ -1,13 +1,9 @@
 <?php
-require_once __DIR__ . "/head-auth.php";
+require_once __DIR__ . "/studentAssistant-auth.php";
 headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
-if (trim((string)($_GET["tab"] ?? "")) === "my-sas") {
-  header("Location: my-sas.php");
-  exit;
-}
 require_once "../db.php";
 date_default_timezone_set("Asia/Manila");
 
@@ -22,14 +18,11 @@ $evaluatorScope = isgLoadEvaluatorScope($conn, $headUsername, $headRole);
 $headOffice = (string)($evaluatorScope["office"] ?? $headOffice);
 $headOfficeKey = (string)($evaluatorScope["office_key"] ?? strtolower(trim($headOffice)));
 
-$grantId = 1;
 $grantLabel = "Student Assistant";
 $approvedApplicants = [];
-$evaluatedApplicants = [];
 $loadError = "";
-$evaluationLoadError = "";
-$hasHeadEvaluationTable = false;
 $hasScholarTable = false;
+$hasHeadEvaluationTable = false;
 $isEvaluationWindowOpen = false;
 $evaluationWindowOpenTerms = [];
 
@@ -167,7 +160,6 @@ if (($conn ?? null) instanceof mysqli) {
 
 if ((string)($evaluatorScope["error"] ?? "") !== "") {
   $loadError = (string)$evaluatorScope["error"];
-  $evaluationLoadError = $loadError;
 } else {
   $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
   $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
@@ -177,7 +169,6 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
 
   if (!$hasScholarTable) {
     $loadError = "Scholar records table is not available.";
-    $evaluationLoadError = $loadError;
   } else {
     $approvedApplicantMap = [];
     $scholarRestriction = isgEvaluatorScholarRestriction($evaluatorScope);
@@ -224,6 +215,7 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
           if ($scholarRecordId <= 0) {
             continue;
           }
+
           $scholarId = trim((string)($scholarRow["scholar_id"] ?? ""));
           $submittedAtRaw = trim((string)($scholarRow["created_at"] ?? ""));
           $submittedAt = $submittedAtRaw !== "" ? date("Y-m-d h:i A", strtotime($submittedAtRaw)) : "";
@@ -239,7 +231,6 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
           $recordSemester = trim((string)($scholarRow["semester"] ?? ""));
           $recordAcademicYear = trim((string)($scholarRow["academic_year"] ?? ""));
           $recordTermKey = strtolower($recordAcademicYear) . "|" . strtolower($recordSemester);
-
           $approvedApplicantMap[$recordKey] = [
             "id" => $evaluationReferenceId,
             "record_key" => $recordKey,
@@ -253,7 +244,7 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
             "can_evaluate" => true,
             "is_evaluation_window_open" => isset($evaluationWindowOpenTerms[$recordTermKey]),
             "has_evaluation" => false,
-            "evaluation_url" => "SaEvaluation.php?application_id=" . urlencode((string)$evaluationReferenceId),
+            "evaluation_url" => "studentAssistantSaEvaluation.php?application_id=" . urlencode((string)$evaluationReferenceId),
           ];
         }
         if ($scholarResult instanceof mysqli_result) {
@@ -270,7 +261,7 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
   }
 
   if (!empty($approvedApplicants)) {
-    usort($approvedApplicants, function (array $left, array $right): int {
+    usort($approvedApplicants, static function (array $left, array $right): int {
       $leftTs = (int)($left["sort_timestamp"] ?? 0);
       $rightTs = (int)($right["sort_timestamp"] ?? 0);
       if ($leftTs === $rightTs) {
@@ -286,120 +277,44 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
     $headEvaluationTableResult->free();
   }
 
-  if ($hasHeadEvaluationTable && $hasScholarTable) {
+  if ($hasHeadEvaluationTable && $hasScholarTable && !empty($approvedApplicants)) {
     $evaluatedRecordKeys = [];
-    $evaluationRestriction = isgEvaluatorEvaluationRestriction($evaluatorScope);
-    $statusQuery = "SELECT
+    $evaluationRestriction = isgEvaluatorEvaluationRestriction($evaluatorScope, "dhe");
+    $evaluatedQuery = "SELECT
         application_id,
         TRIM(COALESCE(school_year, '')) AS school_year,
         TRIM(COALESCE(semester, '')) AS semester
-      FROM department_head_evaluations
-      WHERE head_username = ?
-        AND evaluator_role = ?
-        AND application_id <> 0
-        " . $evaluationRestriction["sql"];
-
-    if ($statusStmt = $conn->prepare($statusQuery)) {
-      $statusTypes = "ss" . $evaluationRestriction["types"];
-      $statusParams = array_merge([$headUsername, $headRole], $evaluationRestriction["params"]);
-      $statusStmt->bind_param($statusTypes, ...$statusParams);
-      if ($statusStmt->execute()) {
-        $statusResult = $statusStmt->get_result();
-        while ($statusRow = $statusResult->fetch_assoc()) {
-          $applicationId = (int)($statusRow["application_id"] ?? 0);
-          if ($applicationId === 0) {
-            continue;
-          }
-          $recordKey = headDashboardEvaluationKey(
-            $applicationId,
-            (string)($statusRow["school_year"] ?? ""),
-            (string)($statusRow["semester"] ?? "")
-          );
-          $evaluatedRecordKeys[$recordKey] = true;
-        }
-        if ($statusResult instanceof mysqli_result) {
-          $statusResult->free();
-        }
-      }
-      $statusStmt->close();
-    }
-
-    $evaluatedQuery = "SELECT
-        dhe.id AS evaluation_id,
-        0 - ABS(dhe.application_id) AS reference_id,
-        COALESCE(NULLIF(TRIM(dhe.applicant_name), ''), isr.full_name) AS applicant_name,
-        COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_course,
-        dhe.evaluation_date,
-        dhe.updated_at
       FROM department_head_evaluations dhe
-      INNER JOIN institutional_scholar_records isr
-        ON isr.id = ABS(dhe.application_id)
       WHERE dhe.head_username = ?
         AND dhe.evaluator_role = ?
         AND dhe.application_id <> 0
-        " . isgEvaluatorEvaluationRestriction($evaluatorScope, "dhe")["sql"] . "
-        AND (
-          LOWER(TRIM(COALESCE(isr.category, ''))) = 'student_assistant'
-          OR (
-            LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
-            AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
-          )
-        )
-        AND (
-          COALESCE(isr.contract_ended, 0) = 0
-          OR TRIM(COALESCE(isr.academic_year, '')) <> TRIM(COALESCE(dhe.school_year, ''))
-          OR TRIM(COALESCE(isr.semester, '')) <> TRIM(COALESCE(dhe.semester, ''))
-        )
-      ORDER BY
-        dhe.updated_at DESC,
-        CASE
-          WHEN LOWER(TRIM(COALESCE(isr.category, ''))) = 'official'
-            AND LOWER(TRIM(COALESCE(isr.grant_applied, ''))) LIKE '%assistant%'
-          THEN 0
-          ELSE 1
-        END,
-        isr.id DESC";
+        " . $evaluationRestriction["sql"];
 
     if ($evalStmt = $conn->prepare($evaluatedQuery)) {
-      $evaluatedRestriction = isgEvaluatorEvaluationRestriction($evaluatorScope, "dhe");
-      $evalTypes = "ss" . $evaluatedRestriction["types"];
-      $evalParams = array_merge([$headUsername, $headRole], $evaluatedRestriction["params"]);
+      $evalTypes = "ss" . $evaluationRestriction["types"];
+      $evalParams = array_merge([$headUsername, $headRole], $evaluationRestriction["params"]);
       $evalStmt->bind_param($evalTypes, ...$evalParams);
       if ($evalStmt->execute()) {
         $evalResult = $evalStmt->get_result();
         while ($evalRow = $evalResult->fetch_assoc()) {
-          $evaluationId = (int)($evalRow["evaluation_id"] ?? 0);
-          $referenceId = (int)($evalRow["reference_id"] ?? 0);
-          if ($evaluationId <= 0 || $referenceId === 0) {
-            continue;
+          $applicationId = (int)($evalRow["application_id"] ?? 0);
+          if ($applicationId !== 0) {
+            $recordKey = headDashboardEvaluationKey(
+              $applicationId,
+              (string)($evalRow["school_year"] ?? ""),
+              (string)($evalRow["semester"] ?? "")
+            );
+            $evaluatedRecordKeys[$recordKey] = true;
           }
-          $updatedAtRaw = trim((string)($evalRow["updated_at"] ?? ""));
-          $evaluationDateRaw = trim((string)($evalRow["evaluation_date"] ?? ""));
-          $displayUpdatedAt = "";
-          if ($updatedAtRaw !== "") {
-            $displayUpdatedAt = date("Y-m-d h:i A", strtotime($updatedAtRaw));
-          } elseif ($evaluationDateRaw !== "") {
-            $displayUpdatedAt = date("Y-m-d", strtotime($evaluationDateRaw));
-          }
-          $evaluatedApplicants[] = [
-            "evaluation_id" => $evaluationId,
-            "id" => $referenceId,
-            "name" => (string)($evalRow["applicant_name"] ?? ""),
-            "program_course" => (string)($evalRow["program_course"] ?? ""),
-            "updated_at" => $displayUpdatedAt,
-          ];
         }
-        $evalResult->free();
-      } else {
-        $evaluationLoadError = "Unable to load evaluation entries.";
+        if ($evalResult instanceof mysqli_result) {
+          $evalResult->free();
+        }
       }
       $evalStmt->close();
-    } else {
-      $evaluationLoadError = "Unable to prepare evaluation entries query.";
     }
-  }
 
-  if (!empty($approvedApplicants) && !empty($evaluatedRecordKeys)) {
+    if (!empty($evaluatedRecordKeys)) {
       foreach ($approvedApplicants as $approvedIndex => $approvedApplicant) {
         $recordKey = headDashboardEvaluationKey(
           (int)($approvedApplicant["id"] ?? 0),
@@ -410,6 +325,7 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
           $approvedApplicants[$approvedIndex]["has_evaluation"] = true;
         }
       }
+    }
   }
 }
 
@@ -424,21 +340,16 @@ foreach ($approvedApplicants as $approvedApplicantRow) {
     $readyToEvaluateCount++;
   }
 }
-$evaluatedCount = count($evaluatedApplicants);
 
-$requestedTab = trim((string)($_GET["tab"] ?? ""));
-$initialSection = "homeSection";
-if ($requestedTab === "my-sas") {
-  $initialSection = "mySAsSection";
-}
+$windowStatusLabel = $isEvaluationWindowOpen ? "Open" : "Closed";
+$windowStatusClass = $isEvaluationWindowOpen ? "text-emerald-700 bg-emerald-50 border-emerald-200" : "text-amber-700 bg-amber-50 border-amber-200";
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
-    <title>Head of Office Dashboard</title>
+    <title>My SA's</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link
@@ -519,26 +430,6 @@ if ($requestedTab === "my-sas") {
         background-color: #f5f9ff;
       }
 
-      @keyframes rise {
-        from {
-          opacity: 0;
-          transform: translateY(18px);
-        }
-        to {
-          opacity: 1;
-          transform: translateY(0);
-        }
-      }
-
-      .stagger > * {
-        opacity: 0;
-        animation: rise 0.6s ease forwards;
-      }
-
-      .stagger > *:nth-child(1) { animation-delay: 0.05s; }
-      .stagger > *:nth-child(2) { animation-delay: 0.12s; }
-      .stagger > *:nth-child(3) { animation-delay: 0.2s; }
-
       ::-webkit-scrollbar {
         width: 6px;
       }
@@ -549,6 +440,7 @@ if ($requestedTab === "my-sas") {
         background: linear-gradient(180deg, #93d7ff 0%, #2e9bd7 100%);
         border-radius: 999px;
       }
+
       #sidebar nav ul {
         padding: 0.35rem 0.5rem 5.5rem;
       }
@@ -581,9 +473,7 @@ if ($requestedTab === "my-sas") {
         id="sidebar"
         class="flex flex-col bg-gradient-to-b from-[#031f4f] via-[#0a4b86] to-[#0f9ad8] text-white w-64 h-screen fixed left-0 top-0 z-30 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out overflow-y-auto shadow-[12px_0_28px_-12px_rgba(4,31,79,0.65)]"
       >
-        <div
-          class="mx-3 mt-3 rounded-xl border border-white/25 bg-white/10 p-3 backdrop-blur-sm"
-        >
+        <div class="mx-3 mt-3 rounded-xl border border-white/25 bg-white/10 p-3 backdrop-blur-sm">
           <div class="flex items-center gap-3">
             <div class="relative shrink-0">
               <span class="absolute -inset-1 rounded-full bg-white/15 blur-sm"></span>
@@ -601,31 +491,19 @@ if ($requestedTab === "my-sas") {
 
         <nav class="flex-1 mt-2">
           <ul class="text-xs font-semibold">
-            <li
-              class="panel-nav-item active gap-2 cursor-pointer"
-              data-target-section="homeSection"
-            >
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='studentAssistantDashboard.php'">
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li
-              class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='my-sas.php'"
-            >
+            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='studentAssistant-my-sas.php'">
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
-            <li
-              class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='show-evaluation.php'"
-            >
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='studentAssistant-show-evaluation.php'">
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>
-            <li
-              class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='head-changePassword.php'"
-            >
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='studentAssistant-changePassword.php'">
               <i class="fas fa-key w-5"></i>
               <span>Change Password</span>
             </li>
@@ -673,337 +551,203 @@ if ($requestedTab === "my-sas") {
               <i class="fas fa-bars"></i>
             </button>
             <h2 class="text-[#0d4b84] text-lg font-semibold flex items-center gap-2">
-              <i class="fas fa-columns"></i>
-              Head of Office Dashboard
+              <i class="fas fa-user-friends"></i>
+              My SA's
             </h2>
           </div>
         </header>
 
-        <section id="homeSection" data-head-section class="px-4 sm:px-6">
+        <section class="px-4 sm:px-6">
           <section class="mt-6 glass-card rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
             <div class="space-y-2">
-              <span class="badge">Student Assistant Grant</span>
-              <h1 class="heading-font text-3xl text-[#052c6a]">Head Dashboard</h1>
+              <span class="badge">Assigned Student Assistants</span>
+              <h1 class="heading-font text-3xl text-[#052c6a]">My SA's</h1>
               <p class="text-xs text-[#42506a]">
-                Monitor approved student assistants and manage office evaluations.
+                This page loads the student assistants currently assigned to your office from `institutional_scholar_records`.
               </p>
               <p class="text-sm font-semibold text-[#052c6a]">
-                Welcome, <?= htmlspecialchars($headName) ?>.
+                Office: <?= htmlspecialchars($headOffice !== "" ? $headOffice : "N/A") ?>
               </p>
             </div>
-            <div></div>
           </section>
 
-          <section class="stagger grid gap-4 pt-6 md:grid-cols-3">
+          <section class="grid gap-4 pt-6 md:grid-cols-3">
             <div class="stat-card rounded-2xl bg-gradient-to-br from-[#052c6a] to-[#0b3f8f] p-5 text-white">
               <p class="text-xs uppercase tracking-wide text-[#fcdc2f]">Total My SA's</p>
               <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$approvedCount) ?></p>
               <p class="mt-1 text-[11px] text-blue-100">
-                Student assistants under your office.
+                Student assistants assigned under your office.
               </p>
             </div>
             <div class="stat-card rounded-2xl bg-white p-5 text-[#052c6a]">
               <p class="text-xs uppercase tracking-wide text-[#0d8ddb]">Ready to Evaluate</p>
               <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$readyToEvaluateCount) ?></p>
               <p class="mt-1 text-[11px] text-slate-500">
-                Available records for evaluation form processing.
+                Records with no saved evaluation while the window is open.
               </p>
             </div>
-            <div class="stat-card rounded-2xl bg-gradient-to-br from-[#fcdc2f] to-[#f7b500] p-5 text-[#052c6a]">
-              <p class="text-xs uppercase tracking-wide">Show Evaluation</p>
-              <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$evaluatedCount) ?></p>
-              <p class="mt-1 text-[11px] text-[#052c6a]">
-                Entries available in the evaluation view.
+            <div class="stat-card rounded-2xl bg-white p-5 text-[#052c6a]">
+              <p class="text-xs uppercase tracking-wide text-[#0d8ddb]">Evaluation Window</p>
+              <div class="mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold <?= htmlspecialchars($windowStatusClass) ?>">
+                <?= htmlspecialchars($windowStatusLabel) ?>
+              </div>
+              <p class="mt-3 text-[11px] text-slate-500">
+                This controls whether evaluation forms can be opened from this page.
               </p>
             </div>
           </section>
-        </section>
 
-        <section id="mySAsSection" data-head-section class="hidden mt-6 glass-card rounded-3xl p-5 mx-4 sm:mx-6">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p class="text-sm font-semibold text-[#0d8ddb]">
-                My SA's
-              </p>
-              <p class="text-xs text-[#052c6a]">
-                Showing <?= htmlspecialchars((string)$approvedCount) ?> records for
-                <?= htmlspecialchars($grantLabel) ?>.
-              </p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 text-xs">
-              <div class="flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-2 shadow-sm">
-                <i class="fas fa-search text-[#7c8191] text-xs"></i>
-                <input
-                  id="mySASearch"
-                  type="text"
-                  class="w-44 bg-transparent text-xs font-semibold text-[#052c6a] outline-none placeholder:text-[#7c8191]"
-                  placeholder="Search My SA's..."
-                  aria-label="Search My SA's"
-                />
+          <section class="mt-6 glass-card rounded-3xl p-5">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-sm font-semibold text-[#0d8ddb]">My SA's List</p>
+                <p class="text-xs text-[#052c6a]">
+                  Showing <?= htmlspecialchars((string)$approvedCount) ?> records for <?= htmlspecialchars($grantLabel) ?>.
+                </p>
               </div>
-              <span class="rounded-full bg-[#fcdc2f] px-3 py-1 text-[#052c6a] shadow-sm">
-                Total: <?= htmlspecialchars((string)$approvedCount) ?>
-              </span>
+              <div class="flex flex-wrap items-center gap-2 text-xs">
+                <div class="flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-2 shadow-sm">
+                  <i class="fas fa-search text-[#7c8191] text-xs"></i>
+                  <input
+                    id="mySASearch"
+                    type="text"
+                    class="w-44 bg-transparent text-xs font-semibold text-[#052c6a] outline-none placeholder:text-[#7c8191]"
+                    placeholder="Search My SA's..."
+                    aria-label="Search My SA's"
+                  />
+                </div>
+                <span class="rounded-full bg-[#fcdc2f] px-3 py-1 text-[#052c6a] shadow-sm">
+                  Total: <?= htmlspecialchars((string)$approvedCount) ?>
+                </span>
+              </div>
             </div>
-          </div>
 
-          <div class="mt-4 overflow-x-auto">
-            <?php if ($loadError !== ""): ?>
-              <div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                <?= htmlspecialchars($loadError) ?>
-              </div>
-            <?php endif; ?>
-            <table class="table-hover min-w-full overflow-hidden rounded-2xl border border-[#0d8ddb] text-xs text-left">
-              <thead>
-                <tr class="bg-gradient-to-r from-[#052c6a] to-[#0b3f8f] text-white">
-                  <th class="border-r border-white/10 px-3 py-3">Timestamp</th>
-                  <th class="border-r border-white/10 px-3 py-3">Applicant Name</th>
-                  <th class="border-r border-white/10 px-3 py-3">Program / Course</th>
-                  <th class="border-r border-white/10 px-3 py-3">Grant</th>
-                  <th class="border-r border-white/10 px-3 py-3">Status</th>
-                  <th class="px-3 py-3">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php if (empty($approvedApplicants)): ?>
-                  <tr>
-                    <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
-                      No student assistants found for your office.
-                    </td>
+            <div class="mt-4 overflow-x-auto">
+              <?php if ($loadError !== ""): ?>
+                <div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                  <?= htmlspecialchars($loadError) ?>
+                </div>
+              <?php endif; ?>
+              <table class="table-hover min-w-full overflow-hidden rounded-2xl border border-[#0d8ddb] text-xs text-left">
+                <thead>
+                  <tr class="bg-gradient-to-r from-[#052c6a] to-[#0b3f8f] text-white">
+                    <th class="border-r border-white/10 px-3 py-3">Timestamp</th>
+                    <th class="border-r border-white/10 px-3 py-3">Applicant Name</th>
+                    <th class="border-r border-white/10 px-3 py-3">Program / Course</th>
+                    <th class="border-r border-white/10 px-3 py-3">Grant</th>
+                    <th class="border-r border-white/10 px-3 py-3">Status</th>
+                    <th class="px-3 py-3">Action</th>
                   </tr>
-                <?php else: ?>
-                  <?php foreach ($approvedApplicants as $applicant): ?>
-                    <?php
-                      $searchText = strtolower(
-                        ($applicant["name"] ?? "") . " " .
-                        ($applicant["program_course"] ?? "") . " " .
-                        ($applicant["status_text"] ?? "")
-                      );
-                      $statusLabel = (string)($applicant["status_text"] ?? "Approved");
-                      $statusBadgeClass = headDashboardStatusBadgeClass($statusLabel);
-                    ?>
-                    <tr class="border-b border-[#0d8ddb]" data-my-sa-row data-search-text="<?= htmlspecialchars($searchText) ?>" data-record-key="<?= htmlspecialchars((string)($applicant["record_key"] ?? "")) ?>">
-                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                        <?= htmlspecialchars($applicant["submitted_at"]) ?>
-                      </td>
-                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                        <?= htmlspecialchars($applicant["name"]) ?>
-                      </td>
-                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                        <?= htmlspecialchars($applicant["program_course"]) ?>
-                      </td>
-                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                        <?= htmlspecialchars($grantLabel) ?>
-                      </td>
-                      <td class="border-r border-[#0d8ddb] px-3 py-2">
-                        <span class="rounded-full px-2 py-1 text-[10px] shadow-sm <?= htmlspecialchars($statusBadgeClass) ?>">
-                          <?= htmlspecialchars($statusLabel) ?>
-                        </span>
-                      </td>
-                      <td class="px-3 py-2">
-                        <?php if (($applicant["can_evaluate"] ?? false) === true && ($applicant["has_evaluation"] ?? false) === true): ?>
-                          <span class="inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
-                            Evaluated
-                          </span>
-                        <?php elseif (($applicant["can_evaluate"] ?? false) === true && ($applicant["is_evaluation_window_open"] ?? false) === true): ?>
-                          <button
-                            class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
-                            type="button"
-                            onclick="window.location.href='<?= htmlspecialchars((string)($applicant['evaluation_url'] ?? 'SaEvaluation.php')) ?>'"
-                          >
-                            Open Evaluation Form
-                          </button>
-                        <?php elseif (($applicant["can_evaluate"] ?? false) === true): ?>
-                          <span class="inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-semibold text-amber-700">
-                            Evaluation Window Closed
-                          </span>
-                        <?php else: ?>
-                          <span class="inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[10px] font-semibold text-slate-600">
-                            View Only
-                          </span>
-                        <?php endif; ?>
+                </thead>
+                <tbody>
+                  <?php if (empty($approvedApplicants)): ?>
+                    <tr>
+                      <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
+                        No student assistants found for your office.
                       </td>
                     </tr>
-                  <?php endforeach; ?>
-                  <tr data-my-sa-empty class="hidden">
-                    <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
-                      No matching student assistants.
-                    </td>
-                  </tr>
-                <?php endif; ?>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section id="showEvaluationSection" data-head-section class="hidden mt-6 glass-card rounded-3xl p-5 mx-4 sm:mx-6">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p class="text-sm font-semibold text-[#0d8ddb]">
-                Show Evaluation
-              </p>
-              <p class="text-xs text-[#052c6a]">
-                View evaluation entries for approved student assistants.
-              </p>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 text-xs">
-              <div class="flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-3 py-2 shadow-sm">
-                <i class="fas fa-search text-[#7c8191] text-xs"></i>
-                <input
-                  id="showEvalSearch"
-                  type="text"
-                  class="w-44 bg-transparent text-xs font-semibold text-[#052c6a] outline-none placeholder:text-[#7c8191]"
-                  placeholder="Search evaluations..."
-                  aria-label="Search evaluations"
-                />
-              </div>
-              <span class="rounded-full bg-[#052c6a] px-3 py-1 text-white shadow-sm">
-                Entries: <?= htmlspecialchars((string)$evaluatedCount) ?>
-              </span>
-            </div>
-          </div>
-
-          <div class="mt-4 overflow-x-auto">
-            <?php if ($evaluationLoadError !== ""): ?>
-              <div class="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-                <?= htmlspecialchars($evaluationLoadError) ?>
-              </div>
-            <?php endif; ?>
-            <table class="table-hover min-w-full overflow-hidden rounded-2xl border border-[#0d8ddb] text-xs text-left">
-              <thead>
-                <tr class="bg-gradient-to-r from-[#052c6a] to-[#0b3f8f] text-white">
-                  <th class="border-r border-white/10 px-3 py-3">Applicant Name</th>
-                  <th class="border-r border-white/10 px-3 py-3">Program / Course</th>
-                  <th class="border-r border-white/10 px-3 py-3">Last Updated</th>
-                  <th class="border-r border-white/10 px-3 py-3">Grant</th>
-                  <th class="px-3 py-3">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                <?php if (empty($evaluatedApplicants)): ?>
-                  <tr>
-                    <td colspan="5" class="px-3 py-4 text-center text-[#052c6a]">
-                      No evaluation entries yet.
-                    </td>
-                  </tr>
-                <?php else: ?>
-                  <?php foreach ($evaluatedApplicants as $applicant): ?>
-                    <?php
-                      $searchText = strtolower(
-                        ($applicant["name"] ?? "") . " " .
-                        ($applicant["program_course"] ?? "") . " " .
-                        ($applicant["updated_at"] ?? "")
-                      );
-                    ?>
-                    <tr class="border-b border-[#0d8ddb]" data-show-eval-row data-search-text="<?= htmlspecialchars($searchText) ?>">
-                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                        <?= htmlspecialchars($applicant["name"]) ?>
-                      </td>
-                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                        <?= htmlspecialchars($applicant["program_course"]) ?>
-                      </td>
-                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                        <?= htmlspecialchars($applicant["updated_at"]) ?>
-                      </td>
-                      <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
-                        <?= htmlspecialchars($grantLabel) ?>
-                      </td>
-                      <td class="px-3 py-2">
-                        <button
-                          class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] font-semibold text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
-                          type="button"
-                          onclick="window.location.href='department-evaluation-view.php?evaluation_id=<?= urlencode((string)($applicant['evaluation_id'] ?? 0)) ?>'"
-                        >
-                          View Evaluation
-                        </button>
+                  <?php else: ?>
+                    <?php foreach ($approvedApplicants as $applicant): ?>
+                      <?php
+                        $searchText = strtolower(
+                          ($applicant["name"] ?? "") . " " .
+                          ($applicant["program_course"] ?? "") . " " .
+                          ($applicant["status_text"] ?? "")
+                        );
+                        $statusLabel = (string)($applicant["status_text"] ?? "Approved");
+                        $statusBadgeClass = headDashboardStatusBadgeClass($statusLabel);
+                      ?>
+                      <tr class="border-b border-[#0d8ddb]" data-my-sa-row data-search-text="<?= htmlspecialchars($searchText) ?>" data-record-key="<?= htmlspecialchars((string)($applicant["record_key"] ?? "")) ?>">
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["submitted_at"]) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["name"]) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars($applicant["program_course"]) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars($grantLabel) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2">
+                          <span class="rounded-full px-2 py-1 text-[10px] shadow-sm <?= htmlspecialchars($statusBadgeClass) ?>">
+                            <?= htmlspecialchars($statusLabel) ?>
+                          </span>
+                        </td>
+                        <td class="px-3 py-2">
+                          <?php if (($applicant["can_evaluate"] ?? false) === true && ($applicant["has_evaluation"] ?? false) === true): ?>
+                            <span class="inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                              Evaluated
+                            </span>
+                          <?php elseif (($applicant["can_evaluate"] ?? false) === true && ($applicant["is_evaluation_window_open"] ?? false) === true): ?>
+                            <button
+                              class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
+                              type="button"
+                              onclick="window.location.href='<?= htmlspecialchars((string)($applicant['evaluation_url'] ?? 'studentAssistantSaEvaluation.php')) ?>'"
+                            >
+                              Open Evaluation Form
+                            </button>
+                          <?php elseif (($applicant["can_evaluate"] ?? false) === true): ?>
+                            <span class="inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-semibold text-amber-700">
+                              Evaluation Window Closed
+                            </span>
+                          <?php else: ?>
+                            <span class="inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[10px] font-semibold text-slate-600">
+                              View Only
+                            </span>
+                          <?php endif; ?>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                    <tr data-my-sa-empty class="hidden">
+                      <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
+                        No matching student assistants.
                       </td>
                     </tr>
-                  <?php endforeach; ?>
-                  <tr data-show-eval-empty class="hidden">
-                    <td colspan="5" class="px-3 py-4 text-center text-[#052c6a]">
-                      No matching evaluations.
-                    </td>
-                  </tr>
-                <?php endif; ?>
-              </tbody>
-            </table>
-          </div>
+                  <?php endif; ?>
+                </tbody>
+              </table>
+            </div>
+          </section>
         </section>
       </main>
     </div>
+
     <script>
       document.addEventListener("DOMContentLoaded", () => {
         const sidebar = document.getElementById("sidebar");
         const toggleBtn = document.getElementById("sidebarToggle");
-        const navItems = Array.from(document.querySelectorAll("[data-target-section]"));
-        const sections = Array.from(document.querySelectorAll("[data-head-section]"));
-
-        const setActiveSection = (sectionId) => {
-          sections.forEach((section) => {
-            section.classList.toggle("hidden", section.id !== sectionId);
-          });
-          navItems.forEach((item) => {
-            const isActive = item.dataset.targetSection === sectionId;
-            item.classList.toggle("active", isActive);
-          });
-        };
-
-        navItems.forEach((item) => {
-          item.addEventListener("click", () => {
-            setActiveSection(item.dataset.targetSection);
-            if (window.innerWidth < 768 && sidebar) {
-              sidebar.classList.add("-translate-x-full");
-            }
-          });
-        });
-
         if (toggleBtn && sidebar) {
           toggleBtn.addEventListener("click", () => {
             sidebar.classList.toggle("-translate-x-full");
           });
         }
 
-        setActiveSection(<?= json_encode($initialSection) ?>);
+        const searchInput = document.getElementById("mySASearch");
+        const rows = Array.from(document.querySelectorAll("[data-my-sa-row]"));
+        const emptyRow = document.querySelector("[data-my-sa-empty]");
 
-        const mySearchInput = document.getElementById("mySASearch");
-        const myRows = Array.from(document.querySelectorAll("[data-my-sa-row]"));
-        const myEmpty = document.querySelector("[data-my-sa-empty]");
-
-        const showEvalSearchInput = document.getElementById("showEvalSearch");
-        const showEvalRows = Array.from(document.querySelectorAll("[data-show-eval-row]"));
-        const showEvalEmpty = document.querySelector("[data-show-eval-empty]");
-
-        const applySearch = (input, rows, emptyRow) => {
-          const query = (input?.value || "").trim().toLowerCase();
+        const applySearch = () => {
+          const query = (searchInput?.value || "").trim().toLowerCase();
           let visible = 0;
-
           rows.forEach((row) => {
             const text = row.dataset.searchText || "";
             const matches = query === "" || text.includes(query);
             row.style.display = matches ? "table-row" : "none";
             if (matches) visible++;
           });
-
           if (emptyRow) {
             emptyRow.style.display = visible === 0 ? "table-row" : "none";
           }
         };
 
-        if (mySearchInput) {
-          mySearchInput.addEventListener("input", () => {
-            applySearch(mySearchInput, myRows, myEmpty);
-          });
+        if (searchInput) {
+          searchInput.addEventListener("input", applySearch);
         }
-
-        if (showEvalSearchInput) {
-          showEvalSearchInput.addEventListener("input", () => {
-            applySearch(showEvalSearchInput, showEvalRows, showEvalEmpty);
-          });
-        }
-
-        applySearch(mySearchInput, myRows, myEmpty);
-        applySearch(showEvalSearchInput, showEvalRows, showEvalEmpty);
+        applySearch();
       });
     </script>
   </body>
 </html>
+

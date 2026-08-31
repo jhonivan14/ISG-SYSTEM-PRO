@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . "/head-auth.php";
+require_once __DIR__ . "/studentAssistant-auth.php";
 headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
@@ -180,19 +180,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         <nav class="flex-1 mt-2">
           <ul class="text-xs font-semibold">
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='headDashboard.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='studentAssistantDashboard.php'">
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='my-sas.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='studentAssistant-my-sas.php'">
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='show-evaluation.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='studentAssistant-show-evaluation.php'">
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>
-            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='head-changePassword.php'">
+            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='studentAssistant-changePassword.php'">
               <i class="fas fa-key w-5"></i>
               <span>Change Password</span>
             </li>
@@ -338,3 +338,4 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     </script>
   </body>
 </html>
+

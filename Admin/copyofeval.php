@@ -118,16 +118,25 @@ adminRequireLogin();
               <td></td>
             </tr>
             <tr>
+              <td>D. Professionalism and Ethical Conduct</td>
+              <td></td>
+              <td></td>
+            </tr>
+            <tr>
               <td class="font-semibold">Overall Rating</td>
               <td></td>
               <td></td>
             </tr>
             <tr>
-              <td>D. Strength(s)/Areas for Improvement</td>
+              <td>E. Strength(s)</td>
               <td colspan="2"><div class="h-16"></div></td>
             </tr>
             <tr>
-              <td>E. Evaluator's Comment(s)/Recommendation</td>
+              <td>F. Area(s) for Improvement</td>
+              <td colspan="2"><div class="h-16"></div></td>
+            </tr>
+            <tr>
+              <td>G. Evaluator's Comment(s)/Recommendation</td>
               <td colspan="2"><div class="h-16"></div></td>
             </tr>
           </tbody>

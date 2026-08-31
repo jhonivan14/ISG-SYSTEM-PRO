@@ -12,7 +12,11 @@ if ($headName === "") {
   $headName = "Head of Office";
 }
 $headUsername = trim((string)($_SESSION["head_username"] ?? ""));
+$headRole = isgNormalizeEvaluatorRole((string)($_SESSION["evaluator_role"] ?? headExpectedRole()));
 $headOffice = trim((string)($_SESSION["head_office"] ?? ""));
+$evaluatorScope = isgLoadEvaluatorScope($conn, $headUsername, $headRole);
+$headOffice = (string)($evaluatorScope["office"] ?? $headOffice);
+$headOfficeKey = (string)($evaluatorScope["office_key"] ?? strtolower(trim($headOffice)));
 
 $grantLabel = "Student Assistant";
 $approvedApplicants = [];
@@ -154,29 +158,9 @@ if (($conn ?? null) instanceof mysqli) {
   $isEvaluationWindowOpen = !empty($evaluationWindowOpenTerms);
 }
 
-if ($headOffice === "" && $headUsername !== "") {
-  $officeStmt = $conn->prepare("SELECT office FROM head_offices WHERE username = ? AND status = 'active' LIMIT 1");
-  if ($officeStmt) {
-    $officeStmt->bind_param("s", $headUsername);
-    if ($officeStmt->execute()) {
-      $officeResult = $officeStmt->get_result();
-      $officeRow = $officeResult ? $officeResult->fetch_assoc() : null;
-      if (is_array($officeRow)) {
-        $headOffice = trim((string)($officeRow["office"] ?? ""));
-        $_SESSION["head_office"] = $headOffice;
-      }
-      if ($officeResult instanceof mysqli_result) {
-        $officeResult->free();
-      }
-    }
-    $officeStmt->close();
-  }
-}
-
-if ($headOffice === "") {
-  $loadError = "No office is assigned to this head account.";
+if ((string)($evaluatorScope["error"] ?? "") !== "") {
+  $loadError = (string)$evaluatorScope["error"];
 } else {
-  $headOfficeKey = strtolower(trim($headOffice));
   $scholarTableResult = $conn->query("SHOW TABLES LIKE 'institutional_scholar_records'");
   $hasScholarTable = $scholarTableResult instanceof mysqli_result && $scholarTableResult->num_rows > 0;
   if ($scholarTableResult instanceof mysqli_result) {
@@ -187,6 +171,7 @@ if ($headOffice === "") {
     $loadError = "Scholar records table is not available.";
   } else {
     $approvedApplicantMap = [];
+    $scholarRestriction = isgEvaluatorScholarRestriction($evaluatorScope);
     $studentAssistantQuery = "SELECT
         id,
         scholar_id,
@@ -207,7 +192,7 @@ if ($headOffice === "") {
             AND LOWER(TRIM(COALESCE(grant_applied, ''))) LIKE '%assistant%'
           )
         )
-        AND LOWER(TRIM(COALESCE(assigned_office, ''))) = ?
+        " . $scholarRestriction["sql"] . "
         AND COALESCE(contract_ended, 0) = 0
       ORDER BY
         CASE
@@ -220,7 +205,9 @@ if ($headOffice === "") {
         id DESC";
 
     if ($scholarStmt = $conn->prepare($studentAssistantQuery)) {
-      $scholarStmt->bind_param("s", $headOfficeKey);
+      if ($scholarRestriction["types"] !== "") {
+        $scholarStmt->bind_param($scholarRestriction["types"], ...$scholarRestriction["params"]);
+      }
       if ($scholarStmt->execute()) {
         $scholarResult = $scholarStmt->get_result();
         while ($scholarRow = $scholarResult->fetch_assoc()) {
@@ -292,17 +279,21 @@ if ($headOffice === "") {
 
   if ($hasHeadEvaluationTable && $hasScholarTable && !empty($approvedApplicants)) {
     $evaluatedRecordKeys = [];
+    $evaluationRestriction = isgEvaluatorEvaluationRestriction($evaluatorScope, "dhe");
     $evaluatedQuery = "SELECT
         application_id,
         TRIM(COALESCE(school_year, '')) AS school_year,
         TRIM(COALESCE(semester, '')) AS semester
       FROM department_head_evaluations dhe
       WHERE dhe.head_username = ?
+        AND dhe.evaluator_role = ?
         AND dhe.application_id <> 0
-        AND LOWER(TRIM(COALESCE(dhe.assigned_office, ''))) = ?";
+        " . $evaluationRestriction["sql"];
 
     if ($evalStmt = $conn->prepare($evaluatedQuery)) {
-      $evalStmt->bind_param("ss", $headUsername, $headOfficeKey);
+      $evalTypes = "ss" . $evaluationRestriction["types"];
+      $evalParams = array_merge([$headUsername, $headRole], $evaluationRestriction["params"]);
+      $evalStmt->bind_param($evalTypes, ...$evalParams);
       if ($evalStmt->execute()) {
         $evalResult = $evalStmt->get_result();
         while ($evalRow = $evalResult->fetch_assoc()) {

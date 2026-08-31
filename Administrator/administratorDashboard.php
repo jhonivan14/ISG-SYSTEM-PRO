@@ -1,14 +1,15 @@
 <?php
-require_once __DIR__ . "/head-auth.php";
+require_once __DIR__ . "/administrator-auth.php";
 headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 if (trim((string)($_GET["tab"] ?? "")) === "my-sas") {
-  header("Location: my-sas.php");
+  header("Location: administrator-my-sas.php");
   exit;
 }
 require_once "../db.php";
+require_once "../includes/administrator-sa-assignments.php";
 date_default_timezone_set("Asia/Manila");
 
 $headName = trim((string)($_SESSION["head_name"] ?? ""));
@@ -28,10 +29,18 @@ $approvedApplicants = [];
 $evaluatedApplicants = [];
 $loadError = "";
 $evaluationLoadError = "";
+$assignmentMessage = "";
+$assignmentMessageType = "";
 $hasHeadEvaluationTable = false;
 $hasScholarTable = false;
 $isEvaluationWindowOpen = false;
 $evaluationWindowOpenTerms = [];
+
+if (isset($_SESSION["administrator_sa_assignment_flash"]) && is_array($_SESSION["administrator_sa_assignment_flash"])) {
+  $assignmentMessage = trim((string)($_SESSION["administrator_sa_assignment_flash"]["message"] ?? ""));
+  $assignmentMessageType = trim((string)($_SESSION["administrator_sa_assignment_flash"]["type"] ?? ""));
+  unset($_SESSION["administrator_sa_assignment_flash"]);
+}
 
 function headDashboardDisplayStatusLabel(string $status): string
 {
@@ -163,6 +172,42 @@ function headLoadOpenEvaluationTerms(mysqli $conn): array
 if (($conn ?? null) instanceof mysqli) {
   $evaluationWindowOpenTerms = headLoadOpenEvaluationTerms($conn);
   $isEvaluationWindowOpen = !empty($evaluationWindowOpenTerms);
+  isgEnsureAdministratorSaAssignmentsTable($conn);
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && trim((string)($_POST["action"] ?? "")) === "claim_sa") {
+  $claimRecordId = (int)($_POST["scholar_record_id"] ?? 0);
+  $claimRow = (string)($evaluatorScope["error"] ?? "") === ""
+    ? isgLoadEvaluatorStudentAssistantRecord($conn, $claimRecordId, $evaluatorScope)
+    : null;
+  $claimResult = ["ok" => false, "message" => "Student assistant record not available for this administrator."];
+
+  if ((string)($evaluatorScope["error"] ?? "") !== "") {
+    $claimResult["message"] = (string)$evaluatorScope["error"];
+  } elseif (is_array($claimRow)) {
+    $claimResult = isgClaimAdministratorSaAssignment(
+      $conn,
+      (int)($claimRow["id"] ?? 0),
+      (string)($claimRow["academic_year"] ?? ""),
+      (string)($claimRow["semester"] ?? ""),
+      $headUsername,
+      $headName
+    );
+  }
+
+  $_SESSION["administrator_sa_assignment_flash"] = [
+    "type" => ($claimResult["ok"] ?? false) ? "success" : "error",
+    "message" => (string)($claimResult["message"] ?? ""),
+  ];
+
+  if (($claimResult["ok"] ?? false) && is_array($claimRow)) {
+    $referenceId = 0 - (int)($claimRow["id"] ?? 0);
+    header("Location: administratorSaEvaluation.php?application_id=" . urlencode((string)$referenceId));
+    exit;
+  }
+
+  header("Location: administrator-my-sas.php");
+  exit;
 }
 
 if ((string)($evaluatorScope["error"] ?? "") !== "") {
@@ -242,6 +287,7 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
 
           $approvedApplicantMap[$recordKey] = [
             "id" => $evaluationReferenceId,
+            "scholar_record_id" => $scholarRecordId,
             "record_key" => $recordKey,
             "submitted_at" => $submittedAt,
             "sort_timestamp" => $submittedAtRaw !== "" ? (int)strtotime($submittedAtRaw) : 0,
@@ -253,7 +299,7 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
             "can_evaluate" => true,
             "is_evaluation_window_open" => isset($evaluationWindowOpenTerms[$recordTermKey]),
             "has_evaluation" => false,
-            "evaluation_url" => "SaEvaluation.php?application_id=" . urlencode((string)$evaluationReferenceId),
+            "evaluation_url" => "administratorSaEvaluation.php?application_id=" . urlencode((string)$evaluationReferenceId),
           ];
         }
         if ($scholarResult instanceof mysqli_result) {
@@ -413,11 +459,49 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
   }
 }
 
+if (!empty($approvedApplicants) && ($conn ?? null) instanceof mysqli) {
+  $assignmentRecordIds = [];
+  foreach ($approvedApplicants as $approvedApplicant) {
+    $recordId = (int)($approvedApplicant["scholar_record_id"] ?? abs((int)($approvedApplicant["id"] ?? 0)));
+    if ($recordId > 0) {
+      $assignmentRecordIds[] = $recordId;
+    }
+  }
+
+  $assignmentMap = isgLoadAdministratorSaAssignmentsForRecords($conn, $assignmentRecordIds);
+  foreach ($approvedApplicants as $approvedIndex => $approvedApplicant) {
+    $recordId = (int)($approvedApplicant["scholar_record_id"] ?? abs((int)($approvedApplicant["id"] ?? 0)));
+    $assignmentKey = isgAdministratorSaAssignmentKey(
+      $recordId,
+      (string)($approvedApplicant["academic_year"] ?? ""),
+      (string)($approvedApplicant["semester"] ?? "")
+    );
+    $assignment = $assignmentMap[$assignmentKey] ?? null;
+    $assignedUsername = is_array($assignment) ? trim((string)($assignment["administrator_username"] ?? "")) : "";
+    $approvedApplicants[$approvedIndex]["assignment"] = is_array($assignment) ? $assignment : null;
+    $approvedApplicants[$approvedIndex]["is_picked_by_current_admin"] =
+      $assignedUsername !== "" && strtolower($assignedUsername) === strtolower($headUsername);
+    $approvedApplicants[$approvedIndex]["is_picked_by_other_admin"] =
+      $assignedUsername !== "" && strtolower($assignedUsername) !== strtolower($headUsername);
+  }
+}
+
 $approvedCount = count($approvedApplicants);
+$myPickedCount = 0;
+$availableToPickCount = 0;
 $readyToEvaluateCount = 0;
 foreach ($approvedApplicants as $approvedApplicantRow) {
+  $isPickedByCurrentAdmin = ($approvedApplicantRow["is_picked_by_current_admin"] ?? false) === true;
+  $isPickedByOtherAdmin = ($approvedApplicantRow["is_picked_by_other_admin"] ?? false) === true;
+  if ($isPickedByCurrentAdmin) {
+    $myPickedCount++;
+  } elseif (!$isPickedByOtherAdmin) {
+    $availableToPickCount++;
+  }
+
   if (
     ($approvedApplicantRow["can_evaluate"] ?? false) === true
+    && $isPickedByCurrentAdmin
     && ($approvedApplicantRow["has_evaluation"] ?? false) !== true
     && ($approvedApplicantRow["is_evaluation_window_open"] ?? false) === true
   ) {
@@ -438,7 +522,7 @@ if ($requestedTab === "my-sas") {
   <head>
     <meta charset="utf-8" />
     <meta content="width=device-width, initial-scale=1" name="viewport" />
-    <title>Head of Office Dashboard</title>
+    <title>Administrator Dashboard</title>
     <link rel="icon" type="image/x-icon" href="../img/SMCCNEWLOGO.png" />
     <link rel="stylesheet" href="../assets/css/tailwind.css">
     <link
@@ -610,21 +694,21 @@ if ($requestedTab === "my-sas") {
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='my-sas.php'"
+              onclick="window.location.href='administrator-my-sas.php'"
             >
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='show-evaluation.php'"
+              onclick="window.location.href='administrator-show-evaluation.php'"
             >
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='head-changePassword.php'"
+              onclick="window.location.href='administrator-changePassword.php'"
             >
               <i class="fas fa-key w-5"></i>
               <span>Change Password</span>
@@ -674,7 +758,7 @@ if ($requestedTab === "my-sas") {
             </button>
             <h2 class="text-[#0d4b84] text-lg font-semibold flex items-center gap-2">
               <i class="fas fa-columns"></i>
-              Head of Office Dashboard
+              Administrator Dashboard
             </h2>
           </div>
         </header>
@@ -683,9 +767,9 @@ if ($requestedTab === "my-sas") {
           <section class="mt-6 glass-card rounded-3xl p-6 sm:flex-row sm:items-center sm:justify-between">
             <div class="space-y-2">
               <span class="badge">Student Assistant Grant</span>
-              <h1 class="heading-font text-3xl text-[#052c6a]">Head Dashboard</h1>
+              <h1 class="heading-font text-3xl text-[#052c6a]">Administrator Dashboard</h1>
               <p class="text-xs text-[#42506a]">
-                Monitor approved student assistants and manage office evaluations.
+                Pick student assistants for administrator evaluation and prevent duplicate evaluator assignments.
               </p>
               <p class="text-sm font-semibold text-[#052c6a]">
                 Welcome, <?= htmlspecialchars($headName) ?>.
@@ -696,17 +780,17 @@ if ($requestedTab === "my-sas") {
 
           <section class="stagger grid gap-4 pt-6 md:grid-cols-3">
             <div class="stat-card rounded-2xl bg-gradient-to-br from-[#052c6a] to-[#0b3f8f] p-5 text-white">
-              <p class="text-xs uppercase tracking-wide text-[#fcdc2f]">Total My SA's</p>
+              <p class="text-xs uppercase tracking-wide text-[#fcdc2f]">Total Student Assistants</p>
               <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$approvedCount) ?></p>
               <p class="mt-1 text-[11px] text-blue-100">
-                Student assistants under your office.
+                Active student assistant records in the system.
               </p>
             </div>
             <div class="stat-card rounded-2xl bg-white p-5 text-[#052c6a]">
               <p class="text-xs uppercase tracking-wide text-[#0d8ddb]">Ready to Evaluate</p>
               <p class="mt-2 text-3xl font-bold"><?= htmlspecialchars((string)$readyToEvaluateCount) ?></p>
               <p class="mt-1 text-[11px] text-slate-500">
-                Available records for evaluation form processing.
+                Your picked records with no saved evaluation while the window is open.
               </p>
             </div>
             <div class="stat-card rounded-2xl bg-gradient-to-br from-[#fcdc2f] to-[#f7b500] p-5 text-[#052c6a]">
@@ -726,8 +810,8 @@ if ($requestedTab === "my-sas") {
                 My SA's
               </p>
               <p class="text-xs text-[#052c6a]">
-                Showing <?= htmlspecialchars((string)$approvedCount) ?> records for
-                <?= htmlspecialchars($grantLabel) ?>.
+                Showing <?= htmlspecialchars((string)$approvedCount) ?> records for <?= htmlspecialchars($grantLabel) ?>.
+                Picked by you: <?= htmlspecialchars((string)$myPickedCount) ?>.
               </p>
             </div>
             <div class="flex flex-wrap items-center gap-2 text-xs">
@@ -753,6 +837,11 @@ if ($requestedTab === "my-sas") {
                 <?= htmlspecialchars($loadError) ?>
               </div>
             <?php endif; ?>
+            <?php if ($assignmentMessage !== ""): ?>
+              <div class="mb-3 rounded-lg border px-3 py-2 text-xs <?= $assignmentMessageType === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-red-200 bg-red-50 text-red-700" ?>">
+                <?= htmlspecialchars($assignmentMessage) ?>
+              </div>
+            <?php endif; ?>
             <table class="table-hover min-w-full overflow-hidden rounded-2xl border border-[#0d8ddb] text-xs text-left">
               <thead>
                 <tr class="bg-gradient-to-r from-[#052c6a] to-[#0b3f8f] text-white">
@@ -761,23 +850,39 @@ if ($requestedTab === "my-sas") {
                   <th class="border-r border-white/10 px-3 py-3">Program / Course</th>
                   <th class="border-r border-white/10 px-3 py-3">Grant</th>
                   <th class="border-r border-white/10 px-3 py-3">Status</th>
+                  <th class="border-r border-white/10 px-3 py-3">Picked By</th>
                   <th class="px-3 py-3">Action</th>
                 </tr>
               </thead>
               <tbody>
                 <?php if (empty($approvedApplicants)): ?>
                   <tr>
-                    <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
-                      No student assistants found for your office.
+                    <td colspan="7" class="px-3 py-4 text-center text-[#052c6a]">
+                      No student assistants found.
                     </td>
                   </tr>
                 <?php else: ?>
                   <?php foreach ($approvedApplicants as $applicant): ?>
                     <?php
+                      $assignment = ($applicant["assignment"] ?? null);
+                      $isPickedByCurrentAdmin = ($applicant["is_picked_by_current_admin"] ?? false) === true;
+                      $isPickedByOtherAdmin = ($applicant["is_picked_by_other_admin"] ?? false) === true;
+                      $assignedUsername = is_array($assignment) ? trim((string)($assignment["administrator_username"] ?? "")) : "";
+                      $assignedName = is_array($assignment) ? trim((string)($assignment["administrator_name"] ?? "")) : "";
+                      $assignedLabel = "Available";
+                      $assignmentBadgeClass = "border-emerald-300 bg-emerald-50 text-emerald-700";
+                      if ($isPickedByCurrentAdmin) {
+                        $assignedLabel = "Picked by you";
+                        $assignmentBadgeClass = "border-blue-300 bg-blue-50 text-blue-700";
+                      } elseif ($isPickedByOtherAdmin) {
+                        $assignedLabel = "Picked by " . ($assignedName !== "" ? $assignedName : $assignedUsername);
+                        $assignmentBadgeClass = "border-slate-300 bg-slate-100 text-slate-600";
+                      }
                       $searchText = strtolower(
                         ($applicant["name"] ?? "") . " " .
                         ($applicant["program_course"] ?? "") . " " .
-                        ($applicant["status_text"] ?? "")
+                        ($applicant["status_text"] ?? "") . " " .
+                        $assignedLabel
                       );
                       $statusLabel = (string)($applicant["status_text"] ?? "Approved");
                       $statusBadgeClass = headDashboardStatusBadgeClass($statusLabel);
@@ -800,19 +905,43 @@ if ($requestedTab === "my-sas") {
                           <?= htmlspecialchars($statusLabel) ?>
                         </span>
                       </td>
+                      <td class="border-r border-[#0d8ddb] px-3 py-2">
+                        <span class="inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold <?= htmlspecialchars($assignmentBadgeClass) ?>">
+                          <?= htmlspecialchars($assignedLabel) ?>
+                        </span>
+                      </td>
                       <td class="px-3 py-2">
-                        <?php if (($applicant["can_evaluate"] ?? false) === true && ($applicant["has_evaluation"] ?? false) === true): ?>
+                        <?php if ($isPickedByCurrentAdmin && ($applicant["can_evaluate"] ?? false) === true && ($applicant["has_evaluation"] ?? false) === true): ?>
                           <span class="inline-flex rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
                             Evaluated
                           </span>
-                        <?php elseif (($applicant["can_evaluate"] ?? false) === true && ($applicant["is_evaluation_window_open"] ?? false) === true): ?>
+                        <?php elseif ($isPickedByCurrentAdmin && ($applicant["can_evaluate"] ?? false) === true && ($applicant["is_evaluation_window_open"] ?? false) === true): ?>
                           <button
                             class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
                             type="button"
-                            onclick="window.location.href='<?= htmlspecialchars((string)($applicant['evaluation_url'] ?? 'SaEvaluation.php')) ?>'"
+                            onclick="window.location.href='<?= htmlspecialchars((string)($applicant['evaluation_url'] ?? 'administratorSaEvaluation.php')) ?>'"
                           >
                             Open Evaluation Form
                           </button>
+                        <?php elseif ($isPickedByCurrentAdmin && ($applicant["can_evaluate"] ?? false) === true): ?>
+                          <span class="inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-semibold text-amber-700">
+                            Evaluation Window Closed
+                          </span>
+                        <?php elseif ($isPickedByOtherAdmin): ?>
+                          <span class="inline-flex rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-[10px] font-semibold text-slate-600">
+                            Not Available
+                          </span>
+                        <?php elseif (($applicant["can_evaluate"] ?? false) === true && ($applicant["is_evaluation_window_open"] ?? false) === true): ?>
+                          <form method="post" class="inline">
+                            <input type="hidden" name="action" value="claim_sa" />
+                            <input type="hidden" name="scholar_record_id" value="<?= htmlspecialchars((string)($applicant["scholar_record_id"] ?? abs((int)($applicant["id"] ?? 0)))) ?>" />
+                            <button
+                              class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
+                              type="submit"
+                            >
+                              Pick for Evaluation
+                            </button>
+                          </form>
                         <?php elseif (($applicant["can_evaluate"] ?? false) === true): ?>
                           <span class="inline-flex rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-[10px] font-semibold text-amber-700">
                             Evaluation Window Closed
@@ -826,7 +955,7 @@ if ($requestedTab === "my-sas") {
                     </tr>
                   <?php endforeach; ?>
                   <tr data-my-sa-empty class="hidden">
-                    <td colspan="6" class="px-3 py-4 text-center text-[#052c6a]">
+                    <td colspan="7" class="px-3 py-4 text-center text-[#052c6a]">
                       No matching student assistants.
                     </td>
                   </tr>
@@ -912,7 +1041,7 @@ if ($requestedTab === "my-sas") {
                         <button
                           class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] font-semibold text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
                           type="button"
-                          onclick="window.location.href='department-evaluation-view.php?evaluation_id=<?= urlencode((string)($applicant['evaluation_id'] ?? 0)) ?>'"
+                          onclick="window.location.href='administrator-evaluation-view.php?evaluation_id=<?= urlencode((string)($applicant['evaluation_id'] ?? 0)) ?>'"
                         >
                           View Evaluation
                         </button>
@@ -1007,3 +1136,4 @@ if ($requestedTab === "my-sas") {
     </script>
   </body>
 </html>
+

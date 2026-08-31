@@ -639,15 +639,15 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
     />
     <style>
       @page {
-        size: Legal;
-        margin: 12mm 10mm 12mm 10mm;
+        size: 8.5in 13in portrait;
+        margin: 8mm;
       }
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #93d7ff 0%, #2e9bd7 100%); border-radius: 999px; }
       .paper { font-family: "Times New Roman", serif; line-height: 1.4; }
       .paper h1, .paper h2, .paper p { margin: 0; }
-      header { margin-bottom: 0.75rem; text-align: center; }
-      .header-top { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.25rem; }
+      header { margin-bottom: 1rem; text-align: center; }
+      .header-top { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem; }
       .header-left { display: flex; align-items: center; gap: 0.5rem; }
       .header-left img { width: 80px; height: 80px; object-fit: contain; }
       .header-left-text { line-height: 1.1; text-align: left; }
@@ -685,9 +685,35 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
         body, .paper { background: white !important; font-family: "Times New Roman", serif !important; }
         #sidebar, .admin-topbar, .print-btn-bar, .page-header { display: none !important; }
         main, section { margin: 0 !important; padding: 0 !important; width: 100% !important; }
-        .paper { border: none !important; box-shadow: none !important; margin: 0 auto !important; padding: 0 !important; }
-        .paper-wrap { max-width: 100% !important; width: 100% !important; padding: 0 4px 12px 4px !important; }
-        .plain-table table { width: 100% !important; }
+        .paper { width: 100% !important; max-width: 100% !important; border: none !important; box-shadow: none !important; margin: 0 auto !important; padding: 0 !important; }
+        .paper-wrap { max-width: 100% !important; width: 100% !important; padding: 0 0 12px 0 !important; }
+        .plain-table table {
+          width: 100% !important;
+          table-layout: fixed !important;
+        }
+        .plain-table th,
+        .plain-table td {
+          font-size: 9.5pt !important;
+          line-height: 1.2 !important;
+          padding: 4px 5px !important;
+          white-space: normal !important;
+          overflow-wrap: anywhere !important;
+          word-break: normal !important;
+        }
+        .plain-table th:nth-child(1),
+        .plain-table td:nth-child(1) { width: 4% !important; text-align: center !important; }
+        .plain-table th:nth-child(2),
+        .plain-table td:nth-child(2) { width: 18% !important; }
+        .plain-table th:nth-child(3),
+        .plain-table td:nth-child(3) { width: 22% !important; }
+        .plain-table th:nth-child(4),
+        .plain-table td:nth-child(4) { width: 13% !important; }
+        .plain-table th:nth-child(5),
+        .plain-table td:nth-child(5) { width: 17% !important; }
+        .plain-table th:nth-child(6),
+        .plain-table td:nth-child(6) { width: 10% !important; }
+        .plain-table th:nth-child(7),
+        .plain-table td:nth-child(7) { width: 16% !important; }
         .office-select {
           appearance: none !important;
           -webkit-appearance: none !important;
@@ -1054,9 +1080,12 @@ if (($conn ?? null) instanceof mysqli && $hasRankInputTable) {
                     <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
                     <div class="header-left-text">
                       <h1 class="text-center">Saint Michael College of Caraga</h1>
-                      <p class="text-center">Brgy. 4, Nasipit, Agusan del Norte, Philippines</p>
-                      <p class="text-center">Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
-                      <p class="text-center"><a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a></p>
+                      <p class="text-center">
+                        Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines
+                      </p>
+                      <p class="text-center">
+                        <a>Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</a>
+                      </p>
                     </div>
                   </div>
                   <div class="header-right">
@@ -1423,8 +1452,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     </script>  </body>
 </html>
-
-
 
 
 

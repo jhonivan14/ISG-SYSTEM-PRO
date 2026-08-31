@@ -315,6 +315,15 @@ adminRequireLogin();
             </section>
 
             <section class="direction">
+                <p>
+                    <span class="font-semibold">Evaluator:</span>
+                    <span class="inline-flex items-center gap-1 ml-3"><span class="inline-block h-4 w-4 border border-black align-middle"></span> Self</span>
+                    <span class="inline-flex items-center gap-1 ml-3"><span class="inline-flex h-4 w-4 items-center justify-center border border-black text-[10px] leading-none">&#10003;</span> Head of Office</span>
+                    <span class="inline-flex items-center gap-1 ml-3"><span class="inline-block h-4 w-4 border border-black align-middle"></span> Administrator</span>
+                </p>
+            </section>
+
+            <section class="direction">
                 <p><span class="font-semibold">Direction:</span> Please rate each item below to determine the performance of the assigned student assistant of your respective office/department. Put a check (&#10003;) to rate their performance.</p>
             </section>
 
@@ -330,23 +339,23 @@ adminRequireLogin();
                     <tbody>
                         <tr>
                             <td>4</td>
-                            <td>Excellent</td>
-                            <td>This rating is given to student assistants who consistently exceed expectations and demonstrate outstanding performance in their assigned tasks.</td>
+                            <td>Very Good (VG)</td>
+                            <td>Consistently exceeds the performance expectations stated in the indicator.</td>
                         </tr>
                         <tr>
                             <td>3</td>
-                            <td>Good</td>
-                            <td>This rating is given to student assistants who consistently meet expectations and perform their assigned tasks satisfactorily.</td>
+                            <td>Good (G)</td>
+                            <td>Consistently meets the performance expectations stated in the indicator.</td>
                         </tr>
                         <tr>
                             <td>2</td>
-                            <td>Fair</td>
-                            <td>This rating is given to student assistants who occasionally meet expectations but may have areas for improvement.</td>
+                            <td>Poor (P)</td>
+                            <td>Frequently falls below the performance expectations stated in the indicator and requires improvement.</td>
                         </tr>
                         <tr>
                             <td>1</td>
-                            <td>Poor</td>
-                            <td>This rating is given to student assistants who consistently fail to meet expectations and demonstrate unsatisfactory performance in their assigned tasks.</td>
+                            <td>Needs Improvement (NI)</td>
+                            <td>Consistently fails to meet the performance expectations stated in the indicator and requires close supervision and additional guidance.</td>
                         </tr>
                     </tbody>
                 </table>
@@ -360,185 +369,69 @@ adminRequireLogin();
                             <th colspan="4">Rating</th>
                         </tr>
                         <tr>
-                            <th>Excellent (4)</th>
+                            <th>Very Good (4)</th>
                             <th>Good (3)</th>
-                            <th>Fair (2)</th>
-                            <th>Poor (1)</th>
+                            <th>Poor (2)</th>
+                            <th>NI (1)</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr>
-                            <td class="section-label">A. Quality and Quantity of Work</td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>A.1 Accurate at work assigned</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>A.2 Always completes tasks</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>A.3 Works in a timely manner</td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>A.4 Asks for more work when assigned tasks are done</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>A.5 Easily accepts new responsibilities</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td class="subtotal">Total</td>
-                            <td>4</td>
-                            <td>12</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td class="section-label">B. Interpersonal Skills</td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>B.1 Answers patron's questions accurately</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>B.2 Deals with patrons well</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>B.3 Deals with personnel well</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>B.4 Knows how to effectively communicate with others</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>B.5 Has a good relationship with other student assistants</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td class="subtotal">Total</td>
-                            <td></td>
-                            <td>15</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td class="section-label">C. Attendance and Reliability</td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>C.1 Perfect attendance</td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>C.2 Reports duty on time, rarely comes late</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>C.3 Following assigned schedule</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>C.4 Able to work without direct supervision</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td>C.5 Carries out instructions successfully</td>
-                            <td></td>
-                            <td>&#10003;</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td class="subtotal">Total</td>
-                            <td>4</td>
-                            <td>12</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
-                        <tr>
-                            <td class="subtotal">Over-all Total</td>
-                            <td>8</td>
-                            <td>39</td>
-                            <td></td>
-                            <td></td>
-                        </tr>
+                        <tr><td class="section-label">A. Quality and Quantity of Work</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>A.1 Completes assigned tasks accurately and with minimal errors.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>A.2 Completes assigned tasks thoroughly and according to instructions.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>A.3 Completes work within the required time.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>A.4 Demonstrates initiative by seeking additional responsibilities after completing assigned works.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>A.5 Willingly accepts new assignments and responsibilities.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td class="subtotal">Total</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td class="section-label">B. Interpersonal Skills</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>B.1 Communicates clearly and respectfully with students, employees, and visitors.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>B.2 Demonstrates courtesy and professionalism when assisting students, employees, parents, and visitors.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>B.3 Works cooperatively with office personnel and fellow student assistants.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>B.4 Responds appropriately to questions, concerns, and requests.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>B.5 Contributes positively to teamwork and collaborates effectively with colleagues.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td class="subtotal">Total</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td class="section-label">C. Attendance and Reliability</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>C.1 Maintains regular attendance and provides timely notification for any authorized absence.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>C.2 Reports for duty punctually and observes the assigned work schedule.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>C.3 Participates actively in institutional activities, meetings, orientations, and trainings when required.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>C.4 Works responsibly with minimal supervision.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>C.5 Follows instructions and completes assigned responsibilities consistently.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td class="subtotal">Total</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td class="section-label">D. Professionalism and Ethical Conduct</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>D.1 Demonstrates honesty and integrity in performing assigned duties.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>D.2 Maintains confidentiality of office records and information.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>D.3 Shows respect for institutional policies and procedures.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>D.4 Maintains a positive attitude and professional demeanor while performing assigned duties.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td>D.5 Observes proper dress code and behaves appropriately while on duty.</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td class="subtotal">Total</td><td></td><td></td><td></td><td></td></tr>
+                        <tr><td class="subtotal">Over-all Total</td><td></td><td></td><td></td><td></td></tr>
                     </tbody>
                 </table>
             </section>
 
-            <section class="pt-6 text-[12px]">
-                <p class="font-semibold">D. Strength(s)/Areas for Improvement:</p>
+            <section class="pt-4 text-[12px]">
+                <p class="font-semibold">Performance Summary</p>
                 <div class="comment-box">
-                    Displays strong communication skills and consistently meets assigned deadlines. Encourage taking initiative on larger projects.
+                    Overall Total Score: __________/80<br />
+                    Average Rating: __________<br />
+                    Performance Level: Very Good ____ Good ____ Poor ____ Needs Improvement ____
                 </div>
+            </section>
+
+            <section class="pt-6 text-[12px]">
+                <p class="font-semibold">E. Strength(s):</p>
+                <div class="comment-box"></div>
             </section>
 
             <section class="pt-4 text-[12px]">
-                <p class="font-semibold">E. Evaluator's Comment(s)/Recommendation:</p>
-                <div class="comment-box">
-                    Recommended for retention as Student Assistant. Provide additional training on the library cataloging system to support expanded duties.
-                </div>
+                <p class="font-semibold">F. Area(s) for Improvement:</p>
+                <div class="comment-box"></div>
             </section>
 
+            <section class="pt-4 text-[12px]">
+                <p class="font-semibold">G. Evaluator's Comment(s)/Recommendation:</p>
+                <div class="comment-box"></div>
+            </section>
             <div class="signature-row">
                 <div class="signature-block">
                     <p>Evaluator's Signature</p>

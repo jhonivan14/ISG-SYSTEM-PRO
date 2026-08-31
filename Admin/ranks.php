@@ -603,7 +603,7 @@ if (!empty($rankRows)) {
       }
       @page {
         size: A4;
-        margin: 10mm;
+        margin: 6mm;
       }
       @media print {
         body {
@@ -624,9 +624,18 @@ if (!empty($rankRows)) {
         }
         .admin-content {
           margin-left: 0 !important;
+          padding-top: 0 !important;
+        }
+        .admin-content > section {
+          margin-top: 0 !important;
+          padding: 0 !important;
+          min-height: auto !important;
+          background: white !important;
         }
         .paper {
-          width: auto;
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: 0 !important;
           min-height: auto;
           padding: 0;
           box-shadow: none !important;
@@ -659,6 +668,10 @@ if (!empty($rankRows)) {
         .paper .overflow-x-auto {
           overflow: visible !important;
         }
+        .document-header {
+          width: 100% !important;
+          margin-bottom: 0.75rem !important;
+        }
         .remark-select {
           appearance: none !important;
           -webkit-appearance: none !important;
@@ -679,23 +692,28 @@ if (!empty($rankRows)) {
           background-color: #fef08a !important;
         }
         .header-top {
+          width: 100% !important;
           flex-wrap: nowrap !important;
-          align-items: flex-start !important;
+          align-items: center !important;
           justify-content: center !important;
-          gap: 0.75rem !important;
+          gap: 1rem !important;
         }
         .header-left {
+          flex: 0 1 auto !important;
           flex-direction: row !important;
-          align-items: flex-start !important;
+          align-items: center !important;
+          justify-content: center !important;
           gap: 0.5rem !important;
         }
         .header-left-text {
           text-align: center !important;
         }
         .header-right {
+          flex: 0 0 auto !important;
           flex-direction: row !important;
-          align-items: flex-start !important;
-          align-self: flex-start !important;
+          align-items: center !important;
+          align-self: center !important;
+          justify-content: center !important;
         }
       }
           #sidebar > nav > ul {
@@ -1028,12 +1046,10 @@ if (!empty($rankRows)) {
                   <div class="header-left-text">
                     <h1 class="text-center">Saint Michael College of Caraga</h1>
                     <p class="text-center">
-                      Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
-                      District 8, Brgy. Triangulo, Nasipit, Agusan del Norte, Philippines
+                      Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines
                     </p>
-                    <p class="text-center">Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
                     <p class="text-center">
-                      <a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a>
+                      <a>Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</a>
                     </p>
                   </div>
                 </div>
@@ -1043,7 +1059,7 @@ if (!empty($rankRows)) {
               </div>
             </div>
             <div class="text-center mt-3">
-              <p class="text-[12px]">Student Assistance Scholarship Program (SASP) Applicants' Rank</p>
+              <p class="text-[12px]">Student Assistant Scholarship Program (SASP) Applicants' Rank</p>
               <p class="text-[12px]" id="termText"><?php echo htmlspecialchars($activeSemesterFilter !== "" ? $activeSemesterFilter : "All Semesters"); ?>, S.Y. <?php echo htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years"); ?></p>
               <p class="text-[12px]" id="batchText"><?php echo htmlspecialchars($displayBatch); ?></p>
             </div>

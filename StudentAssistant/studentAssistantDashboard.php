@@ -1,11 +1,11 @@
 <?php
-require_once __DIR__ . "/head-auth.php";
+require_once __DIR__ . "/studentAssistant-auth.php";
 headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
 header("Expires: 0");
 if (trim((string)($_GET["tab"] ?? "")) === "my-sas") {
-  header("Location: my-sas.php");
+  header("Location: studentAssistant-my-sas.php");
   exit;
 }
 require_once "../db.php";
@@ -253,7 +253,7 @@ if ((string)($evaluatorScope["error"] ?? "") !== "") {
             "can_evaluate" => true,
             "is_evaluation_window_open" => isset($evaluationWindowOpenTerms[$recordTermKey]),
             "has_evaluation" => false,
-            "evaluation_url" => "SaEvaluation.php?application_id=" . urlencode((string)$evaluationReferenceId),
+            "evaluation_url" => "studentAssistantSaEvaluation.php?application_id=" . urlencode((string)$evaluationReferenceId),
           ];
         }
         if ($scholarResult instanceof mysqli_result) {
@@ -610,21 +610,21 @@ if ($requestedTab === "my-sas") {
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='my-sas.php'"
+              onclick="window.location.href='studentAssistant-my-sas.php'"
             >
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='show-evaluation.php'"
+              onclick="window.location.href='studentAssistant-show-evaluation.php'"
             >
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>
             <li
               class="panel-nav-item gap-2 cursor-pointer"
-              onclick="window.location.href='head-changePassword.php'"
+              onclick="window.location.href='studentAssistant-changePassword.php'"
             >
               <i class="fas fa-key w-5"></i>
               <span>Change Password</span>
@@ -809,7 +809,7 @@ if ($requestedTab === "my-sas") {
                           <button
                             class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[11px] font-semibold text-white shadow-sm hover:bg-[#0b7cc0]"
                             type="button"
-                            onclick="window.location.href='<?= htmlspecialchars((string)($applicant['evaluation_url'] ?? 'SaEvaluation.php')) ?>'"
+                            onclick="window.location.href='<?= htmlspecialchars((string)($applicant['evaluation_url'] ?? 'studentAssistantSaEvaluation.php')) ?>'"
                           >
                             Open Evaluation Form
                           </button>
@@ -912,7 +912,7 @@ if ($requestedTab === "my-sas") {
                         <button
                           class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] font-semibold text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
                           type="button"
-                          onclick="window.location.href='department-evaluation-view.php?evaluation_id=<?= urlencode((string)($applicant['evaluation_id'] ?? 0)) ?>'"
+                          onclick="window.location.href='studentAssistant-evaluation-view.php?evaluation_id=<?= urlencode((string)($applicant['evaluation_id'] ?? 0)) ?>'"
                         >
                           View Evaluation
                         </button>
@@ -1007,3 +1007,4 @@ if ($requestedTab === "my-sas") {
     </script>
   </body>
 </html>
+

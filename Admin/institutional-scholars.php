@@ -12,6 +12,8 @@ $autoImportType = "";
 $autoImportMessage = "";
 $actionNoticeType = "";
 $actionNoticeMessage = "";
+$messageNoticeType = "";
+$messageNoticeMessage = "";
 
 $validScholarCategories = ["official", "student_assistant", "kabayani", "academic", "others"];
 $activeCategoryParam = strtolower(trim((string)($_GET["active_category"] ?? "official")));
@@ -42,6 +44,7 @@ $grantLabels = [
   13 => "Grant for the Dependents of a Board of Trustees (BOT) Member",
   14 => "SMCC Alumni Discount",
 ];
+$activeGrantLabels = isg_load_scholarship_grant_names($conn);
 $grantLabels = isg_load_scholarship_grant_names($conn, true);
 
 $scholarCategoryLabels = [
@@ -52,7 +55,7 @@ $scholarCategoryLabels = [
   "others" => "Others",
 ];
 
-$manualGrantOptions = array_values($grantLabels);
+$manualGrantOptions = array_values($activeGrantLabels);
 if (!in_array("Others", $manualGrantOptions, true)) {
   $manualGrantOptions[] = "Others";
 }
@@ -73,6 +76,16 @@ if (($noticeTypeParam === "success" || $noticeTypeParam === "error") && isset($_
   $actionNoticeType = $noticeTypeParam;
   $actionNoticeMessage = trim((string)$_GET["scholar_notice_message"]);
 }
+$messageStatusParam = strtolower(trim((string)($_GET["message_status"] ?? "")));
+if ($messageStatusParam === "sent") {
+  $messageNoticeType = "success";
+  $messageNoticeMessage = "Message sent successfully.";
+} elseif ($messageStatusParam === "error") {
+  $messageNoticeType = "error";
+  $messageErrorText = isset($_SESSION["message_error"]) ? trim((string)$_SESSION["message_error"]) : "";
+  $messageNoticeMessage = $messageErrorText !== "" ? $messageErrorText : "Failed to send message. Please try again.";
+}
+unset($_SESSION["message_error"]);
 
 // Helpers below normalize scholar data, renewal rules, imports, and table persistence logic.
 
@@ -84,6 +97,23 @@ function isgBuildProgramYear(string $program, string $yearLevel): string
     $programYear .= ($programYear !== "" ? " / " : "") . $yearLevel;
   }
   return $programYear;
+}
+
+function isgSplitProgramYear(string $programYear): array
+{
+  $value = trim($programYear);
+  if ($value === "") {
+    return ["", ""];
+  }
+
+  $parts = preg_split('/\s*\/\s*/', $value, 2);
+  $program = trim((string)($parts[0] ?? ""));
+  $yearLevel = trim((string)($parts[1] ?? ""));
+  if ($program === "") {
+    $program = $value;
+  }
+
+  return [$program, $yearLevel];
 }
 
 function isgCanonicalStatus(string $status): string
@@ -124,6 +154,13 @@ function isgSchoolYearAvailableForRenewal(array $schoolYearOptions, string $targ
   }
 
   return false;
+}
+
+function isgHasConfiguredInstitutionalActiveTerm(string $schoolYear, string $semester): bool
+{
+  $schoolYear = trim($schoolYear);
+  $semester = trim($semester);
+  return $schoolYear !== "" && ($semester === "1st Semester" || $semester === "2nd Semester");
 }
 
 function isgNormalizeYearLevelLabel(int $yearLevel): string
@@ -221,6 +258,7 @@ function isgEnsureInstitutionalScholarTable(mysqli $conn): bool
       scholar_id VARCHAR(60) NOT NULL,
       grant_applied VARCHAR(255) NOT NULL,
       full_name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) DEFAULT NULL,
       program_year VARCHAR(255) DEFAULT NULL,
       assigned_office VARCHAR(255) DEFAULT NULL,
       semester VARCHAR(50) DEFAULT NULL,
@@ -251,7 +289,8 @@ function isgEnsureInstitutionalScholarTable(mysqli $conn): bool
     "scholar_id" => "VARCHAR(60) NOT NULL AFTER category",
     "grant_applied" => "VARCHAR(255) NOT NULL AFTER scholar_id",
     "full_name" => "VARCHAR(255) NOT NULL AFTER grant_applied",
-    "program_year" => "VARCHAR(255) DEFAULT NULL AFTER full_name",
+    "email" => "VARCHAR(255) DEFAULT NULL AFTER full_name",
+    "program_year" => "VARCHAR(255) DEFAULT NULL AFTER email",
     "assigned_office" => "VARCHAR(255) DEFAULT NULL AFTER program_year",
     "semester" => "VARCHAR(50) DEFAULT NULL AFTER assigned_office",
     "academic_year" => "VARCHAR(20) DEFAULT NULL AFTER semester",
@@ -304,6 +343,57 @@ function isgEnsureInstitutionalScholarTable(mysqli $conn): bool
       $conn->query($indexSql);
     }
   }
+
+  $conn->query("
+    UPDATE institutional_scholar_records target
+    INNER JOIN institutional_scholar_records source
+      ON LOWER(TRIM(COALESCE(source.category, ''))) = LOWER(TRIM(COALESCE(target.category, '')))
+      AND LOWER(TRIM(COALESCE(source.scholar_id, ''))) = LOWER(TRIM(COALESCE(target.scholar_id, '')))
+      AND TRIM(COALESCE(source.academic_year, '')) = TRIM(COALESCE(target.academic_year, ''))
+      AND (
+        LOWER(TRIM(COALESCE(source.semester, ''))) LIKE '%1st%'
+        OR LOWER(TRIM(COALESCE(source.semester, ''))) LIKE '%first%'
+      )
+      AND LOWER(TRIM(COALESCE(source.status, ''))) = 'renewed'
+      AND LOWER(TRIM(COALESCE(source.renewal_scope, ''))) = '2nd_semester'
+    SET
+      target.status = 'renewed',
+      target.renewal_status = 'renew',
+      target.renewal_scope = '',
+      target.second_semester_renewed = 0
+    WHERE COALESCE(target.contract_ended, 0) = 0
+      AND (
+        LOWER(TRIM(COALESCE(target.semester, ''))) LIKE '%2nd%'
+        OR LOWER(TRIM(COALESCE(target.semester, ''))) LIKE '%second%'
+      )
+      AND LOWER(TRIM(COALESCE(target.status, ''))) <> 'terminated'
+  ");
+
+  $conn->query("
+    UPDATE institutional_scholar_records target
+    INNER JOIN institutional_scholar_records source
+      ON LOWER(TRIM(COALESCE(source.category, ''))) = LOWER(TRIM(COALESCE(target.category, '')))
+      AND LOWER(TRIM(COALESCE(source.scholar_id, ''))) = LOWER(TRIM(COALESCE(target.scholar_id, '')))
+      AND TRIM(COALESCE(target.academic_year, '')) = CONCAT(
+        CAST(SUBSTRING(TRIM(COALESCE(source.academic_year, '')), 1, 4) AS UNSIGNED) + 1,
+        '-',
+        CAST(SUBSTRING(TRIM(COALESCE(source.academic_year, '')), 6, 4) AS UNSIGNED) + 1
+      )
+      AND LOWER(TRIM(COALESCE(source.status, ''))) = 'renewed'
+      AND LOWER(TRIM(COALESCE(source.renewal_scope, ''))) = 'school_year'
+    SET
+      target.status = 'renewed',
+      target.renewal_status = 'renew',
+      target.renewal_scope = '',
+      target.second_semester_renewed = 0
+    WHERE COALESCE(target.contract_ended, 0) = 0
+      AND (
+        LOWER(TRIM(COALESCE(target.semester, ''))) LIKE '%1st%'
+        OR LOWER(TRIM(COALESCE(target.semester, ''))) LIKE '%first%'
+      )
+      AND LOWER(TRIM(COALESCE(target.status, ''))) <> 'terminated'
+      AND TRIM(COALESCE(source.academic_year, '')) REGEXP '^[0-9]{4}-[0-9]{4}$'
+  ");
 
   return true;
 }
@@ -373,35 +463,46 @@ function isgUpsertScholarRecord(mysqli $conn, string $category, array $record): 
   }
 
   $programYear = trim((string)($record["program_year"] ?? ""));
+  $email = trim((string)($record["email"] ?? ""));
   $assignedOffice = trim((string)($record["assigned_office"] ?? ""));
   $semester = trim((string)($record["semester"] ?? ""));
   $academicYear = trim((string)($record["academic_year"] ?? ""));
   $status = isgCanonicalStatus((string)($record["status"] ?? ""));
+  $recordCanBeUpdatedSql = "
+    COALESCE(contract_ended, 0) = 0
+    AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated'
+    AND NOT (
+      LOWER(TRIM(COALESCE(status, ''))) = 'renewed'
+      AND LOWER(TRIM(COALESCE(renewal_scope, ''))) IN ('2nd_semester', 'school_year')
+    )
+  ";
 
   if ($sourceParam !== null) {
     $insertSql = "
       INSERT INTO institutional_scholar_records
-        (source_application_id, category, scholar_id, grant_applied, full_name, program_year, assigned_office, semester, academic_year, status)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (source_application_id, category, scholar_id, grant_applied, full_name, email, program_year, assigned_office, semester, academic_year, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
-        scholar_id = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(scholar_id), scholar_id),
-        grant_applied = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(grant_applied), grant_applied),
-        full_name = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(full_name), full_name),
-        program_year = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(program_year), program_year),
-        assigned_office = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(assigned_office), assigned_office),
-        updated_at = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', CURRENT_TIMESTAMP, updated_at)
+        scholar_id = IF({$recordCanBeUpdatedSql}, VALUES(scholar_id), scholar_id),
+        grant_applied = IF({$recordCanBeUpdatedSql}, VALUES(grant_applied), grant_applied),
+        full_name = IF({$recordCanBeUpdatedSql}, VALUES(full_name), full_name),
+        email = IF({$recordCanBeUpdatedSql} AND TRIM(COALESCE(VALUES(email), '')) <> '', VALUES(email), email),
+        program_year = IF({$recordCanBeUpdatedSql}, VALUES(program_year), program_year),
+        assigned_office = IF({$recordCanBeUpdatedSql}, VALUES(assigned_office), assigned_office),
+        updated_at = IF({$recordCanBeUpdatedSql}, CURRENT_TIMESTAMP, updated_at)
     ";
     $stmt = $conn->prepare($insertSql);
     if (!$stmt) {
       return false;
     }
     $stmt->bind_param(
-      "isssssssss",
+      "issssssssss",
       $sourceParam,
       $category,
       $scholarId,
       $grantApplied,
       $fullName,
+      $email,
       $programYear,
       $assignedOffice,
       $semester,
@@ -415,25 +516,27 @@ function isgUpsertScholarRecord(mysqli $conn, string $category, array $record): 
 
   $insertSql = "
     INSERT INTO institutional_scholar_records
-      (source_application_id, category, scholar_id, grant_applied, full_name, program_year, assigned_office, semester, academic_year, status)
-    VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (source_application_id, category, scholar_id, grant_applied, full_name, email, program_year, assigned_office, semester, academic_year, status)
+    VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
-      grant_applied = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(grant_applied), grant_applied),
-      full_name = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(full_name), full_name),
-      program_year = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(program_year), program_year),
-      assigned_office = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', VALUES(assigned_office), assigned_office),
-      updated_at = IF(COALESCE(contract_ended, 0) = 0 AND LOWER(TRIM(COALESCE(status, ''))) <> 'terminated', CURRENT_TIMESTAMP, updated_at)
+      grant_applied = IF({$recordCanBeUpdatedSql}, VALUES(grant_applied), grant_applied),
+      full_name = IF({$recordCanBeUpdatedSql}, VALUES(full_name), full_name),
+      email = IF({$recordCanBeUpdatedSql} AND TRIM(COALESCE(VALUES(email), '')) <> '', VALUES(email), email),
+      program_year = IF({$recordCanBeUpdatedSql}, VALUES(program_year), program_year),
+      assigned_office = IF({$recordCanBeUpdatedSql}, VALUES(assigned_office), assigned_office),
+      updated_at = IF({$recordCanBeUpdatedSql}, CURRENT_TIMESTAMP, updated_at)
   ";
   $stmt = $conn->prepare($insertSql);
   if (!$stmt) {
     return false;
   }
   $stmt->bind_param(
-    "sssssssss",
+    "ssssssssss",
     $category,
     $scholarId,
     $grantApplied,
     $fullName,
+    $email,
     $programYear,
     $assignedOffice,
     $semester,
@@ -459,6 +562,7 @@ function isgUpsertScholarTermRecord(mysqli $conn, array $record): bool
   }
 
   $programYear = trim((string)($record["program_year"] ?? ""));
+  $email = trim((string)($record["email"] ?? ""));
   $assignedOffice = trim((string)($record["assigned_office"] ?? ""));
   $semester = trim((string)($record["semester"] ?? ""));
   $academicYear = trim((string)($record["academic_year"] ?? ""));
@@ -475,6 +579,7 @@ function isgUpsertScholarTermRecord(mysqli $conn, array $record): bool
         scholar_id,
         grant_applied,
         full_name,
+        email,
         program_year,
         assigned_office,
         semester,
@@ -484,10 +589,11 @@ function isgUpsertScholarTermRecord(mysqli $conn, array $record): bool
         renewal_scope,
         second_semester_renewed
       )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON DUPLICATE KEY UPDATE
       grant_applied = VALUES(grant_applied),
       full_name = VALUES(full_name),
+      email = IF(TRIM(COALESCE(VALUES(email), '')) <> '', VALUES(email), email),
       program_year = VALUES(program_year),
       assigned_office = VALUES(assigned_office),
       status = VALUES(status),
@@ -506,12 +612,13 @@ function isgUpsertScholarTermRecord(mysqli $conn, array $record): bool
   }
 
   $stmt->bind_param(
-    "isssssssssssi",
+    "issssssssssssi",
     $sourceApplicationId,
     $category,
     $scholarId,
     $grantApplied,
     $fullName,
+    $email,
     $programYear,
     $assignedOffice,
     $semester,
@@ -613,6 +720,16 @@ function isgNormalizeSemesterValue(string $value, string $fallback): string
   if (strpos($normalized, "1st") !== false || strpos($normalized, "first") !== false || $normalized === "1") return "1st Semester";
   if (strpos($normalized, "2nd") !== false || strpos($normalized, "second") !== false || $normalized === "2") return "2nd Semester";
   return $fallback;
+}
+
+function isgNormalizeEmailAddress(string $value): string
+{
+  $email = trim($value);
+  if ($email === "") {
+    return "";
+  }
+
+  return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : "";
 }
 
 function isgColumnLettersToIndex(string $letters): int
@@ -902,6 +1019,7 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
       scholar_id,
       grant_applied,
       full_name,
+      email,
       program_year,
       assigned_office,
       semester,
@@ -933,6 +1051,7 @@ function isgLoadScholarRecords(mysqli $conn, array $validCategories): array
       "scholar_id" => trim((string)($row["scholar_id"] ?? "")),
       "grant_applied" => trim((string)($row["grant_applied"] ?? "")),
       "full_name" => trim((string)($row["full_name"] ?? "")),
+      "email" => trim((string)($row["email"] ?? "")),
       "program_year" => trim((string)($row["program_year"] ?? "")),
       "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
       "semester" => trim((string)($row["semester"] ?? "")),
@@ -1010,6 +1129,7 @@ function isgLoadTerminatedScholarRecords(mysqli $conn): array
       scholar_id,
       grant_applied,
       full_name,
+      email,
       program_year,
       assigned_office,
       semester,
@@ -1036,6 +1156,7 @@ function isgLoadTerminatedScholarRecords(mysqli $conn): array
       "scholar_id" => trim((string)($row["scholar_id"] ?? "")),
       "grant_applied" => trim((string)($row["grant_applied"] ?? "")),
       "full_name" => trim((string)($row["full_name"] ?? "")),
+      "email" => trim((string)($row["email"] ?? "")),
       "program_year" => trim((string)($row["program_year"] ?? "")),
       "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
       "semester" => trim((string)($row["semester"] ?? "")),
@@ -1118,6 +1239,12 @@ $activeInstitutionalSchoolYear = $showAllInstitutionalSchoolYears
 $activeInstitutionalSemester = $rawSelectedSemester === null
   ? $displaySemester
   : $selectedSemester;
+$configuredInstitutionalSchoolYear = trim((string)($configuredSchoolYear ?? ""));
+$configuredInstitutionalSemester = trim((string)($configuredSemester ?? ""));
+$hasConfiguredInstitutionalActiveTerm = isgHasConfiguredInstitutionalActiveTerm(
+  $configuredInstitutionalSchoolYear,
+  $configuredInstitutionalSemester
+);
 
 if (($conn ?? null) instanceof mysqli) {
   $assignedOfficeMap = [];
@@ -1193,6 +1320,7 @@ if (($conn ?? null) instanceof mysqli) {
       SELECT
         a.id,
         a.applicant_name,
+        a.email_address,
         a.program_course,
         a.year_level,
         a.assigned_office,
@@ -1215,6 +1343,7 @@ if (($conn ?? null) instanceof mysqli) {
           "scholar_id" => "APP-" . str_pad((string)((int)($row["id"] ?? 0)), 5, "0", STR_PAD_LEFT),
           "grant_applied" => "Student Assistant",
           "full_name" => trim((string)($row["applicant_name"] ?? "")),
+          "email" => isgNormalizeEmailAddress((string)($row["email_address"] ?? "")),
           "program_year" => isgBuildProgramYear((string)($row["program_course"] ?? ""), (string)($row["year_level"] ?? "")),
           "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
           "semester" => trim((string)($row["semester"] ?? "")),
@@ -1240,7 +1369,7 @@ if (($conn ?? null) instanceof mysqli) {
       $autoImportMessage = "Invalid applicant selected for import.";
     } else {
       $stmt = $conn->prepare(
-        "SELECT id, applicant_name, program_course, year_level, school_year, semester, grant_id, status
+        "SELECT id, applicant_name, email_address, program_course, year_level, school_year, semester, grant_id, status
          FROM applications
          WHERE id = ?
          LIMIT 1"
@@ -1268,6 +1397,7 @@ if (($conn ?? null) instanceof mysqli) {
               "scholar_id" => "APP-" . str_pad((string)((int)($row["id"] ?? 0)), 5, "0", STR_PAD_LEFT),
               "grant_applied" => $grantLabel,
               "full_name" => trim((string)($row["applicant_name"] ?? "")),
+              "email" => isgNormalizeEmailAddress((string)($row["email_address"] ?? "")),
               "program_year" => isgBuildProgramYear((string)($row["program_course"] ?? ""), (string)($row["year_level"] ?? "")),
               "assigned_office" => "",
               "semester" => trim((string)($row["semester"] ?? "")) !== "" ? trim((string)$row["semester"]) : $displaySemester,
@@ -1296,6 +1426,7 @@ if (($conn ?? null) instanceof mysqli) {
 
   if ($hasScholarStorage && ($_SERVER["REQUEST_METHOD"] ?? "") === "POST" && (string)($_POST["form_action"] ?? "") === "add_manual_scholar") {
     $manualFullName = trim((string)($_POST["manual_full_name"] ?? ""));
+    $manualEmail = isgNormalizeEmailAddress((string)($_POST["manual_email"] ?? ""));
     $manualGrantApplied = trim((string)($_POST["manual_grant_applied"] ?? ""));
     if (!in_array($manualGrantApplied, $manualGrantOptions, true)) {
       $manualGrantApplied = "";
@@ -1319,13 +1450,14 @@ if (($conn ?? null) instanceof mysqli) {
     $manualScholarId = isgGenerateManualScholarId($conn);
 
     $manualSuccess = false;
-    $manualMessage = "Unable to add scholar. Please provide required fields.";
-    if ($manualFullName !== "" && $manualGrantApplied !== "") {
+    $manualMessage = "Unable to add scholar. Please provide required fields and a valid email address.";
+    if ($manualFullName !== "" && $manualEmail !== "" && $manualGrantApplied !== "") {
       $record = [
         "source_application_id" => 0,
         "scholar_id" => $manualScholarId,
         "grant_applied" => $manualGrantApplied,
         "full_name" => $manualFullName,
+        "email" => $manualEmail,
         "program_year" => $manualProgramYear,
         "assigned_office" => $manualAssignedOffice,
         "semester" => $manualSemester,
@@ -1382,6 +1514,7 @@ if (($conn ?? null) instanceof mysqli) {
           $requiredHeaderGroups = [
             "scholarship_grant" => ["scholarship_grant", "grant_applied", "grant", "scholarshipgrant"],
             "full_name" => ["full_name", "fullname", "name", "beneficiary_name", "scholar_name"],
+            "email" => ["email", "email_address", "student_email", "studentemail"],
             "program_year" => ["program_year", "program__year", "program", "course_year", "program_year_level"],
             "assigned_office" => ["assigned_office", "office", "assigned_department"],
             "semester" => ["semester", "term"],
@@ -1410,6 +1543,7 @@ if (($conn ?? null) instanceof mysqli) {
             foreach ($rows as $row) {
               $rowGrant = isgFirstNonEmptyValue($row, $requiredHeaderGroups["scholarship_grant"]);
               $rowFullName = isgFirstNonEmptyValue($row, $requiredHeaderGroups["full_name"]);
+              $rowEmail = isgNormalizeEmailAddress(isgFirstNonEmptyValue($row, $requiredHeaderGroups["email"]));
               $rowProgramYear = isgFirstNonEmptyValue($row, $requiredHeaderGroups["program_year"]);
               $rowAssignedOffice = isgFirstNonEmptyValue($row, $requiredHeaderGroups["assigned_office"]);
               $rowSemesterRaw = isgFirstNonEmptyValue($row, $requiredHeaderGroups["semester"]);
@@ -1418,6 +1552,7 @@ if (($conn ?? null) instanceof mysqli) {
               if (
                 $rowGrant === "" ||
                 $rowFullName === "" ||
+                $rowEmail === "" ||
                 $rowProgramYear === "" ||
                 $rowAssignedOffice === "" ||
                 $rowSemesterRaw === "" ||
@@ -1436,6 +1571,7 @@ if (($conn ?? null) instanceof mysqli) {
                 "scholar_id" => $rowScholarId,
                 "grant_applied" => $rowGrant,
                 "full_name" => $rowFullName,
+                "email" => $rowEmail,
                 "program_year" => $rowProgramYear,
                 "assigned_office" => $rowAssignedOffice,
                 "semester" => $rowSemester,
@@ -1485,10 +1621,15 @@ if (($conn ?? null) instanceof mysqli) {
   }
 
   $requestedAction = strtolower(trim((string)($_GET["scholar_action"] ?? "")));
-  if ($hasScholarStorage && ($requestedAction === "renew" || $requestedAction === "end_contract" || $requestedAction === "terminate" || $requestedAction === "change_office")) {
+  if ($hasScholarStorage && ($requestedAction === "renew" || $requestedAction === "end_contract" || $requestedAction === "terminate" || $requestedAction === "change_office" || $requestedAction === "edit_scholar")) {
     $targetScholarRecordId = (int)($_GET["id"] ?? ($_GET["scholar_record_id"] ?? 0));
     $renewalScope = trim((string)($_GET["renewal_scope"] ?? ""));
     $targetAssignedOffice = trim((string)($_GET["new_assigned_office"] ?? ""));
+    $targetFullName = trim((string)($_GET["new_full_name"] ?? ""));
+    $targetProgramYearProvided = array_key_exists("new_program_year", $_GET);
+    $targetProgramYear = trim((string)($_GET["new_program_year"] ?? ""));
+    $targetEmailProvided = array_key_exists("new_email", $_GET);
+    $targetEmailRaw = trim((string)($_GET["new_email"] ?? ""));
     $terminationReason = trim((string)($_GET["termination_reason"] ?? ""));
 
     $actionSuccess = false;
@@ -1512,10 +1653,14 @@ if (($conn ?? null) instanceof mysqli) {
           scholar_id,
           grant_applied,
           full_name,
+          email,
           program_year,
           assigned_office,
           semester,
-          academic_year
+          academic_year,
+          status,
+          renewal_scope,
+          second_semester_renewed
         FROM institutional_scholar_records
         WHERE id = ?
         LIMIT 1
@@ -1540,6 +1685,13 @@ if (($conn ?? null) instanceof mysqli) {
         $targetScholarId = strtolower(trim((string)($targetRecord["scholar_id"] ?? "")));
         $targetSemester = trim((string)($targetRecord["semester"] ?? ""));
         $targetAcademicYear = trim((string)($targetRecord["academic_year"] ?? ""));
+        $targetStatus = isgCanonicalStatus((string)($targetRecord["status"] ?? ""));
+        $targetRenewalScope = strtolower(trim((string)($targetRecord["renewal_scope"] ?? "")));
+        $targetSemesterNormalized = isgNormalizeSemesterValue($targetSemester, "");
+        $targetIsHistoricalRenewed = $targetStatus === "renewed" && (
+          $targetRenewalScope === "school_year" ||
+          ($targetRenewalScope === "2nd_semester" && $targetSemesterNormalized === "1st Semester")
+        );
         if ($targetScholarId !== "") {
           $whereSql = "
             LOWER(TRIM(COALESCE(scholar_id, ''))) = ?
@@ -1553,6 +1705,16 @@ if (($conn ?? null) instanceof mysqli) {
         if ($requestedAction === "renew") {
           if ($renewalScope !== "2nd_semester" && $renewalScope !== "school_year") {
             $actionMessage = "Invalid renewal scope.";
+          } elseif ($targetIsHistoricalRenewed) {
+            $actionMessage = "This previous term is already renewed and cannot be renewed again.";
+          } elseif (!$hasConfiguredInstitutionalActiveTerm) {
+            $actionMessage = "Set the active school year and semester in Settings before renewing scholars.";
+          } elseif (
+            $renewalScope === "2nd_semester" &&
+            ($configuredInstitutionalSchoolYear !== $targetAcademicYear || $configuredInstitutionalSemester !== "2nd Semester")
+          ) {
+            $termLabel = $targetAcademicYear !== "" ? ("2nd Semester, S.Y. " . $targetAcademicYear) : "2nd Semester";
+            $actionMessage = "Cannot renew for " . $termLabel . " until it is set as the active term in Settings.";
           } else {
             $sourceRecords = [];
             $sourceRecordSql = "
@@ -1562,6 +1724,7 @@ if (($conn ?? null) instanceof mysqli) {
                 scholar_id,
                 grant_applied,
                 full_name,
+                email,
                 program_year,
                 assigned_office,
                 semester,
@@ -1605,14 +1768,15 @@ if (($conn ?? null) instanceof mysqli) {
                   "scholar_id" => trim((string)($sourceRecord["scholar_id"] ?? "")),
                   "grant_applied" => trim((string)($sourceRecord["grant_applied"] ?? "")),
                   "full_name" => trim((string)($sourceRecord["full_name"] ?? "")),
+                  "email" => trim((string)($sourceRecord["email"] ?? "")),
                   "program_year" => trim((string)($sourceRecord["program_year"] ?? "")),
                   "assigned_office" => trim((string)($sourceRecord["assigned_office"] ?? "")),
                   "semester" => $targetRenewSemester,
                   "academic_year" => trim((string)($sourceRecord["academic_year"] ?? $targetRenewAcademicYear)),
                   "status" => "renewed",
                   "renewal_status" => "renew",
-                  "renewal_scope" => "2nd_semester",
-                  "second_semester_renewed" => 1,
+                  "renewal_scope" => "",
+                  "second_semester_renewed" => 0,
                 ]);
                 if (!$renewInsertOk) {
                   break;
@@ -1690,6 +1854,10 @@ if (($conn ?? null) instanceof mysqli) {
                 $actionMessage = $nextAcademicYear !== ""
                   ? "Cannot renew for next School Year until " . $nextAcademicYear . " is added to the system school year list."
                   : "Cannot renew for next School Year until the next school year is added to the system school year list.";
+              } elseif ($configuredInstitutionalSchoolYear !== $nextAcademicYear) {
+                $actionMessage = $nextAcademicYear !== ""
+                  ? "Cannot renew for next School Year until " . $nextAcademicYear . " is set as the active school year in Settings."
+                  : "Cannot renew for next School Year until the next school year is active in Settings.";
               } else {
                 $renewInsertOk = true;
                 foreach ($sourceRecords as $sourceRecord) {
@@ -1699,12 +1867,13 @@ if (($conn ?? null) instanceof mysqli) {
                     "scholar_id" => trim((string)($sourceRecord["scholar_id"] ?? "")),
                     "grant_applied" => trim((string)($sourceRecord["grant_applied"] ?? "")),
                     "full_name" => trim((string)($sourceRecord["full_name"] ?? "")),
+                    "email" => trim((string)($sourceRecord["email"] ?? "")),
                     "program_year" => isgIncrementProgramYearLevel((string)($sourceRecord["program_year"] ?? $baseProgramYear)),
                     "assigned_office" => trim((string)($sourceRecord["assigned_office"] ?? "")),
                     "semester" => "1st Semester",
                     "academic_year" => $nextAcademicYear,
-                    "status" => "official_scholar",
-                    "renewal_status" => "",
+                    "status" => "renewed",
+                    "renewal_status" => "renew",
                     "renewal_scope" => "",
                     "second_semester_renewed" => 0,
                   ]);
@@ -1747,6 +1916,9 @@ if (($conn ?? null) instanceof mysqli) {
             }
           }
         } elseif ($requestedAction === "end_contract") {
+          if ($targetIsHistoricalRenewed) {
+            $actionMessage = "This previous term is already renewed and cannot be changed.";
+          } else {
           $endSql = "
             UPDATE institutional_scholar_records
             SET
@@ -1768,8 +1940,11 @@ if (($conn ?? null) instanceof mysqli) {
               $actionMessage = "Scholar contract ended.";
             }
           }
+          }
         } elseif ($requestedAction === "terminate") {
-          if ($terminationReason === "") {
+          if ($targetIsHistoricalRenewed) {
+            $actionMessage = "This previous term is already renewed and cannot be changed.";
+          } elseif ($terminationReason === "") {
             $actionMessage = "Termination reason is required.";
           } else {
             $terminateSql = "
@@ -1794,8 +1969,22 @@ if (($conn ?? null) instanceof mysqli) {
               }
             }
           }
-        } elseif ($requestedAction === "change_office") {
-          if ($targetAssignedOffice === "") {
+        } elseif ($requestedAction === "change_office" || $requestedAction === "edit_scholar") {
+          if ($targetIsHistoricalRenewed) {
+            $actionMessage = "This previous term is already renewed and cannot be changed.";
+          } else {
+          $nextFullName = $targetFullName !== "" ? $targetFullName : trim((string)($targetRecord["full_name"] ?? ""));
+          $nextProgramYear = $targetProgramYearProvided ? $targetProgramYear : trim((string)($targetRecord["program_year"] ?? ""));
+          $nextEmailRaw = $targetEmailProvided ? $targetEmailRaw : trim((string)($targetRecord["email"] ?? ""));
+          $nextEmail = isgNormalizeEmailAddress($nextEmailRaw);
+
+          if ($nextFullName === "") {
+            $actionMessage = "Full name is required.";
+          } elseif ($requestedAction === "edit_scholar" && ($nextEmailRaw === "" || $nextEmail === "")) {
+            $actionMessage = "Valid email address is required.";
+          } elseif ($nextEmailRaw !== "" && $nextEmail === "") {
+            $actionMessage = "Valid email address is required.";
+          } elseif ($requestedAction === "change_office" && $targetAssignedOffice === "") {
             $actionMessage = "Assigned office is required.";
           } else {
             $sourceApplicationIds = [];
@@ -1851,74 +2040,125 @@ if (($conn ?? null) instanceof mysqli) {
               $checkStmt->close();
             }
 
-            if ($targetCount <= 0) {
+            $isStudentAssistantRecord = $targetCount > 0;
+            $shouldUpdateOffice = $isStudentAssistantRecord && $targetAssignedOffice !== "";
+
+            if ($requestedAction === "change_office" && !$isStudentAssistantRecord) {
               $actionMessage = "Only active Student Assistant records can change assigned office.";
             } else {
-              $historyLookupSql = "
-                SELECT
-                  id AS scholar_record_id,
-                  source_application_id,
-                  scholar_id,
-                  full_name,
-                  academic_year,
-                  semester,
-                  assigned_office
-                FROM institutional_scholar_records
-                WHERE $whereSql
-                  AND COALESCE(contract_ended, 0) = 0
-                  AND $studentAssistantWhereSql
-              ";
-              $historyLookupStmt = $conn->prepare($historyLookupSql);
-              if ($historyLookupStmt) {
-                isgBindParams($historyLookupStmt, $whereTypes, $whereParams);
-                if ($historyLookupStmt->execute()) {
-                  $historyLookupResult = $historyLookupStmt->get_result();
-                  if ($historyLookupResult instanceof mysqli_result) {
-                    $seenHistoryKeys = [];
-                    while ($historyRow = $historyLookupResult->fetch_assoc()) {
-                      $fromOffice = trim((string)($historyRow["assigned_office"] ?? ""));
-                      $historyKey = strtolower(trim((string)($historyRow["scholar_id"] ?? "")))
-                        . "|" . strtolower(trim((string)($historyRow["full_name"] ?? "")))
-                        . "|" . strtolower(trim((string)($historyRow["academic_year"] ?? "")))
-                        . "|" . strtolower(trim((string)($historyRow["semester"] ?? "")))
-                        . "|" . strtolower($fromOffice);
-                      if (strcasecmp($fromOffice, $targetAssignedOffice) !== 0) {
-                        if (isset($seenHistoryKeys[$historyKey])) {
-                          continue;
+              if ($shouldUpdateOffice) {
+                $historyLookupSql = "
+                  SELECT
+                    id AS scholar_record_id,
+                    source_application_id,
+                    scholar_id,
+                    full_name,
+                    academic_year,
+                    semester,
+                    assigned_office
+                  FROM institutional_scholar_records
+                  WHERE $whereSql
+                    AND COALESCE(contract_ended, 0) = 0
+                    AND $studentAssistantWhereSql
+                ";
+                $historyLookupStmt = $conn->prepare($historyLookupSql);
+                if ($historyLookupStmt) {
+                  isgBindParams($historyLookupStmt, $whereTypes, $whereParams);
+                  if ($historyLookupStmt->execute()) {
+                    $historyLookupResult = $historyLookupStmt->get_result();
+                    if ($historyLookupResult instanceof mysqli_result) {
+                      $seenHistoryKeys = [];
+                      while ($historyRow = $historyLookupResult->fetch_assoc()) {
+                        $fromOffice = trim((string)($historyRow["assigned_office"] ?? ""));
+                        $historyKey = strtolower(trim((string)($historyRow["scholar_id"] ?? "")))
+                          . "|" . strtolower(trim((string)($historyRow["full_name"] ?? "")))
+                          . "|" . strtolower(trim((string)($historyRow["academic_year"] ?? "")))
+                          . "|" . strtolower(trim((string)($historyRow["semester"] ?? "")))
+                          . "|" . strtolower($fromOffice);
+                        if (strcasecmp($fromOffice, $targetAssignedOffice) !== 0) {
+                          if (isset($seenHistoryKeys[$historyKey])) {
+                            continue;
+                          }
+                          $seenHistoryKeys[$historyKey] = true;
+                          $officeHistoryRows[] = $historyRow;
                         }
-                        $seenHistoryKeys[$historyKey] = true;
-                        $officeHistoryRows[] = $historyRow;
                       }
+                      $historyLookupResult->free();
                     }
-                    $historyLookupResult->free();
                   }
+                  $historyLookupStmt->close();
                 }
-                $historyLookupStmt->close();
               }
 
-              $updateSql = "
-                UPDATE institutional_scholar_records
-                SET
-                  assigned_office = ?,
-                  updated_at = CURRENT_TIMESTAMP
-                WHERE $whereSql
-                  AND COALESCE(contract_ended, 0) = 0
-              ";
+              $updateSql = $shouldUpdateOffice
+                ? "
+                  UPDATE institutional_scholar_records
+                  SET
+                    full_name = ?,
+                    program_year = ?,
+                    email = ?,
+                    assigned_office = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE $whereSql
+                    AND COALESCE(contract_ended, 0) = 0
+                "
+                : "
+                  UPDATE institutional_scholar_records
+                  SET
+                    full_name = ?,
+                    program_year = ?,
+                    email = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE $whereSql
+                    AND COALESCE(contract_ended, 0) = 0
+                ";
               $updateStmt = $conn->prepare($updateSql);
               if ($updateStmt) {
-                isgBindParams($updateStmt, "s" . $whereTypes, array_merge([$targetAssignedOffice], $whereParams));
+                $updateTypes = ($shouldUpdateOffice ? "ssss" : "sss") . $whereTypes;
+                $updateValues = $shouldUpdateOffice
+                  ? [$nextFullName, $nextProgramYear, $nextEmail, $targetAssignedOffice]
+                  : [$nextFullName, $nextProgramYear, $nextEmail];
+                isgBindParams($updateStmt, $updateTypes, array_merge($updateValues, $whereParams));
                 $actionSuccess = $updateStmt->execute();
                 if ($actionSuccess) {
                   $affectedRows = $updateStmt->affected_rows;
                   $applicationSyncOk = true;
-                  if (!empty($sourceApplicationIds) && ($hasAssignedOfficeColumn ?? false)) {
+                  if (!empty($sourceApplicationIds)) {
+                    [$syncProgramCourse, $syncYearLevel] = isgSplitProgramYear($nextProgramYear);
                     foreach (array_keys($sourceApplicationIds) as $sourceId) {
-                      $appUpdateStmt = $conn->prepare("UPDATE applications SET assigned_office = ? WHERE id = ?");
-                      if (!$appUpdateStmt) {
-                        $applicationSyncOk = false;
-                        break;
+                      if ($requestedAction === "edit_scholar" && $shouldUpdateOffice && ($hasAssignedOfficeColumn ?? false)) {
+                        $appUpdateStmt = $conn->prepare("
+                          UPDATE applications
+                          SET applicant_name = ?, email_address = ?, program_course = ?, year_level = ?, assigned_office = ?
+                          WHERE id = ?
+                        ");
+                        if (!$appUpdateStmt) {
+                          $applicationSyncOk = false;
+                          break;
+                        }
+                        $appUpdateStmt->bind_param("sssssi", $nextFullName, $nextEmail, $syncProgramCourse, $syncYearLevel, $targetAssignedOffice, $sourceId);
+                      } elseif ($requestedAction === "edit_scholar") {
+                        $appUpdateStmt = $conn->prepare("
+                          UPDATE applications
+                          SET applicant_name = ?, email_address = ?, program_course = ?, year_level = ?
+                          WHERE id = ?
+                        ");
+                        if (!$appUpdateStmt) {
+                          $applicationSyncOk = false;
+                          break;
+                        }
+                        $appUpdateStmt->bind_param("ssssi", $nextFullName, $nextEmail, $syncProgramCourse, $syncYearLevel, $sourceId);
+                      } elseif ($shouldUpdateOffice && ($hasAssignedOfficeColumn ?? false)) {
+                        $appUpdateStmt = $conn->prepare("UPDATE applications SET assigned_office = ? WHERE id = ?");
+                        if (!$appUpdateStmt) {
+                          $applicationSyncOk = false;
+                          break;
+                        }
+                        $appUpdateStmt->bind_param("si", $targetAssignedOffice, $sourceId);
+                      } else {
+                        continue;
                       }
-                      $appUpdateStmt->bind_param("si", $targetAssignedOffice, $sourceId);
+
                       if (!$appUpdateStmt->execute()) {
                         $applicationSyncOk = false;
                         $appUpdateStmt->close();
@@ -1930,7 +2170,7 @@ if (($conn ?? null) instanceof mysqli) {
 
                   if (!$applicationSyncOk) {
                     $actionSuccess = false;
-                    $actionMessage = "Assigned office updated in scholar records but failed to sync source application.";
+                    $actionMessage = "Scholar record updated but failed to sync source application.";
                   } else {
                     if (!empty($officeHistoryRows) && isgEnsureAssignedOfficeHistoryTable($conn)) {
                       $historyStmt = $conn->prepare("
@@ -1972,7 +2212,7 @@ if (($conn ?? null) instanceof mysqli) {
                           );
                           if (!$historyStmt->execute()) {
                             $actionSuccess = false;
-                            $actionMessage = "Assigned office updated but failed to record office history.";
+                            $actionMessage = "Scholar record updated but failed to record office history.";
                             break;
                           }
                         }
@@ -1982,14 +2222,15 @@ if (($conn ?? null) instanceof mysqli) {
 
                     if ($actionSuccess) {
                       $actionMessage = $affectedRows > 0
-                        ? "Assigned office updated successfully."
-                        : "Assigned office is already set to that value.";
+                        ? "Scholar record updated successfully."
+                        : "Scholar record already has those details.";
                     }
                   }
                 }
                 $updateStmt->close();
               }
             }
+          }
           }
         }
       }
@@ -2002,6 +2243,9 @@ if (($conn ?? null) instanceof mysqli) {
       $redirectParams["scholar_record_id"],
       $redirectParams["renewal_scope"],
       $redirectParams["new_assigned_office"],
+      $redirectParams["new_full_name"],
+      $redirectParams["new_program_year"],
+      $redirectParams["new_email"],
       $redirectParams["termination_reason"],
       $redirectParams["scholar_notice"],
       $redirectParams["scholar_notice_message"]
@@ -2346,6 +2590,14 @@ if (($conn ?? null) instanceof mysqli) {
                   >
                     Add Record
                   </button>
+                  <button
+                    type="button"
+                    id="printScholarsBtn"
+                    class="inline-flex items-center justify-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-4 py-2 text-xs font-semibold text-[#052c6a] shadow-sm transition-colors hover:bg-[#eff6ff]"
+                  >
+                    <i class="fas fa-print text-[11px]"></i>
+                    <span>Print</span>
+                  </button>
                 </div>
               </form>
 
@@ -2393,6 +2645,16 @@ if (($conn ?? null) instanceof mysqli) {
                           <input
                             type="text"
                             name="manual_full_name"
+                            class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label class="mb-1 block text-[11px] font-semibold text-slate-700">Email</label>
+                          <input
+                            type="email"
+                            name="manual_email"
+                            placeholder="student@example.com"
                             class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700"
                             required
                           />
@@ -2492,7 +2754,7 @@ if (($conn ?? null) instanceof mysqli) {
                           required
                         />
                         <p class="mt-1 text-[11px] text-slate-600">
-                          Required CSV columns: <strong>scholarship_grant, full_name, program_year, assigned_office, semester, academic_year</strong>.
+                          Required CSV columns: <strong>scholarship_grant, full_name, email, program_year, assigned_office, semester, academic_year</strong>.
                         </p>
                         <a
                           href="institutional-scholars-import-template.csv"
@@ -2513,6 +2775,75 @@ if (($conn ?? null) instanceof mysqli) {
                       </div>
                     </form>
                   </div>
+                </div>
+              </div>
+
+              <div id="scholarMessageModal" class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-900/50 px-3 py-6">
+                <div class="w-full max-w-md rounded-xl border border-[#dbe7ff] bg-white shadow-lg">
+                  <div class="flex items-center justify-between gap-3 border-b border-[#dbe7ff] px-4 py-3">
+                    <h3 class="text-sm font-bold text-[#052c6a]">Send Message</h3>
+                    <button
+                      type="button"
+                      id="scholarMessageClose"
+                      class="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-300 text-slate-600 hover:bg-slate-100"
+                      aria-label="Close message modal"
+                    >
+                      <span aria-hidden="true">&times;</span>
+                    </button>
+                  </div>
+                  <form id="scholarMessageForm" action="send_message.php" method="post" class="space-y-3 px-4 py-4">
+                    <input type="hidden" name="scholar_record_id" id="scholarMessageRecordId" value="" />
+                    <input type="hidden" name="return_page" value="institutional-scholars.php" />
+                    <input type="hidden" name="return_school_year" id="scholarMessageReturnSchoolYear" value="<?php echo htmlspecialchars($showAllInstitutionalSchoolYears ? "all" : $selectedSchoolYear); ?>" />
+                    <input type="hidden" name="return_semester" id="scholarMessageReturnSemester" value="<?php echo htmlspecialchars($rawSelectedSemester === null ? "" : $selectedSemester); ?>" />
+                    <input type="hidden" name="return_active_category" id="scholarMessageReturnCategory" value="<?php echo htmlspecialchars($activeCategoryParam); ?>" />
+                    <div>
+                      <label class="mb-1 block text-[11px] font-semibold text-slate-700">Recipient</label>
+                      <input
+                        type="text"
+                        id="scholarMessageRecipientName"
+                        class="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+                        readonly
+                      />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-[11px] font-semibold text-slate-700">Recipient Email</label>
+                      <input
+                        type="text"
+                        id="scholarMessageRecipientEmail"
+                        name="recipient_email"
+                        class="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+                        readonly
+                      />
+                    </div>
+                    <div>
+                      <label class="mb-1 block text-[11px] font-semibold text-slate-700" for="scholarMessageBody">Message</label>
+                      <textarea
+                        id="scholarMessageBody"
+                        name="message_body"
+                        rows="6"
+                        required
+                        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs text-slate-700 focus:border-[#0d8ddb] focus:outline-none"
+                        placeholder="Type your message here..."
+                      ></textarea>
+                    </div>
+                    <div class="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        id="scholarMessageCancel"
+                        class="inline-flex items-center rounded-full border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        id="scholarMessageSubmit"
+                        class="inline-flex items-center rounded-full bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-[#0a7fc8]"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
 
@@ -2608,6 +2939,7 @@ if (($conn ?? null) instanceof mysqli) {
       const displaySemester = <?php echo json_encode($displaySemester); ?>;
       const currentSchoolYear = <?php echo json_encode($currentSchoolYear); ?>;
       const currentSemester = <?php echo json_encode($currentSemester); ?>;
+      const hasConfiguredActiveTerm = <?php echo json_encode($hasConfiguredInstitutionalActiveTerm); ?>;
       const availableSchoolYears = <?php echo json_encode(array_values(array_unique($schoolYearOptions)), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const activeFilterSchoolYear = String(selectedSchoolYear || displaySchoolYear || "").trim();
       const activeFilterSemester = String(selectedSemester || displaySemester || "").trim();
@@ -2620,6 +2952,10 @@ if (($conn ?? null) instanceof mysqli) {
       const autoImportType = <?php echo json_encode($autoImportType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const actionNoticeMessage = <?php echo json_encode($actionNoticeMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       const actionNoticeType = <?php echo json_encode($actionNoticeType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const messageNoticeMessage = <?php echo json_encode($messageNoticeMessage, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const messageNoticeType = <?php echo json_encode($messageNoticeType, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const scholarMessageReturnSchoolYear = <?php echo json_encode($showAllInstitutionalSchoolYears ? "all" : $selectedSchoolYear, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
+      const scholarMessageReturnSemester = <?php echo json_encode($rawSelectedSemester === null ? "" : $selectedSemester, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
       let scholarSearchTerm = "";
       let terminatedSearchTerm = "";
 
@@ -2672,6 +3008,11 @@ if (($conn ?? null) instanceof mysqli) {
           .replace(/>/g, "&gt;")
           .replace(/\"/g, "&quot;")
           .replace(/'/g, "&#39;");
+      }
+
+      function isValidEmailAddress(value) {
+        const emailValue = String(value || "").trim();
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue);
       }
 
       function showScholarToast(message, type, queryParams) {
@@ -3104,22 +3445,43 @@ if (($conn ?? null) instanceof mysqli) {
           };
         }
 
+        const explicitRenewed = explicitStatus === "renewed";
         const range = getRecordAcademicYearRange(record);
         const activeRange = getActiveSchoolYearRange();
         const activeSemesterPhase = getActiveSemesterPhase();
         const activeYearStart = activeRange ? Number(activeRange.startYear) : 0;
         const recordYearStart = range ? Number(range.startYear) : 0;
+        const isActiveYearSameAsRecord = activeYearStart > 0 && recordYearStart > 0 && activeYearStart === recordYearStart;
         const isActiveYearAfterRecord = activeYearStart > 0 && recordYearStart > 0 && activeYearStart > recordYearStart;
 
-        const renewalScope = String(record && typeof record === "object" ? (record.renewal_scope || "") : "").trim();
+        const renewalScope = String(record && typeof record === "object" ? (record.renewal_scope || "") : "").trim().toLowerCase();
         const secondSemesterRenewed = (record && record.second_semester_renewed === true)
           || renewalScope === "2nd_semester"
           || renewalScope === "school_year";
         const schoolYearRenewed = renewalScope === "school_year";
         const semesterPhase = getRecordSemesterPhase(record);
+        const waitingStatusKey = explicitRenewed || secondSemesterRenewed ? "renewed" : "official_scholar";
+
+        if (explicitRenewed && (schoolYearRenewed || (renewalScope === "2nd_semester" && semesterPhase === "first"))) {
+          return {
+            statusKey: "renewed",
+            nextScope: "",
+            renewEnabled: false,
+            reason: "Already renewed."
+          };
+        }
+
+        if (!hasConfiguredActiveTerm) {
+          return {
+            statusKey: waitingStatusKey,
+            nextScope: "",
+            renewEnabled: false,
+            reason: "Set the active school year and semester in Settings before renewing scholars."
+          };
+        }
 
         if (semesterPhase === "first" && !secondSemesterRenewed) {
-          if (activeSemesterPhase === "second" || isActiveYearAfterRecord) {
+          if (isActiveYearSameAsRecord && activeSemesterPhase === "second") {
             return {
               statusKey: "for_renewal",
               nextScope: "2nd_semester",
@@ -3127,20 +3489,56 @@ if (($conn ?? null) instanceof mysqli) {
               reason: ""
             };
           }
+
+          if (isActiveYearAfterRecord) {
+            const nextAcademicYearValue = getNextAcademicYearForRecord(record);
+            const nextRange = parseAcademicYearRange(nextAcademicYearValue);
+            const activeSchoolYearMatchesNext = Boolean(
+              activeRange &&
+              nextRange &&
+              Number(activeRange.startYear) === Number(nextRange.startYear)
+            );
+
+            if (activeSchoolYearMatchesNext) {
+              return {
+                statusKey: "for_renewal",
+                nextScope: "school_year",
+                renewEnabled: true,
+                reason: ""
+              };
+            }
+
+            return {
+              statusKey: waitingStatusKey,
+              nextScope: "school_year",
+              renewEnabled: false,
+              reason: nextAcademicYearValue !== ""
+                ? "Set the active school year to " + nextAcademicYearValue + " in Settings before renewing for next School Year."
+                : "Set the active school year in Settings before renewing for next School Year."
+            };
+          }
+
           return {
-            statusKey: "official_scholar",
+            statusKey: waitingStatusKey,
             nextScope: "",
             renewEnabled: false,
-            reason: "Set the active semester to 2nd Semester in Settings before renewing for 2nd Semester."
+            reason: "Set the active term to 2nd Semester for this school year before renewing for 2nd Semester."
           };
         }
 
         if (!schoolYearRenewed) {
           const nextAcademicYearValue = getNextAcademicYearForRecord(record);
+          const nextRange = parseAcademicYearRange(nextAcademicYearValue);
           const nextSchoolYearReady = isSchoolYearAvailable(nextAcademicYearValue);
+          const activeSchoolYearMatchesNext = Boolean(
+            activeRange &&
+            nextRange &&
+            Number(activeRange.startYear) === Number(nextRange.startYear)
+          );
+
           if (!nextSchoolYearReady) {
             return {
-              statusKey: secondSemesterRenewed ? "renewed" : "official_scholar",
+              statusKey: waitingStatusKey,
               nextScope: "school_year",
               renewEnabled: false,
               reason: nextAcademicYearValue !== ""
@@ -3148,6 +3546,18 @@ if (($conn ?? null) instanceof mysqli) {
                 : "Next school year is not yet available in the system."
             };
           }
+
+          if (!activeSchoolYearMatchesNext) {
+            return {
+              statusKey: waitingStatusKey,
+              nextScope: "school_year",
+              renewEnabled: false,
+              reason: nextAcademicYearValue !== ""
+                ? "Set the active school year to " + nextAcademicYearValue + " in Settings before renewing for next School Year."
+                : "Set the active school year in Settings before renewing for next School Year."
+            };
+          }
+
           return {
             statusKey: "for_renewal",
             nextScope: "school_year",
@@ -3162,6 +3572,19 @@ if (($conn ?? null) instanceof mysqli) {
           renewEnabled: false,
           reason: "Already renewed."
         };
+      }
+
+      function isHistoricalRenewedRecord(record) {
+        const status = normalizeScholarStatus(
+          record && typeof record === "object" ? (record.status || record.scholar_status || "") : ""
+        );
+        const renewalScope = String(record && typeof record === "object" ? (record.renewal_scope || "") : "").trim().toLowerCase();
+        const semesterPhase = getRecordSemesterPhase(record);
+
+        return status === "renewed" && (
+          renewalScope === "school_year" ||
+          (renewalScope === "2nd_semester" && semesterPhase === "first")
+        );
       }
 
       function getPreferredRenewalScope(record, statusContext = null) {
@@ -3184,7 +3607,7 @@ if (($conn ?? null) instanceof mysqli) {
           return explicitScope;
         }
 
-        const renewalScope = String(record && typeof record === "object" ? (record.renewal_scope || "") : "").trim();
+        const renewalScope = String(record && typeof record === "object" ? (record.renewal_scope || "") : "").trim().toLowerCase();
         const secondSemesterRenewed = (record && record.second_semester_renewed === true)
           || renewalScope === "2nd_semester"
           || renewalScope === "school_year";
@@ -3211,7 +3634,193 @@ if (($conn ?? null) instanceof mysqli) {
         return '<span class="inline-flex items-center rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[10px] font-semibold">Official Scholar</span>';
       }
 
-      function submitScholarAction(action, record, renewalScope = "", newAssignedOffice = "", terminationReason = "") {
+      function getPrintableScholarRecords(category = activeCategory) {
+        const printCategory = categoryConfig[category] ? category : "official";
+        const seenKeys = new Set();
+        return getCategoryRecords(printCategory)
+          .map((record, index) => ({ ...record, __recordKey: getRecordKey(record, index) }))
+          .filter((record) => {
+            const recordYear = String(record.academic_year || "").trim();
+            const recordSemester = String(record.semester || "").trim();
+            const normalizedStatus = normalizeScholarStatus(record.status || record.scholar_status || "");
+            if (printCategory !== "terminated_records" && (record.contract_ended === true || normalizedStatus === "contract_ended" || normalizedStatus === "terminated")) {
+              return false;
+            }
+            if (selectedSchoolYear !== "" && recordYear !== selectedSchoolYear) {
+              return false;
+            }
+            if (selectedSemester !== "" && recordSemester !== selectedSemester) {
+              return false;
+            }
+
+            if (printCategory !== "terminated_records") {
+              const logicalKey = getLogicalScholarMatchKey(record) || record.__recordKey;
+              if (seenKeys.has(logicalKey)) {
+                return false;
+              }
+              seenKeys.add(logicalKey);
+            }
+            return true;
+          })
+          .sort((left, right) => {
+            const leftGrant = resolveGrantApplied(printCategory, left).toLowerCase();
+            const rightGrant = resolveGrantApplied(printCategory, right).toLowerCase();
+            if (leftGrant !== rightGrant) return leftGrant.localeCompare(rightGrant);
+            const leftName = String(left.full_name || "").trim().toLowerCase();
+            const rightName = String(right.full_name || "").trim().toLowerCase();
+            return leftName.localeCompare(rightName);
+          });
+      }
+
+      function getPrintFilterLabel() {
+        const schoolYearLabel = selectedSchoolYear !== "" ? selectedSchoolYear : "All School Years";
+        const semesterLabel = selectedSemester !== "" ? selectedSemester : "All Semesters";
+        return semesterLabel + ", S.Y. " + schoolYearLabel;
+      }
+
+      function getPrintCategoryTitle(category) {
+        if (category === "official") return "Institutional Scholars List";
+        if (category === "terminated_records") return "Terminated / Ended Contracts";
+        const label = categoryConfig[category] && categoryConfig[category].label
+          ? String(categoryConfig[category].label).trim()
+          : "Institutional Scholars";
+        return label + " Scholars";
+      }
+
+      function buildPrintableScholarTable(records, category = activeCategory, startIndex = 0) {
+        if (!Array.isArray(records) || records.length === 0) {
+          return '<p class="empty">No scholar records found for the selected filters.</p>';
+        }
+
+        const rows = records.map((record, index) => {
+          const grantApplied = category === "terminated_records"
+            ? String(record.grant_applied || "").trim()
+            : resolveGrantApplied(category, record);
+          const assignedOffice = String(record.assigned_office || "").trim();
+          return "<tr>" +
+            "<td>" + (startIndex + index + 1) + "</td>" +
+            "<td>" + escapeHtml(grantApplied) + "</td>" +
+            "<td>" + escapeHtml(record.full_name) + "</td>" +
+            "<td>" + escapeHtml(record.program_year) + "</td>" +
+            "<td>" + escapeHtml(assignedOffice !== "" ? assignedOffice : "-") + "</td>" +
+            "<td>" + escapeHtml(record.semester) + "</td>" +
+            "<td>" + escapeHtml(record.academic_year) + "</td>" +
+          "</tr>";
+        }).join("");
+
+        return '<table class="scholar-print-table">' +
+          '<thead>' +
+            '<tr>' +
+              '<th>No.</th>' +
+              '<th>Scholarship Grant</th>' +
+              '<th>Full Name</th>' +
+              '<th>Program / Year</th>' +
+              '<th>Assigned Office</th>' +
+              '<th>Semester</th>' +
+              '<th>Academic Year</th>' +
+            '</tr>' +
+          '</thead>' +
+          '<tbody>' + rows + '</tbody>' +
+        '</table>';
+      }
+
+      function buildScholarPrintDocument(title, bodyHtml, totalCount) {
+        const smccLogo = new URL("../img/SMCCNEWLOGO.png", window.location.href).href;
+        const socotecLogo = new URL("../img/SOCO-PAB-1024x672.jpg", window.location.href).href;
+        return '<!doctype html>' +
+          '<html lang="en">' +
+          '<head>' +
+            '<meta charset="utf-8" />' +
+            '<title>' + escapeHtml(title) + '</title>' +
+            '<style>' +
+              '@page { size: Legal landscape; margin: 10mm; }' +
+              '* { box-sizing: border-box; }' +
+              'body { margin: 0; font-family: "Times New Roman", serif; color: #111827; background: #fff; }' +
+              '.print-wrap { width: 100%; }' +
+              '.report-header { margin-bottom: 1rem; text-align: center; }' +
+              '.header-top { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 0.5rem; }' +
+              '.header-left { display: flex; align-items: center; gap: 0.5rem; }' +
+              '.header-left img { width: 80px; height: 80px; object-fit: contain; }' +
+              '.header-left-text { line-height: 1.1; text-align: center; }' +
+              '.header-left-text h1 { font-weight: 700; font-size: 16pt; margin: 0; }' +
+              '.header-left-text p { margin: 0; font-size: 10pt; }' +
+              '.header-right { display: flex; flex-direction: column; gap: 0.2rem; align-items: center; }' +
+              '.header-right img { width: 100px; height: 80px; object-fit: contain; }' +
+              '.title-block { border-top: 1px solid #111827; padding-top: 0.45rem; margin-bottom: 0.75rem; text-align: center; }' +
+              '.title-block h2 { margin: 0; font-size: 14pt; text-transform: uppercase; }' +
+              '.title-block p { margin: 0.15rem 0 0; font-size: 10pt; font-weight: 700; }' +
+              '.total { margin: 0 0 0.45rem; font-size: 10pt; font-weight: 700; }' +
+              '.scholar-print-table { width: 100%; border-collapse: collapse; font-size: 9pt; }' +
+              '.scholar-print-table th, .scholar-print-table td { border: 1px solid #111827; padding: 4px 5px; vertical-align: top; }' +
+              '.scholar-print-table th { background: #052c6a; color: #fff; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }' +
+              '.scholar-print-table td:nth-child(1) { width: 36px; text-align: center; }' +
+              '.scholar-print-table td:nth-child(2) { width: 20%; }' +
+              '.scholar-print-table td:nth-child(5) { width: 16%; }' +
+              '.empty { margin: 1.5rem 0; text-align: center; font-size: 11pt; font-style: italic; }' +
+            '</style>' +
+          '</head>' +
+          '<body>' +
+            '<div class="print-wrap">' +
+              '<header class="report-header">' +
+                '<div class="header-top">' +
+                  '<div class="header-left">' +
+                    '<img src="' + escapeHtml(smccLogo) + '" alt="Seal of Saint Michael College of Caraga" />' +
+                    '<div class="header-left-text">' +
+                      '<h1>Saint Michael College of Caraga</h1>' +
+                      '<p>Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines</p>' +
+                      '<p>Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</p>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="header-right">' +
+                    '<img src="' + escapeHtml(socotecLogo) + '" alt="SOCOTEC ISO 9001 logo" />' +
+                  '</div>' +
+                '</div>' +
+              '</header>' +
+              '<section class="title-block">' +
+                '<h2>' + escapeHtml(title) + '</h2>' +
+                '<p>' + escapeHtml(getPrintFilterLabel()) + '</p>' +
+              '</section>' +
+              '<p class="total">Total Scholars: ' + escapeHtml(totalCount) + '</p>' +
+              bodyHtml +
+            '</div>' +
+            '<script>window.addEventListener("load", function () { window.focus(); window.print(); });<\/script>' +
+          '</body>' +
+          '</html>';
+      }
+
+      function openScholarPrintWindow(title, bodyHtml, totalCount) {
+        const printWindow = window.open("", "_blank", "width=1200,height=800");
+        if (!printWindow) {
+          window.alert("Please allow pop-ups to print the scholar list.");
+          return;
+        }
+
+        printWindow.document.open();
+        printWindow.document.write(buildScholarPrintDocument(title, bodyHtml, totalCount));
+        printWindow.document.close();
+      }
+
+      function printScholarList() {
+        const printCategory = categoryConfig[activeCategory] ? activeCategory : "official";
+        const records = getPrintableScholarRecords(printCategory);
+        openScholarPrintWindow(
+          getPrintCategoryTitle(printCategory),
+          buildPrintableScholarTable(records, printCategory),
+          records.length
+        );
+      }
+
+      function setupScholarPrinting() {
+        const printButton = document.getElementById("printScholarsBtn");
+
+        if (printButton) {
+          printButton.addEventListener("click", () => {
+            printScholarList();
+          });
+        }
+      }
+
+      function submitScholarAction(action, record, renewalScope = "", newAssignedOffice = "", terminationReason = "", newFullName = "", newProgramYear = "", newEmail = "") {
         if (!record || typeof record !== "object") return;
 
         const url = new URL(window.location.href);
@@ -3243,6 +3852,19 @@ if (($conn ?? null) instanceof mysqli) {
           url.searchParams.delete("new_assigned_office");
         }
 
+        if (action === "edit_scholar") {
+          url.searchParams.set("new_full_name", String(newFullName || "").trim());
+          url.searchParams.set("new_program_year", String(newProgramYear || "").trim());
+          url.searchParams.set("new_email", String(newEmail || "").trim());
+          if (normalizedAssignedOffice !== "") {
+            url.searchParams.set("new_assigned_office", normalizedAssignedOffice);
+          }
+        } else {
+          url.searchParams.delete("new_full_name");
+          url.searchParams.delete("new_program_year");
+          url.searchParams.delete("new_email");
+        }
+
         const normalizedTerminationReason = String(terminationReason || "").trim();
         if (action === "terminate" && normalizedTerminationReason !== "") {
           url.searchParams.set("termination_reason", normalizedTerminationReason);
@@ -3262,7 +3884,7 @@ if (($conn ?? null) instanceof mysqli) {
         const notice = document.getElementById("renewalTermNotice");
         if (!notice) return;
         notice.classList.remove("hidden");
-        notice.textContent = "Status is automatic: scholars due for renewal stay tagged as For Renewal until renewed or contract ended.";
+        notice.textContent = "Status is automatic: scholars are tagged For Renewal only when their renewal target is the active term in Settings.";
       }
 
       function getRecordByKey(category, recordKey) {
@@ -3273,6 +3895,122 @@ if (($conn ?? null) instanceof mysqli) {
           }
         }
         return null;
+      }
+
+      function getScholarRecordId(record) {
+        const recordId = Number(record && typeof record === "object" ? (record.id || record.scholar_record_id || 0) : 0);
+        return Number.isFinite(recordId) && recordId > 0 ? recordId : 0;
+      }
+
+      function closeScholarMessageModal() {
+        const modal = document.getElementById("scholarMessageModal");
+        const messageBody = document.getElementById("scholarMessageBody");
+        const submitButton = document.getElementById("scholarMessageSubmit");
+        if (modal) {
+          modal.classList.add("hidden");
+          modal.classList.remove("flex");
+          document.body.classList.remove("overflow-hidden");
+        }
+        if (messageBody) {
+          messageBody.value = "";
+        }
+        if (submitButton) {
+          submitButton.disabled = false;
+          submitButton.classList.remove("opacity-60", "cursor-not-allowed");
+        }
+      }
+
+      function showScholarMessageModal(category, recordKey) {
+        const record = getRecordByKey(category, recordKey);
+        if (!record) return;
+
+        const scholarRecordId = getScholarRecordId(record);
+        const recipientEmail = String(record.email || "").trim();
+        const recipientName = String(record.full_name || "").trim();
+        if (scholarRecordId <= 0 || !isValidEmailAddress(recipientEmail)) {
+          const message = "No valid email address found for this scholar. Click Edit first to add one.";
+          if (typeof Swal !== "undefined") {
+            Swal.fire({
+              title: "Message Unavailable",
+              text: message,
+              icon: "info",
+              confirmButtonColor: "#0d8ddb"
+            });
+          } else {
+            window.alert(message);
+          }
+          return;
+        }
+
+        const modal = document.getElementById("scholarMessageModal");
+        const recordIdInput = document.getElementById("scholarMessageRecordId");
+        const nameInput = document.getElementById("scholarMessageRecipientName");
+        const emailInput = document.getElementById("scholarMessageRecipientEmail");
+        const returnSchoolYearInput = document.getElementById("scholarMessageReturnSchoolYear");
+        const returnSemesterInput = document.getElementById("scholarMessageReturnSemester");
+        const returnCategoryInput = document.getElementById("scholarMessageReturnCategory");
+        const messageBody = document.getElementById("scholarMessageBody");
+
+        if (recordIdInput) recordIdInput.value = String(scholarRecordId);
+        if (nameInput) nameInput.value = recipientName;
+        if (emailInput) emailInput.value = recipientEmail;
+        if (returnSchoolYearInput) returnSchoolYearInput.value = String(scholarMessageReturnSchoolYear || "").trim();
+        if (returnSemesterInput) returnSemesterInput.value = String(scholarMessageReturnSemester || "").trim();
+        if (returnCategoryInput) returnCategoryInput.value = categoryConfig[activeCategory] && activeCategory !== "terminated_records"
+          ? activeCategory
+          : "official";
+        if (messageBody) {
+          messageBody.value = "";
+        }
+
+        if (modal) {
+          modal.classList.remove("hidden");
+          modal.classList.add("flex");
+          document.body.classList.add("overflow-hidden");
+        }
+        if (messageBody) {
+          messageBody.focus();
+        }
+      }
+
+      function setupScholarMessageModal() {
+        const modal = document.getElementById("scholarMessageModal");
+        const form = document.getElementById("scholarMessageForm");
+        const closeButton = document.getElementById("scholarMessageClose");
+        const cancelButton = document.getElementById("scholarMessageCancel");
+        const messageBody = document.getElementById("scholarMessageBody");
+        const submitButton = document.getElementById("scholarMessageSubmit");
+
+        [closeButton, cancelButton].forEach((button) => {
+          if (button) {
+            button.addEventListener("click", closeScholarMessageModal);
+          }
+        });
+        if (modal) {
+          modal.addEventListener("click", (event) => {
+            if (event.target === modal) {
+              closeScholarMessageModal();
+            }
+          });
+        }
+        document.addEventListener("keydown", (event) => {
+          if (event.key === "Escape" && modal && !modal.classList.contains("hidden")) {
+            closeScholarMessageModal();
+          }
+        });
+        if (form) {
+          form.addEventListener("submit", (event) => {
+            if (messageBody && String(messageBody.value || "").trim() === "") {
+              event.preventDefault();
+              messageBody.focus();
+              return;
+            }
+            if (submitButton) {
+              submitButton.disabled = true;
+              submitButton.classList.add("opacity-60", "cursor-not-allowed");
+            }
+          });
+        }
       }
 
       function showRenewOptions(category, recordKey, forcedScope = "") {
@@ -3416,64 +4154,120 @@ if (($conn ?? null) instanceof mysqli) {
         });
       }
 
-      function showChangeAssignedOfficePrompt(category, recordKey) {
+      function showEditScholarPrompt(category, recordKey) {
         const record = getRecordByKey(category, recordKey);
         if (!record) return;
 
+        const currentFullName = String(record.full_name || "").trim();
+        const currentProgramYear = String(record.program_year || "").trim();
+        const currentEmail = String(record.email || "").trim();
+        const grantApplied = resolveGrantApplied(category, record);
+        const isStudentAssistantGrant = String(grantApplied || "").trim().toLowerCase().includes("assistant");
         const currentOffice = String(record.assigned_office || "").trim();
         const officeChoices = getAssignedOfficeChoices(currentOffice);
         if (typeof Swal === "undefined") {
-          const nextOfficeRaw = window.prompt("Enter new assigned office:", currentOffice);
-          if (nextOfficeRaw === null) return;
-          const nextOffice = String(nextOfficeRaw || "").trim();
-          if (nextOffice === "") {
-            window.alert("Assigned office is required.");
+          const nextFullNameRaw = window.prompt("Full name:", currentFullName);
+          if (nextFullNameRaw === null) return;
+          const nextFullName = String(nextFullNameRaw || "").trim();
+          if (nextFullName === "") {
+            window.alert("Full name is required.");
             return;
           }
-          if (nextOffice === currentOffice) return;
-          submitScholarAction("change_office", record, "", nextOffice);
+          const nextProgramYearRaw = window.prompt("Program / Year:", currentProgramYear);
+          if (nextProgramYearRaw === null) return;
+          const nextEmailRaw = window.prompt("Email:", currentEmail);
+          if (nextEmailRaw === null) return;
+          const nextEmail = String(nextEmailRaw || "").trim();
+          if (!isValidEmailAddress(nextEmail)) {
+            window.alert("Valid email address is required.");
+            return;
+          }
+          let nextOffice = "";
+          if (isStudentAssistantGrant) {
+            const nextOfficeRaw = window.prompt("Assigned office:", currentOffice);
+            if (nextOfficeRaw === null) return;
+            nextOffice = String(nextOfficeRaw || "").trim();
+          }
+          submitScholarAction("edit_scholar", record, "", nextOffice, "", nextFullName, String(nextProgramYearRaw || "").trim(), nextEmail);
           return;
         }
 
-        if (officeChoices.length === 0) {
-          Swal.fire({
-            title: "Change Assigned Office",
-            text: "No office options available. Please add offices first.",
-            icon: "info",
-            confirmButtonColor: "#0d8ddb"
-          });
-          return;
-        }
-
-        const officeSelectOptions = {};
-        officeChoices.forEach((office) => {
-          officeSelectOptions[office] = office;
-        });
         const hasCurrentOffice = officeChoices.some((office) => office.toLowerCase() === currentOffice.toLowerCase());
         const selectedOfficeValue = hasCurrentOffice ? currentOffice : officeChoices[0];
+        const officeFieldHtml = isStudentAssistantGrant && officeChoices.length > 0
+          ? '<label class="block text-left text-xs font-semibold text-slate-700" for="editScholarOffice">Assigned Office</label>' +
+            '<select id="editScholarOffice" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">' +
+              officeChoices.map((office) => (
+                '<option value="' + escapeHtml(office) + '"' + (office === selectedOfficeValue ? " selected" : "") + '>' + escapeHtml(office) + '</option>'
+              )).join("") +
+            '</select>'
+          : "";
 
         Swal.fire({
-          title: "Change Assigned Office",
-          text: "This Student Assistant will move to the head office that matches the new assigned office.",
-          input: "select",
-          inputOptions: officeSelectOptions,
-          inputValue: selectedOfficeValue,
+          title: "Edit Scholar",
+          html:
+            '<div class="space-y-3 text-left">' +
+              '<div>' +
+                '<label class="block text-left text-xs font-semibold text-slate-700" for="editScholarFullName">Full Name</label>' +
+                '<input id="editScholarFullName" type="text" value="' + escapeHtml(currentFullName) + '" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700" />' +
+              '</div>' +
+              '<div>' +
+                '<label class="block text-left text-xs font-semibold text-slate-700" for="editScholarProgramYear">Program / Year</label>' +
+                '<input id="editScholarProgramYear" type="text" value="' + escapeHtml(currentProgramYear) + '" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700" />' +
+              '</div>' +
+              '<div>' +
+                '<label class="block text-left text-xs font-semibold text-slate-700" for="editScholarEmail">Email</label>' +
+                '<input id="editScholarEmail" type="email" value="' + escapeHtml(currentEmail) + '" class="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700" />' +
+              '</div>' +
+              (officeFieldHtml !== "" ? '<div>' + officeFieldHtml + '</div>' : "") +
+            '</div>',
+          focusConfirm: false,
           showCancelButton: true,
           confirmButtonText: "Save",
           cancelButtonText: "Cancel",
           confirmButtonColor: "#0d8ddb",
-          inputValidator: (value) => {
-            const nextValue = String(value || "").trim();
-            if (nextValue === "") {
-              return "Assigned office is required.";
+          preConfirm: () => {
+            const fullNameInput = document.getElementById("editScholarFullName");
+            const programYearInput = document.getElementById("editScholarProgramYear");
+            const emailInput = document.getElementById("editScholarEmail");
+            const officeInput = document.getElementById("editScholarOffice");
+            const nextFullName = String(fullNameInput ? fullNameInput.value : "").trim();
+            const nextProgramYear = String(programYearInput ? programYearInput.value : "").trim();
+            const nextEmail = String(emailInput ? emailInput.value : "").trim();
+            const nextOffice = String(officeInput ? officeInput.value : currentOffice).trim();
+
+            if (nextFullName === "") {
+              Swal.showValidationMessage("Full name is required.");
+              return false;
             }
-            return undefined;
+            if (!isValidEmailAddress(nextEmail)) {
+              Swal.showValidationMessage("Valid email address is required.");
+              return false;
+            }
+            if (isStudentAssistantGrant && officeChoices.length > 0 && nextOffice === "") {
+              Swal.showValidationMessage("Assigned office is required.");
+              return false;
+            }
+            return {
+              fullName: nextFullName,
+              programYear: nextProgramYear,
+              email: nextEmail,
+              assignedOffice: isStudentAssistantGrant ? nextOffice : ""
+            };
           }
         }).then((result) => {
           if (!result.isConfirmed) return;
-          const nextOffice = String(result.value || "").trim();
-          if (nextOffice === "" || nextOffice === currentOffice) return;
-          submitScholarAction("change_office", record, "", nextOffice);
+          const nextValues = result.value && typeof result.value === "object" ? result.value : {};
+          submitScholarAction(
+            "edit_scholar",
+            record,
+            "",
+            String(nextValues.assignedOffice || "").trim(),
+            "",
+            String(nextValues.fullName || "").trim(),
+            String(nextValues.programYear || "").trim(),
+            String(nextValues.email || "").trim()
+          );
         });
       }
 
@@ -3579,6 +4373,7 @@ if (($conn ?? null) instanceof mysqli) {
               record.scholar_id,
               record.grant_applied,
               record.full_name,
+              record.email,
               record.program_year,
               record.assigned_office,
               record.semester,
@@ -3595,6 +4390,7 @@ if (($conn ?? null) instanceof mysqli) {
               record.scholar_id,
               record.grant_applied,
               record.full_name,
+              record.email,
               record.program_year,
               record.assigned_office,
               record.semester,
@@ -3668,6 +4464,7 @@ if (($conn ?? null) instanceof mysqli) {
           const statusContext = getScholarStatusContext(record);
           const statusKey = statusContext.statusKey;
           const isContractEnded = statusKey === "contract_ended";
+          const actionsLocked = isContractEnded || isHistoricalRenewedRecord(record);
           const renewTargetScope = getPreferredRenewalScope(record, statusContext);
           const renewLabel = renewTargetScope === "2nd_semester"
             ? "Renew to 2nd Sem"
@@ -3679,8 +4476,8 @@ if (($conn ?? null) instanceof mysqli) {
           const endContractBtnClasses =
             isContractEnded
               ? "bg-slate-700 text-white border-slate-700"
-              : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50";
-          const renewDisabled = isContractEnded || statusContext.renewEnabled !== true;
+              : "bg-red-600 text-white border-red-600 hover:bg-red-700 hover:border-red-700";
+          const renewDisabled = actionsLocked || statusContext.renewEnabled !== true;
           const renewalDisabledClasses = renewDisabled ? "opacity-50 cursor-not-allowed hover:bg-transparent" : "";
           const renewalDisabledTitle = isContractEnded
             ? "Contract already ended."
@@ -3688,17 +4485,31 @@ if (($conn ?? null) instanceof mysqli) {
           const renewalDisabledAttrs = renewDisabled
             ? ' disabled title="' + escapeHtml(renewalDisabledTitle) + '" aria-disabled="true" '
             : "";
-          const endContractDisabledAttrs = isContractEnded
-            ? ' disabled title="Contract already ended." aria-disabled="true" '
+          const lockedActionTitle = isContractEnded
+            ? "Contract already ended."
+            : "This previous term is already renewed.";
+          const endContractDisabledAttrs = actionsLocked
+            ? ' disabled title="' + escapeHtml(lockedActionTitle) + '" aria-disabled="true" '
             : "";
-          const endContractDisabledClasses = isContractEnded ? "opacity-60 cursor-not-allowed" : "";
-          const terminateDisabledAttrs = isContractEnded
-            ? ' disabled title="Contract already ended." aria-disabled="true" '
+          const endContractDisabledClasses = actionsLocked ? "opacity-60 cursor-not-allowed" : "";
+          const terminateDisabledAttrs = actionsLocked
+            ? ' disabled title="' + escapeHtml(lockedActionTitle) + '" aria-disabled="true" '
             : "";
-          const terminateDisabledClasses = isContractEnded ? "opacity-60 cursor-not-allowed" : "";
-          const changeOfficeBtnHtml = (isStudentAssistantGrant && !isContractEnded)
-            ? ('<button type="button" data-status-action="change_office" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors bg-white text-[#0d8ddb] border-[#7cc5ee] hover:bg-[#ebf7ff]">Edit</button>' +
-               '<button type="button" data-status-action="office_history" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors bg-white text-slate-700 border-slate-300 hover:bg-slate-50">History</button>')
+          const terminateDisabledClasses = actionsLocked ? "opacity-60 cursor-not-allowed" : "";
+          const canMessageScholar = getScholarRecordId(record) > 0 && isValidEmailAddress(record.email);
+          const messageScholarDisabledAttrs = canMessageScholar
+            ? ' title="Send message" aria-label="Send message to ' + escapeHtml(record.full_name || "scholar") + '" '
+            : ' disabled title="No email address for this scholar." aria-disabled="true" aria-label="Message unavailable" ';
+          const messageScholarDisabledClasses = canMessageScholar ? "" : "opacity-50 cursor-not-allowed";
+          const messageScholarBtnHtml =
+            '<button type="button" data-status-action="message_scholar" data-record-key="' + escapeHtml(record.__recordKey) + '" class="inline-flex h-7 w-7 items-center justify-center rounded border text-[11px] font-semibold transition-colors bg-white text-[#052c6a] border-[#b7cbe8] hover:bg-[#eff6ff] ' + messageScholarDisabledClasses + '"' + messageScholarDisabledAttrs + '>' +
+              '<i class="fas fa-envelope" aria-hidden="true"></i>' +
+            '</button>';
+          const editScholarBtnHtml = !actionsLocked
+            ? '<button type="button" data-status-action="edit_scholar" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors bg-white text-[#0d8ddb] border-[#7cc5ee] hover:bg-[#ebf7ff]">Edit</button>'
+            : "";
+          const officeHistoryBtnHtml = (isStudentAssistantGrant && !actionsLocked)
+            ? '<button type="button" data-status-action="office_history" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors bg-white text-slate-700 border-slate-300 hover:bg-slate-50">History</button>'
             : "";
 
           const row = document.createElement("tr");
@@ -3714,9 +4525,11 @@ if (($conn ?? null) instanceof mysqli) {
             '<td class="px-3 py-2">' +
               '<div class="flex flex-wrap gap-1 min-w-[200px]">' +
                 '<button type="button" data-status-action="renew" data-next-scope="' + escapeHtml(renewTargetScope) + '" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors ' + renewBtnClasses + ' ' + renewalDisabledClasses + '"' + renewalDisabledAttrs + '>' + escapeHtml(renewLabel) + '</button>' +
-                '<button type="button" data-status-action="end_contract" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] bg-red-600 text-white font-semibold transition-colors ' + endContractBtnClasses + ' ' + endContractDisabledClasses + '"' + endContractDisabledAttrs + '>End Contract</button>' +
+                '<button type="button" data-status-action="end_contract" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] font-semibold transition-colors ' + endContractBtnClasses + ' ' + endContractDisabledClasses + '"' + endContractDisabledAttrs + '>End Contract</button>' +
                 '<button type="button" data-status-action="terminate" data-record-key="' + escapeHtml(record.__recordKey) + '" class="px-2 py-1 rounded border text-[10px] bg-red-50 text-red-700 border-red-200 font-semibold transition-colors hover:bg-red-100 ' + terminateDisabledClasses + '"' + terminateDisabledAttrs + '>Terminate</button>' +
-                changeOfficeBtnHtml +
+                editScholarBtnHtml +
+                officeHistoryBtnHtml +
+                messageScholarBtnHtml +
               "</div>" +
             "</td>";
           tableBody.appendChild(row);
@@ -3737,7 +4550,12 @@ if (($conn ?? null) instanceof mysqli) {
 
           const recordKey = String(button.getAttribute("data-record-key") || "").trim();
           const action = String(button.getAttribute("data-status-action") || "").trim();
-          if (recordKey === "" || (action !== "renew" && action !== "end_contract" && action !== "terminate" && action !== "change_office" && action !== "office_history")) return;
+          if (recordKey === "" || (action !== "message_scholar" && action !== "renew" && action !== "end_contract" && action !== "terminate" && action !== "change_office" && action !== "edit_scholar" && action !== "office_history")) return;
+
+          if (action === "message_scholar") {
+            showScholarMessageModal(activeCategory, recordKey);
+            return;
+          }
 
           if (action === "renew") {
             const nextScope = String(button.getAttribute("data-next-scope") || "").trim();
@@ -3755,8 +4573,8 @@ if (($conn ?? null) instanceof mysqli) {
             return;
           }
 
-          if (action === "change_office") {
-            showChangeAssignedOfficePrompt(activeCategory, recordKey);
+          if (action === "change_office" || action === "edit_scholar") {
+            showEditScholarPrompt(activeCategory, recordKey);
             return;
           }
 
@@ -3985,6 +4803,7 @@ if (($conn ?? null) instanceof mysqli) {
         }
         showScholarToast(autoImportMessage, autoImportType, ["source", "applicant_id"]);
         showScholarToast(actionNoticeMessage, actionNoticeType, ["scholar_notice", "scholar_notice_message"]);
+        showScholarToast(messageNoticeMessage, messageNoticeType, ["message_status"]);
 
         normalizeGrantLabels();
 
@@ -3992,7 +4811,9 @@ if (($conn ?? null) instanceof mysqli) {
         markActiveSidebarItem();
         setupCategorySwitching();
         setupManualAddForm();
+        setupScholarMessageModal();
         setupRenewalActions();
+        setupScholarPrinting();
         updateCounts();
         setActiveCategoryButton(activeCategory);
         renderTable(activeCategory);

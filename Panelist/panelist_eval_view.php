@@ -305,46 +305,52 @@ if (!$isAdminPreview && $panelistUsername === "") {
             border-color: #0d8ddb;
         }
         .header {
-            display: grid;
-            grid-template-columns: 118px 1fr 118px;
+            display: flex;
+            justify-content: center;
             align-items: center;
-            column-gap: 4px;
+            flex-wrap: wrap;
+            gap: 1rem;
             border-bottom: 2px solid #0f172a;
             min-height: 72px;
-            padding: 4px 0 6px;
+            padding: 4px 0 8px;
         }
-        .logo-group {
+        .header-left {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 0.5rem;
         }
-        .logo-left {
-            justify-content: flex-end;
-        }
-        .logo-right {
-            justify-content: flex-start;
-        }
-        .logo-group img {
-            width: 56px;
-            height: 56px;
+        .header-left img {
+            width: 80px;
+            height: 80px;
             object-fit: contain;
         }
         .header-text {
             text-align: center;
-            line-height: 1.2;
-            width: 100%;
+            line-height: 1.1;
         }
         .school-name {
             font-weight: 700;
-            font-size: 12pt;
+            font-size: 16pt;
         }
         .school-sub {
-            font-size: 8.5pt;
+            font-size: 10pt;
         }
         .office {
-            font-size: 9pt;
+            font-size: 10pt;
             margin-top: 4px;
             font-weight: 700;
+            text-align: center;
+        }
+        .header-right {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+            align-items: center;
+        }
+        .header-right img {
+            width: 100px;
+            height: 80px;
+            object-fit: contain;
         }
         .sheet-title {
             text-align: center;
@@ -581,13 +587,17 @@ if (!$isAdminPreview && $panelistUsername === "") {
                 display: none !important;
             }
             .header {
-                grid-template-columns: 100px 1fr 100px;
                 min-height: 62px;
                 padding: 2px 0 4px;
+                gap: 0.75rem;
             }
-            .logo-group img {
-                width: 48px;
-                height: 48px;
+            .header-left img {
+                width: 62px;
+                height: 62px;
+            }
+            .header-right img {
+                width: 82px;
+                height: 62px;
             }
             .school-name,
             .sheet-name {
@@ -763,17 +773,16 @@ if (!$isAdminPreview && $panelistUsername === "") {
                 <?php endif; ?>
 
                 <div class="header">
-                    <div class="logo-group logo-left">
+                    <div class="header-left">
                         <img src="../img/SMCCNEWLOGO.png" alt="SMCC Logo" />
-                        <img src="../img/admission-logo.jpg" alt="Admission Logo" />
+                        <div class="header-text">
+                            <div class="school-name">Saint Michael College of Caraga</div>
+                            <div class="school-sub">Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines</div>
+                            <div class="school-sub">Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</div>
+                            <div class="office">Office of the Admission &amp; Scholarship</div>
+                        </div>
                     </div>
-                    <div class="header-text">
-                        <div class="school-name">SAINT MICHAEL COLLEGE OF CARAGA</div>
-                        <div class="school-sub">Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines</div>
-                        <div class="school-sub">Website: www.smccnasipit.edu.ph | Tel. Nos. 085 300-2932</div>
-                        <div class="office">Office of the Admission &amp; Scholarship</div>
-                    </div>
-                    <div class="logo-group logo-right">
+                    <div class="header-right">
                         <img src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC Logo" />
                     </div>
                 </div>

@@ -5,6 +5,7 @@ adminRequireLogin();
 require_once "../db.php";
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
+require_once __DIR__ . "/includes/mailer.php";
 require_once "../scholarship-program-options.php";
 require_once "../scholarship-grants.php";
 
@@ -20,6 +21,9 @@ $grantSettingsMessage = "";
 $grantSettingsError = "";
 $panelistAccounts = [];
 $headOfficeAccounts = [];
+$evaluatorAccounts = [];
+$studentAssistantRecordOptions = [];
+$availableStudentAssistantRecordOptions = [];
 $scholarshipGrants = [];
 $programOptionGroups = [
   "senior_high" => [],
@@ -30,24 +34,308 @@ $panelistError = "";
 $headOfficeError = "";
 $panelistFormError = "";
 $headOfficeFormError = "";
+$evaluatorFormError = "";
 $activeModal = "";
 $activeSettingsPanel = "school-term";
 $panelistFormData = [
   "username" => "",
   "full_name" => "",
+  "email" => "",
   "status" => "active",
 ];
 $headOfficeFormData = [
   "username" => "",
   "name" => "",
   "lastname" => "",
+  "email" => "",
+  "office" => "",
+  "status" => "active",
+];
+$evaluatorFormData = [
+  "username" => "",
+  "role" => "student_assistant",
+  "full_name" => "",
+  "email" => "",
+  "scholar_record_id" => 0,
   "office" => "",
   "status" => "active",
 ];
 
+function accountEvaluatorRoleLabel(string $role): string
+{
+  $role = isgNormalizeEvaluatorRole($role);
+  $config = isgEvaluatorRoleConfig($role);
+  return (string)($config["label"] ?? "Evaluator");
+}
+
+function accountNormalizeEmail(string $email): string
+{
+  $email = trim($email);
+  return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : "";
+}
+
+function accountEnsureEmailColumn(mysqli $conn, string $tableName, array $afterColumns): void
+{
+  $safeTable = preg_replace('/[^a-zA-Z0-9_]/', '', $tableName);
+  if ($safeTable === "") {
+    return;
+  }
+
+  $columns = function_exists("isgTableColumns") ? isgTableColumns($conn, $safeTable) : [];
+  if (isset($columns["email"])) {
+    return;
+  }
+
+  $afterSql = "";
+  foreach ($afterColumns as $afterColumn) {
+    $safeAfterColumn = preg_replace('/[^a-zA-Z0-9_]/', '', (string)$afterColumn);
+    if ($safeAfterColumn !== "" && isset($columns[$safeAfterColumn])) {
+      $afterSql = " AFTER {$safeAfterColumn}";
+      break;
+    }
+  }
+
+  $conn->query("ALTER TABLE {$safeTable} ADD COLUMN email VARCHAR(255) DEFAULT NULL{$afterSql}");
+}
+
+function accountEnsureAccountEmailColumns(mysqli $conn): void
+{
+  accountEnsureEmailColumn($conn, "panelists", ["full_name", "username"]);
+  accountEnsureEmailColumn($conn, "head_offices", ["lastname", "full_name", "username"]);
+}
+
+function accountSendCredentialNotification(
+  string $recipientEmail,
+  string $displayName,
+  string $roleLabel,
+  string $username,
+  string $password
+): void {
+  $recipientEmail = accountNormalizeEmail($recipientEmail);
+  if ($recipientEmail === "") {
+    throw new RuntimeException("Recipient email is invalid.");
+  }
+
+  $displayName = trim($displayName);
+  $roleLabel = trim($roleLabel);
+  $username = trim($username);
+
+  $body = implode(PHP_EOL, [
+    "Dear " . ($displayName !== "" ? $displayName : "User") . ",",
+    "",
+    "Your " . ($roleLabel !== "" ? $roleLabel : "system") . " account for the ISG system has been created.",
+    "",
+    "Username: " . $username,
+    "Password: " . $password,
+    "",
+    "Please keep these credentials private and change your password after signing in.",
+    "",
+    "Thank you.",
+    "ISG Admin",
+  ]);
+
+  isgSendPlainTextMail($recipientEmail, "ISG System Account Credentials", $body);
+}
+
+function accountIsStudentAssistantScholarRecord(array $row): bool
+{
+  $category = strtolower(trim((string)($row["category"] ?? "")));
+  $grantApplied = strtolower(trim((string)($row["grant_applied"] ?? "")));
+
+  return $category === "student_assistant"
+    || ($category === "official" && strpos($grantApplied, "assistant") !== false);
+}
+
+function accountStudentAssistantRecordKey(array $row): string
+{
+  $scholarId = strtolower(trim((string)($row["scholar_id"] ?? "")));
+  $semester = strtolower(trim((string)($row["semester"] ?? "")));
+  $academicYear = strtolower(trim((string)($row["academic_year"] ?? "")));
+
+  if ($scholarId !== "") {
+    return "sid-" . sha1($scholarId . "|" . $semester . "|" . $academicYear);
+  }
+
+  $fullName = strtolower(trim((string)($row["full_name"] ?? "")));
+  if ($fullName === "" && $semester === "" && $academicYear === "") {
+    return "";
+  }
+
+  return "name-" . sha1($fullName . "|" . $semester . "|" . $academicYear);
+}
+
+function accountLoadStudentAssistantRecord(mysqli $conn, int $recordId, string $schoolYear, string $semester): ?array
+{
+  if ($recordId <= 0) {
+    return null;
+  }
+
+  foreach (accountLoadStudentAssistantRecordOptions($conn, $schoolYear, $semester) as $record) {
+    if ((int)($record["id"] ?? 0) === $recordId) {
+      return $record;
+    }
+  }
+
+  return null;
+}
+
+function accountLoadStudentAssistantRecordById(mysqli $conn, int $recordId): ?array
+{
+  if ($recordId <= 0) {
+    return null;
+  }
+
+  $columns = function_exists("isgTableColumns") ? isgTableColumns($conn, "institutional_scholar_records") : [];
+  $emailExpr = isset($columns["email"]) ? "email" : "''";
+
+  $stmt = $conn->prepare(
+    "SELECT id, category, scholar_id, grant_applied, full_name, {$emailExpr} AS email, assigned_office, semester, academic_year
+     FROM institutional_scholar_records
+     WHERE id = ?
+     LIMIT 1"
+  );
+  if (!$stmt) {
+    return null;
+  }
+
+  $record = null;
+  $stmt->bind_param("i", $recordId);
+  if ($stmt->execute()) {
+    $result = $stmt->get_result();
+    $row = $result ? $result->fetch_assoc() : null;
+    if (is_array($row) && accountIsStudentAssistantScholarRecord($row)) {
+      $record = $row;
+    }
+    if ($result instanceof mysqli_result) {
+      $result->free();
+    }
+  }
+  $stmt->close();
+
+  return $record;
+}
+
+function accountStudentAssistantRecordHasEvaluatorAccount(mysqli $conn, int $recordId, string $excludeUsername = ""): bool
+{
+  if ($recordId <= 0) {
+    return false;
+  }
+
+  $excludeUsername = trim($excludeUsername);
+  if ($excludeUsername !== "") {
+    $stmt = $conn->prepare(
+      "SELECT id
+       FROM users
+       WHERE role = 'student_assistant'
+         AND scholar_record_id = ?
+         AND username <> ?
+       LIMIT 1"
+    );
+    if (!$stmt) {
+      return true;
+    }
+
+    $stmt->bind_param("is", $recordId, $excludeUsername);
+  } else {
+    $stmt = $conn->prepare(
+      "SELECT id
+       FROM users
+       WHERE role = 'student_assistant'
+         AND scholar_record_id = ?
+       LIMIT 1"
+    );
+    if (!$stmt) {
+      return true;
+    }
+
+    $stmt->bind_param("i", $recordId);
+  }
+
+  $stmt->execute();
+  $stmt->store_result();
+  $hasAccount = $stmt->num_rows > 0;
+  $stmt->close();
+
+  return $hasAccount;
+}
+
+function accountLoadStudentAssistantRecordOptions(mysqli $conn, string $schoolYear, string $semester): array
+{
+  $schoolYear = trim($schoolYear);
+  $semester = trim($semester);
+  if ($schoolYear === "" || $semester === "") {
+    return [];
+  }
+
+  $columns = function_exists("isgTableColumns") ? isgTableColumns($conn, "institutional_scholar_records") : [];
+  $emailExpr = isset($columns["email"]) ? "email" : "''";
+
+  $stmt = $conn->prepare(
+    "SELECT id, category, scholar_id, grant_applied, full_name, {$emailExpr} AS email, assigned_office, semester, academic_year
+     FROM institutional_scholar_records
+     WHERE LOWER(TRIM(COALESCE(category, ''))) IN ('official', 'student_assistant')
+       AND COALESCE(contract_ended, 0) = 0
+       AND LOWER(TRIM(COALESCE(status, ''))) NOT IN ('contract_ended', 'contract ended', 'terminated')
+       AND TRIM(COALESCE(academic_year, '')) = ?
+       AND TRIM(COALESCE(semester, '')) = ?
+     ORDER BY id DESC"
+  );
+  if (!$stmt) {
+    return [];
+  }
+
+  $dedupedRecords = [];
+  $stmt->bind_param("ss", $schoolYear, $semester);
+  if ($stmt->execute()) {
+    $result = $stmt->get_result();
+    if ($result instanceof mysqli_result) {
+      while ($row = $result->fetch_assoc()) {
+        $rowKey = accountStudentAssistantRecordKey($row);
+        if ($rowKey === "") {
+          continue;
+        }
+
+        if (!isset($dedupedRecords[$rowKey])) {
+          $dedupedRecords[$rowKey] = $row;
+          continue;
+        }
+
+        $existingCategory = strtolower(trim((string)($dedupedRecords[$rowKey]["category"] ?? "")));
+        $currentCategory = strtolower(trim((string)($row["category"] ?? "")));
+        if ($existingCategory !== "official" && $currentCategory === "official") {
+          $dedupedRecords[$rowKey] = $row;
+        }
+      }
+      $result->free();
+    }
+  }
+  $stmt->close();
+
+  $records = array_values(array_filter($dedupedRecords, "accountIsStudentAssistantScholarRecord"));
+  usort($records, static function (array $left, array $right): int {
+    $leftName = strtolower(trim((string)($left["full_name"] ?? "")));
+    $rightName = strtolower(trim((string)($right["full_name"] ?? "")));
+    if ($leftName !== $rightName) {
+      return $leftName <=> $rightName;
+    }
+
+    $leftOffice = strtolower(trim((string)($left["assigned_office"] ?? "")));
+    $rightOffice = strtolower(trim((string)($right["assigned_office"] ?? "")));
+    if ($leftOffice !== $rightOffice) {
+      return $leftOffice <=> $rightOffice;
+    }
+
+    return ((int)($right["id"] ?? 0)) <=> ((int)($left["id"] ?? 0));
+  });
+
+  return $records;
+}
+
+accountEnsureAccountEmailColumns($conn);
+
 // Handle password resets, account updates, and account creation requests before loading the account tables.
 
-if ($_SERVER["REQUEST_METHOD"] === "POST") {
+if (($_SERVER["REQUEST_METHOD"] ?? "") === "POST") {
   if (isset($_POST["add_scholarship_grant"]) || isset($_POST["update_scholarship_grant"]) || isset($_POST["remove_scholarship_grant"])) {
     $activeSettingsPanel = "grants";
   } elseif (isset($_POST["add_program_option"]) || isset($_POST["remove_program_option"]) || isset($_POST["update_program_option"])) {
@@ -60,13 +348,41 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $accountType = trim((string)($_POST["account_type"] ?? ""));
     $resetUsername = trim((string)($_POST["reset_username"] ?? ""));
     $resetPassword = (string)($_POST["reset_password"] ?? "");
+    $resetRole = isgNormalizeEvaluatorRole((string)($_POST["reset_role"] ?? ""));
 
     $tableMap = [
       "panelist" => "panelists",
       "head_office" => "head_offices",
     ];
 
-    if (!isset($tableMap[$accountType])) {
+    if ($accountType === "evaluator") {
+      if ($resetRole !== "student_assistant" && $resetRole !== "administrator") {
+        $resetError = "Invalid evaluator role.";
+      } elseif ($resetUsername === "" || $resetPassword === "") {
+        $resetError = "Please complete all fields.";
+      } else {
+        $checkStmt = $conn->prepare("SELECT id FROM users WHERE username = ? AND role = ? LIMIT 1");
+        if ($checkStmt) {
+          $checkStmt->bind_param("ss", $resetUsername, $resetRole);
+          $checkStmt->execute();
+          $checkStmt->store_result();
+
+          if ($checkStmt->num_rows === 0) {
+            $resetError = "Evaluator account not found.";
+          } else {
+            $passwordHash = password_hash($resetPassword, PASSWORD_DEFAULT);
+            if ($passwordHash === false || !isgUpdateEvaluatorPassword($conn, $resetUsername, $resetRole, $passwordHash)) {
+              $resetError = "Unable to update the password.";
+            } else {
+              $resetMessage = "Password reset successful.";
+            }
+          }
+          $checkStmt->close();
+        } else {
+          $resetError = "Unable to reset the password.";
+        }
+      }
+    } elseif (!isset($tableMap[$accountType])) {
       $resetError = "Invalid account type.";
     } elseif ($resetUsername === "" || $resetPassword === "") {
       $resetError = "Please complete all fields.";
@@ -89,6 +405,9 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             if ($updateStmt) {
               $updateStmt->bind_param("ss", $passwordHash, $resetUsername);
               if ($updateStmt->execute()) {
+                if ($accountType === "head_office" && function_exists("isgUpdateEvaluatorPassword")) {
+                  isgUpdateEvaluatorPassword($conn, $resetUsername, "department_head", $passwordHash);
+                }
                 $resetMessage = "Password reset successful.";
               } else {
                 $resetError = "Unable to update the password.";
@@ -372,7 +691,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               if ($newUsername !== $originalUsername) {
                 $evaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
                 if ($evaluationTableResult instanceof mysqli_result && $evaluationTableResult->num_rows > 0) {
-                  $evaluationUpdateStmt = $conn->prepare("UPDATE department_head_evaluations SET head_username = ? WHERE head_username = ?");
+                  $evaluationUpdateStmt = $conn->prepare("UPDATE department_head_evaluations SET head_username = ? WHERE head_username = ? AND evaluator_role = 'department_head'");
                   if ($evaluationUpdateStmt) {
                     $evaluationUpdateStmt->bind_param("ss", $newUsername, $originalUsername);
                     $evaluationUpdateStmt->execute();
@@ -384,13 +703,159 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 }
               }
 
-              $accountMessage = "Head of office account updated.";
+              $passwordHash = "";
+              $headOfficeEmail = "";
+              $passwordStmt = $conn->prepare("SELECT password_hash, email FROM head_offices WHERE username = ? LIMIT 1");
+              if ($passwordStmt) {
+                $passwordStmt->bind_param("s", $newUsername);
+                if ($passwordStmt->execute()) {
+                  $passwordResult = $passwordStmt->get_result();
+                  $passwordRow = $passwordResult ? $passwordResult->fetch_assoc() : null;
+                  $passwordHash = trim((string)($passwordRow["password_hash"] ?? ""));
+                  $headOfficeEmail = trim((string)($passwordRow["email"] ?? ""));
+                  if ($passwordResult instanceof mysqli_result) {
+                    $passwordResult->free();
+                  }
+                }
+                $passwordStmt->close();
+              }
+
+              $usersSynced = $passwordHash !== "" && function_exists("isgUpsertEvaluatorUser")
+                ? isgUpsertEvaluatorUser($conn, $newUsername, "department_head", $passwordHash, $name, $lastname, "", $office, $status, 0, $headOfficeEmail)
+                : false;
+              if ($usersSynced && $newUsername !== $originalUsername && function_exists("isgDeleteEvaluatorUser")) {
+                isgDeleteEvaluatorUser($conn, $originalUsername, "department_head");
+              }
+
+              if ($usersSynced) {
+                $accountMessage = "Head of office account updated.";
+              } else {
+                $accountError = "Head of office account updated, but evaluator login sync failed.";
+              }
             } else {
               $accountError = "Unable to update the head of office account.";
             }
             $updateStmt->close();
           } else {
             $accountError = "Unable to update the head of office account.";
+          }
+        }
+      }
+    } elseif ($updateAccountType === "evaluator") {
+      $evaluatorRole = isgNormalizeEvaluatorRole((string)($_POST["original_role"] ?? $_POST["evaluator_role"] ?? ""));
+      $fullName = trim((string)($_POST["full_name"] ?? ""));
+      $office = trim((string)($_POST["office"] ?? ""));
+      $scholarRecordId = (int)($_POST["scholar_record_id"] ?? 0);
+
+      if ($evaluatorRole !== "student_assistant" && $evaluatorRole !== "administrator") {
+        $accountError = "Invalid evaluator role.";
+      } elseif ($originalUsername === "" || $newUsername === "") {
+        $accountError = "Please complete all evaluator fields.";
+      } else {
+        $checkStmt = $conn->prepare("SELECT id FROM users WHERE username = ? AND role = ? LIMIT 1");
+        if ($checkStmt) {
+          $checkStmt->bind_param("ss", $originalUsername, $evaluatorRole);
+          $checkStmt->execute();
+          $checkStmt->store_result();
+          if ($checkStmt->num_rows === 0) {
+            $accountError = "Evaluator account not found.";
+          }
+          $checkStmt->close();
+        } else {
+          $accountError = "Unable to update the evaluator account.";
+        }
+
+        if ($accountError === "" && strcasecmp($newUsername, $originalUsername) !== 0) {
+          $duplicateStmt = $conn->prepare("SELECT id FROM users WHERE username = ? AND role = ? LIMIT 1");
+          if ($duplicateStmt) {
+            $duplicateStmt->bind_param("ss", $newUsername, $evaluatorRole);
+            $duplicateStmt->execute();
+            $duplicateStmt->store_result();
+            if ($duplicateStmt->num_rows > 0) {
+              $accountError = "Evaluator username already exists for this role.";
+            }
+            $duplicateStmt->close();
+          } else {
+            $accountError = "Unable to update the evaluator account.";
+          }
+        }
+
+        if ($accountError === "" && $evaluatorRole === "student_assistant") {
+          if ($scholarRecordId <= 0) {
+            $accountError = "Select the student assistant record for this account.";
+          } else {
+            $linkedStudentRecord = accountLoadStudentAssistantRecordById($conn, $scholarRecordId);
+            if (!is_array($linkedStudentRecord)) {
+              $accountError = "Selected student assistant record is not available.";
+            } elseif (accountStudentAssistantRecordHasEvaluatorAccount($conn, $scholarRecordId, $originalUsername)) {
+              $accountError = "Selected student assistant already has an evaluator account.";
+            } else {
+              $fullName = trim((string)($linkedStudentRecord["full_name"] ?? ""));
+              $office = trim((string)($linkedStudentRecord["assigned_office"] ?? ""));
+            }
+          }
+        } elseif ($accountError === "" && $evaluatorRole === "administrator") {
+          $scholarRecordId = 0;
+          if ($fullName === "") {
+            $accountError = "Enter the administrator evaluator's full name.";
+          }
+        }
+
+        if ($accountError === "") {
+          $updateStmt = $conn->prepare(
+            "UPDATE users
+             SET username = ?, full_name = ?, office = ?, scholar_record_id = NULLIF(?, 0), status = ?
+             WHERE username = ? AND role = ?
+             LIMIT 1"
+          );
+          if ($updateStmt) {
+            $updateStmt->bind_param("sssisss", $newUsername, $fullName, $office, $scholarRecordId, $status, $originalUsername, $evaluatorRole);
+            if ($updateStmt->execute()) {
+              $evaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
+              if ($evaluationTableResult instanceof mysqli_result && $evaluationTableResult->num_rows > 0) {
+                $evaluationColumns = function_exists("isgTableColumns") ? isgTableColumns($conn, "department_head_evaluations") : [];
+                if (isset($evaluationColumns["head_name"])) {
+                  $evaluationUpdateStmt = $conn->prepare("UPDATE department_head_evaluations SET head_username = ?, head_name = ? WHERE head_username = ? AND evaluator_role = ?");
+                  if ($evaluationUpdateStmt) {
+                    $evaluationUpdateStmt->bind_param("ssss", $newUsername, $fullName, $originalUsername, $evaluatorRole);
+                    $evaluationUpdateStmt->execute();
+                    $evaluationUpdateStmt->close();
+                  }
+                } elseif ($newUsername !== $originalUsername) {
+                  $evaluationUpdateStmt = $conn->prepare("UPDATE department_head_evaluations SET head_username = ? WHERE head_username = ? AND evaluator_role = ?");
+                  if ($evaluationUpdateStmt) {
+                    $evaluationUpdateStmt->bind_param("sss", $newUsername, $originalUsername, $evaluatorRole);
+                    $evaluationUpdateStmt->execute();
+                    $evaluationUpdateStmt->close();
+                  }
+                }
+              }
+              if ($evaluationTableResult instanceof mysqli_result) {
+                $evaluationTableResult->free();
+              }
+
+              if ($evaluatorRole === "administrator") {
+                $assignmentTableResult = $conn->query("SHOW TABLES LIKE 'administrator_sa_assignments'");
+                if ($assignmentTableResult instanceof mysqli_result && $assignmentTableResult->num_rows > 0) {
+                  $assignmentUpdateStmt = $conn->prepare("UPDATE administrator_sa_assignments SET administrator_username = ?, administrator_name = ? WHERE administrator_username = ? AND administrator_role = 'administrator'");
+                  if ($assignmentUpdateStmt) {
+                    $assignmentUpdateStmt->bind_param("sss", $newUsername, $fullName, $originalUsername);
+                    $assignmentUpdateStmt->execute();
+                    $assignmentUpdateStmt->close();
+                  }
+                }
+                if ($assignmentTableResult instanceof mysqli_result) {
+                  $assignmentTableResult->free();
+                }
+              }
+
+              $accountMessage = accountEvaluatorRoleLabel($evaluatorRole) . " evaluator account updated.";
+            } else {
+              $accountError = "Unable to update the evaluator account.";
+            }
+            $updateStmt->close();
+          } else {
+            $accountError = "Unable to update the evaluator account.";
           }
         }
       }
@@ -407,12 +872,16 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
       $panelistFormData = [
         "username" => trim((string)($_POST["username"] ?? "")),
         "full_name" => trim((string)($_POST["full_name"] ?? "")),
+        "email" => trim((string)($_POST["email"] ?? "")),
         "status" => $status,
       ];
       $password = (string)($_POST["password"] ?? "");
+      $panelistEmail = accountNormalizeEmail($panelistFormData["email"]);
 
       if ($panelistFormData["username"] === "" || $panelistFormData["full_name"] === "" || $password === "") {
         $panelistFormError = "Please complete all fields.";
+      } elseif ($panelistEmail === "") {
+        $panelistFormError = "Enter a valid panelist email address.";
       } else {
         $checkStmt = $conn->prepare("SELECT id FROM panelists WHERE username = ? LIMIT 1");
         if ($checkStmt) {
@@ -432,15 +901,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           if ($passwordHash === false) {
             $panelistFormError = "Unable to save the account.";
           } else {
-            $insertStmt = $conn->prepare("INSERT INTO panelists (username, full_name, password_hash, status) VALUES (?, ?, ?, ?)");
+            $insertStmt = $conn->prepare("INSERT INTO panelists (username, full_name, email, password_hash, status) VALUES (?, ?, ?, ?, ?)");
             if ($insertStmt) {
-              $insertStmt->bind_param("ssss", $panelistFormData["username"], $panelistFormData["full_name"], $passwordHash, $panelistFormData["status"]);
+              $insertStmt->bind_param("sssss", $panelistFormData["username"], $panelistFormData["full_name"], $panelistEmail, $passwordHash, $panelistFormData["status"]);
               if ($insertStmt->execute()) {
-                $accountMessage = "Panelist account created.";
+                try {
+                  accountSendCredentialNotification($panelistEmail, $panelistFormData["full_name"], "Panelist", $panelistFormData["username"], $password);
+                  $accountMessage = "Panelist account created and credentials were emailed.";
+                } catch (Throwable $mailError) {
+                  $accountMessage = "Panelist account created.";
+                  $accountError = "Panelist account created, but email notification failed: " . $mailError->getMessage();
+                }
                 $activeModal = "";
                 $panelistFormData = [
                   "username" => "",
                   "full_name" => "",
+                  "email" => "",
                   "status" => "active",
                 ];
               } else {
@@ -459,13 +935,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         "username" => trim((string)($_POST["username"] ?? "")),
         "name" => trim((string)($_POST["name"] ?? "")),
         "lastname" => trim((string)($_POST["lastname"] ?? "")),
+        "email" => trim((string)($_POST["email"] ?? "")),
         "office" => trim((string)($_POST["office"] ?? "")),
         "status" => $status,
       ];
       $password = (string)($_POST["password"] ?? "");
+      $headOfficeEmail = accountNormalizeEmail($headOfficeFormData["email"]);
 
       if ($headOfficeFormData["username"] === "" || $headOfficeFormData["name"] === "" || $headOfficeFormData["lastname"] === "" || $headOfficeFormData["office"] === "" || $password === "") {
         $headOfficeFormError = "Please complete all fields.";
+      } elseif ($headOfficeEmail === "") {
+        $headOfficeFormError = "Enter a valid head of office email address.";
       } else {
         $checkStmt = $conn->prepare("SELECT id FROM head_offices WHERE username = ? LIMIT 1");
         if ($checkStmt) {
@@ -485,25 +965,160 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
           if ($passwordHash === false) {
             $headOfficeFormError = "Unable to save the account.";
           } else {
-            $insertStmt = $conn->prepare("INSERT INTO head_offices (username, name, lastname, office, password_hash, status) VALUES (?, ?, ?, ?, ?, ?)");
+            $insertStmt = $conn->prepare("INSERT INTO head_offices (username, name, lastname, email, office, password_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?)");
             if ($insertStmt) {
-              $insertStmt->bind_param("ssssss", $headOfficeFormData["username"], $headOfficeFormData["name"], $headOfficeFormData["lastname"], $headOfficeFormData["office"], $passwordHash, $headOfficeFormData["status"]);
+              $insertStmt->bind_param("sssssss", $headOfficeFormData["username"], $headOfficeFormData["name"], $headOfficeFormData["lastname"], $headOfficeEmail, $headOfficeFormData["office"], $passwordHash, $headOfficeFormData["status"]);
               if ($insertStmt->execute()) {
-                $accountMessage = "Head of office account created.";
-                $activeModal = "";
-                $headOfficeFormData = [
-                  "username" => "",
-                  "name" => "",
-                  "lastname" => "",
-                  "office" => "",
-                  "status" => "active",
-                ];
+                $usersSynced = function_exists("isgUpsertEvaluatorUser")
+                  ? isgUpsertEvaluatorUser(
+                    $conn,
+                    $headOfficeFormData["username"],
+                    "department_head",
+                    $passwordHash,
+                    $headOfficeFormData["name"],
+                    $headOfficeFormData["lastname"],
+                    "",
+                    $headOfficeFormData["office"],
+                    $headOfficeFormData["status"],
+                    0,
+                    $headOfficeEmail
+                  )
+                  : false;
+                if ($usersSynced) {
+                  try {
+                    accountSendCredentialNotification($headOfficeEmail, trim($headOfficeFormData["name"] . " " . $headOfficeFormData["lastname"]), accountEvaluatorRoleLabel("department_head"), $headOfficeFormData["username"], $password);
+                    $accountMessage = "Head of office account created and credentials were emailed.";
+                  } catch (Throwable $mailError) {
+                    $accountMessage = "Head of office account created.";
+                    $accountError = "Head of office account created, but email notification failed: " . $mailError->getMessage();
+                  }
+                  $activeModal = "";
+                  $headOfficeFormData = [
+                    "username" => "",
+                    "name" => "",
+                    "lastname" => "",
+                    "email" => "",
+                    "office" => "",
+                    "status" => "active",
+                  ];
+                } else {
+                  $headOfficeFormError = "Account created, but evaluator login sync failed.";
+                }
               } else {
                 $headOfficeFormError = "Unable to save the account.";
               }
               $insertStmt->close();
             } else {
               $headOfficeFormError = "Unable to save the account.";
+            }
+          }
+        }
+      }
+    } elseif ($createAccountType === "evaluator") {
+      $activeModal = "evaluatorModal";
+      $evaluatorRole = isgNormalizeEvaluatorRole((string)($_POST["evaluator_role"] ?? "student_assistant"));
+      $evaluatorFormData = [
+        "username" => trim((string)($_POST["username"] ?? "")),
+        "role" => $evaluatorRole !== "" ? $evaluatorRole : "student_assistant",
+        "full_name" => trim((string)($_POST["full_name"] ?? "")),
+        "email" => trim((string)($_POST["email"] ?? "")),
+        "scholar_record_id" => (int)($_POST["scholar_record_id"] ?? 0),
+        "office" => trim((string)($_POST["office"] ?? "")),
+        "status" => $status,
+      ];
+      $password = (string)($_POST["password"] ?? "");
+      $evaluatorNotificationEmail = "";
+
+      if ($evaluatorFormData["role"] !== "student_assistant" && $evaluatorFormData["role"] !== "administrator") {
+        $evaluatorFormError = "Select a valid evaluator role.";
+      } elseif ($evaluatorFormData["username"] === "" || $password === "") {
+        $evaluatorFormError = "Please complete all required fields.";
+      } elseif ($evaluatorFormData["role"] === "student_assistant" && $evaluatorFormData["scholar_record_id"] <= 0) {
+        $evaluatorFormError = "Select the student assistant record for this account.";
+      } elseif ($evaluatorFormData["role"] === "administrator" && $evaluatorFormData["full_name"] === "") {
+        $evaluatorFormError = "Enter the administrator evaluator's full name.";
+      } elseif ($evaluatorFormData["role"] === "administrator" && accountNormalizeEmail($evaluatorFormData["email"]) === "") {
+        $evaluatorFormError = "Enter a valid administrator evaluator email address.";
+      } else {
+        $linkedStudentRecord = null;
+        if ($evaluatorFormData["role"] === "student_assistant") {
+          $linkedStudentRecord = accountLoadStudentAssistantRecord(
+            $conn,
+            (int)$evaluatorFormData["scholar_record_id"],
+            (string)($displaySchoolYear ?? ""),
+            (string)($displaySemester ?? "")
+          );
+          if (!is_array($linkedStudentRecord)) {
+            $evaluatorFormError = "Selected student assistant record is not listed for the active school term.";
+          } elseif (accountStudentAssistantRecordHasEvaluatorAccount($conn, (int)$evaluatorFormData["scholar_record_id"])) {
+            $evaluatorFormError = "Selected student assistant already has an evaluator account.";
+          } else {
+            $evaluatorFormData["full_name"] = trim((string)($linkedStudentRecord["full_name"] ?? ""));
+            $evaluatorNotificationEmail = accountNormalizeEmail((string)($linkedStudentRecord["email"] ?? ""));
+            $evaluatorFormData["office"] = trim((string)($linkedStudentRecord["assigned_office"] ?? ""));
+            if ($evaluatorNotificationEmail === "") {
+              $evaluatorFormError = "Selected student assistant record does not have a valid email address.";
+            }
+          }
+        } else {
+          $evaluatorNotificationEmail = accountNormalizeEmail($evaluatorFormData["email"]);
+        }
+
+        if ($evaluatorFormError === "") {
+          $duplicateStmt = $conn->prepare("SELECT id FROM users WHERE username = ? AND role = ? LIMIT 1");
+          if ($duplicateStmt) {
+            $duplicateStmt->bind_param("ss", $evaluatorFormData["username"], $evaluatorFormData["role"]);
+            $duplicateStmt->execute();
+            $duplicateStmt->store_result();
+            if ($duplicateStmt->num_rows > 0) {
+              $evaluatorFormError = "Evaluator username already exists for this role.";
+            }
+            $duplicateStmt->close();
+          } else {
+            $evaluatorFormError = "Unable to save the evaluator account.";
+          }
+        }
+
+        if ($evaluatorFormError === "") {
+          $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+          if ($passwordHash === false) {
+            $evaluatorFormError = "Unable to save the evaluator account.";
+          } else {
+            $saved = isgUpsertEvaluatorUser(
+              $conn,
+              $evaluatorFormData["username"],
+              $evaluatorFormData["role"],
+              $passwordHash,
+              "",
+              "",
+              $evaluatorFormData["full_name"],
+              $evaluatorFormData["office"],
+              $evaluatorFormData["status"],
+              (int)$evaluatorFormData["scholar_record_id"],
+              $evaluatorNotificationEmail
+            );
+
+            if ($saved) {
+              $evaluatorRoleLabel = accountEvaluatorRoleLabel($evaluatorFormData["role"]) . " Evaluator";
+              try {
+                accountSendCredentialNotification($evaluatorNotificationEmail, $evaluatorFormData["full_name"], $evaluatorRoleLabel, $evaluatorFormData["username"], $password);
+                $accountMessage = $evaluatorRoleLabel . " account created and credentials were emailed.";
+              } catch (Throwable $mailError) {
+                $accountMessage = $evaluatorRoleLabel . " account created.";
+                $accountError = $evaluatorRoleLabel . " account created, but email notification failed: " . $mailError->getMessage();
+              }
+              $activeModal = "";
+              $evaluatorFormData = [
+                "username" => "",
+                "role" => "student_assistant",
+                "full_name" => "",
+                "email" => "",
+                "scholar_record_id" => 0,
+                "office" => "",
+                "status" => "active",
+              ];
+            } else {
+              $evaluatorFormError = "Unable to save the evaluator account.";
             }
           }
         }
@@ -539,6 +1154,62 @@ if ($headOfficeResult) {
 } else {
   $headOfficeError = "Head of office accounts table is not available.";
 }
+
+$evaluatorResult = $conn->query(
+  "SELECT
+    u.username,
+    u.role,
+    u.full_name,
+    u.office,
+    u.scholar_record_id,
+    u.password_hash,
+    u.status,
+    isr.full_name AS linked_student_name,
+    isr.assigned_office AS linked_student_office,
+    isr.semester AS linked_student_semester,
+    isr.academic_year AS linked_student_school_year
+   FROM users u
+   LEFT JOIN institutional_scholar_records isr
+     ON isr.id = u.scholar_record_id
+   WHERE u.role IN ('student_assistant', 'administrator')
+   ORDER BY
+     CASE u.role
+       WHEN 'student_assistant' THEN 0
+       WHEN 'administrator' THEN 1
+       ELSE 2
+     END,
+     u.username ASC"
+);
+if ($evaluatorResult) {
+  while ($row = $evaluatorResult->fetch_assoc()) {
+    $evaluatorAccounts[] = $row;
+  }
+  $evaluatorResult->free();
+}
+
+$studentAssistantRecordOptions = accountLoadStudentAssistantRecordOptions(
+  $conn,
+  (string)($displaySchoolYear ?? ""),
+  (string)($displaySemester ?? "")
+);
+$studentAssistantRecordIdsWithAccounts = [];
+foreach ($evaluatorAccounts as $account) {
+  if (isgNormalizeEvaluatorRole((string)($account["role"] ?? "")) !== "student_assistant") {
+    continue;
+  }
+
+  $recordId = (int)($account["scholar_record_id"] ?? 0);
+  if ($recordId > 0) {
+    $studentAssistantRecordIdsWithAccounts[$recordId] = true;
+  }
+}
+$availableStudentAssistantRecordOptions = array_values(array_filter(
+  $studentAssistantRecordOptions,
+  static function (array $record) use ($studentAssistantRecordIdsWithAccounts): bool {
+    $recordId = (int)($record["id"] ?? 0);
+    return $recordId > 0 && !isset($studentAssistantRecordIdsWithAccounts[$recordId]);
+  }
+));
 ?>
 
 <!DOCTYPE html>
@@ -1194,7 +1865,7 @@ if ($headOfficeResult) {
               <div>
                 <p class="text-[#0d8ddb] text-sm font-semibold">Account Management</p>
                 <p class="text-xs text-[#052c6a]">
-                  Manage profile details, status, and password resets for panelists and head of offices.
+                  Manage profile details, status, and password resets for panelists, head of offices, and evaluator accounts.
                 </p>
               </div>
               <div class="flex flex-wrap gap-2">
@@ -1211,6 +1882,13 @@ if ($headOfficeResult) {
                   data-open-modal="headOfficeModal"
                 >
                   Add Head of Office
+                </button>
+                <button
+                  type="button"
+                  class="rounded-full bg-emerald-600 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-emerald-700"
+                  data-open-modal="evaluatorModal"
+                >
+                  Add Evaluator
                 </button>
               </div>
             </div>
@@ -1312,7 +1990,7 @@ if ($headOfficeResult) {
                   <thead class="bg-[#052c6a] text-white">
                     <tr>
                       <th class="border-r border-white/10 px-3 py-2">Username</th>
-                      <th class="border-r border-white/10 px-3 py-2">Name</th>
+                      <th class="border-r border-white/10 px-3 py-2">First Name</th>
                       <th class="border-r border-white/10 px-3 py-2">Last Name</th>
                       <th class="border-r border-white/10 px-3 py-2">Office</th>
                       <th class="border-r border-white/10 px-3 py-2">Password Hash</th>
@@ -1392,6 +2070,120 @@ if ($headOfficeResult) {
                 </table>
               </div>
             <?php endif; ?>
+              </div>
+
+              <div class="border-t border-[#0d8ddb]/20 pt-5">
+            <p class="text-xs font-semibold uppercase tracking-wide text-[#052c6a]">Evaluator Accounts</p>
+            <div class="mt-3 overflow-x-auto">
+              <table class="min-w-full border border-[#0d8ddb] text-xs text-left">
+                <thead class="bg-[#052c6a] text-white">
+                  <tr>
+                    <th class="border-r border-white/10 px-3 py-2">Username</th>
+                    <th class="border-r border-white/10 px-3 py-2">Role</th>
+                    <th class="border-r border-white/10 px-3 py-2">Full Name</th>
+                    <th class="border-r border-white/10 px-3 py-2">Linked Student Assistant</th>
+                    <th class="border-r border-white/10 px-3 py-2">Office</th>
+                    <th class="border-r border-white/10 px-3 py-2">Password Hash</th>
+                    <th class="border-r border-white/10 px-3 py-2">Status</th>
+                    <th class="px-3 py-2 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php if (empty($evaluatorAccounts)): ?>
+                    <tr>
+                      <td colspan="8" class="px-3 py-3 text-center text-[#052c6a]">
+                        No student assistant or administrator evaluator accounts found.
+                      </td>
+                    </tr>
+                  <?php else: ?>
+                    <?php foreach ($evaluatorAccounts as $account): ?>
+                      <?php
+                        $accountRole = isgNormalizeEvaluatorRole((string)($account["role"] ?? ""));
+                        $linkedStudentParts = [];
+                        $linkedStudentName = trim((string)($account["linked_student_name"] ?? ""));
+                        $linkedStudentOffice = trim((string)($account["linked_student_office"] ?? ""));
+                        $linkedStudentSemester = trim((string)($account["linked_student_semester"] ?? ""));
+                        $linkedStudentSchoolYear = trim((string)($account["linked_student_school_year"] ?? ""));
+                        if ($linkedStudentName !== "") {
+                          $linkedStudentParts[] = $linkedStudentName;
+                        }
+                        if ($linkedStudentOffice !== "") {
+                          $linkedStudentParts[] = $linkedStudentOffice;
+                        }
+                        if ($linkedStudentSemester !== "" || $linkedStudentSchoolYear !== "") {
+                          $linkedStudentParts[] = trim($linkedStudentSemester . " " . $linkedStudentSchoolYear);
+                        }
+                        $linkedStudentLabel = !empty($linkedStudentParts) ? implode(" / ", $linkedStudentParts) : "N/A";
+                      ?>
+                      <tr class="border-b border-[#0d8ddb]">
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars((string)($account["username"] ?? "")) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars(accountEvaluatorRoleLabel($accountRole)) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars((string)($account["full_name"] ?? "")) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars($accountRole === "student_assistant" ? $linkedStudentLabel : "All Student Assistants") ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars((string)($account["office"] ?? "")) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 font-mono text-[10px] text-[#052c6a] break-all">
+                          <?= htmlspecialchars((string)($account["password_hash"] ?? "")) ?>
+                        </td>
+                        <td class="border-r border-[#0d8ddb] px-3 py-2 text-[#052c6a]">
+                          <?= htmlspecialchars((string)($account["status"] ?? "")) ?>
+                        </td>
+                        <td class="px-3 py-2">
+                          <form method="POST" class="flex flex-wrap items-center justify-center gap-2">
+                            <input type="hidden" name="account_type" value="evaluator" />
+                            <input type="hidden" name="reset_role" value="<?= htmlspecialchars($accountRole) ?>" />
+                            <input
+                              type="hidden"
+                              name="reset_username"
+                              value="<?= htmlspecialchars((string)($account["username"] ?? "")) ?>"
+                            />
+                            <input
+                              type="password"
+                              name="reset_password"
+                              class="w-36 rounded border border-[#0d8ddb]/40 px-2 py-1 text-[11px]"
+                              placeholder="New password"
+                              required
+                            />
+                            <button
+                              type="submit"
+                              name="reset_account_password"
+                              value="1"
+                              class="rounded-full bg-[#0d8ddb] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b7bbf]"
+                            >
+                              Reset
+                            </button>
+                            <button
+                              type="button"
+                              class="rounded-full bg-[#052c6a] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-[#0b3d86]"
+                              data-edit-evaluator
+                              data-username="<?= htmlspecialchars((string)($account["username"] ?? "")) ?>"
+                              data-role="<?= htmlspecialchars($accountRole) ?>"
+                              data-role-label="<?= htmlspecialchars(accountEvaluatorRoleLabel($accountRole)) ?>"
+                              data-full-name="<?= htmlspecialchars((string)($account["full_name"] ?? "")) ?>"
+                              data-office="<?= htmlspecialchars((string)($account["office"] ?? "")) ?>"
+                              data-scholar-record-id="<?= htmlspecialchars((string)((int)($account["scholar_record_id"] ?? 0))) ?>"
+                              data-linked-student-label="<?= htmlspecialchars($linkedStudentLabel) ?>"
+                              data-status="<?= htmlspecialchars((string)($account["status"] ?? "active")) ?>"
+                            >
+                              Edit
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    <?php endforeach; ?>
+                  <?php endif; ?>
+                </tbody>
+              </table>
+            </div>
               </div>
             </div>
           </div>
@@ -1585,6 +2377,17 @@ if ($headOfficeResult) {
                   />
                 </div>
                 <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="panelist-email">Email</label>
+                  <input
+                    id="panelist-email"
+                    name="email"
+                    type="email"
+                    value="<?= htmlspecialchars($panelistFormData["email"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
                   <label class="text-xs font-semibold text-[#052c6a]" for="panelist-password">Password</label>
                   <input
                     id="panelist-password"
@@ -1674,7 +2477,7 @@ if ($headOfficeResult) {
                   />
                 </div>
                 <div>
-                  <label class="text-xs font-semibold text-[#052c6a]" for="head-office-full-name">Name</label>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="head-office-full-name">First Name</label>
                   <input
                     id="head-office-full-name"
                     name="name"
@@ -1691,6 +2494,17 @@ if ($headOfficeResult) {
                     name="lastname"
                     type="text"
                     value="<?= htmlspecialchars($headOfficeFormData["lastname"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="head-office-email">Email</label>
+                  <input
+                    id="head-office-email"
+                    name="email"
+                    type="email"
+                    value="<?= htmlspecialchars($headOfficeFormData["email"]) ?>"
                     class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
                     required
                   />
@@ -1740,6 +2554,163 @@ if ($headOfficeResult) {
                     class="rounded-full bg-[#0d8ddb] px-6 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow hover:bg-[#0b7bbf]"
                   >
                     Save Head of Office
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Evaluator Modal -->
+        <div
+          id="evaluatorModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/60 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="evaluator-modal-title"
+        >
+          <div class="absolute inset-0" data-close-modal="evaluatorModal"></div>
+          <div class="relative z-10 w-full max-w-2xl rounded-2xl border border-[#0d8ddb]/20 bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0d8ddb]">Accounts</p>
+                <h3 id="evaluator-modal-title" class="text-lg font-semibold text-[#052c6a]">Create Evaluator Account</h3>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                data-close-modal="evaluatorModal"
+              >
+                Close
+              </button>
+            </div>
+            <div class="px-6 py-5">
+              <?php if ($evaluatorFormError !== ""): ?>
+                <div class="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <?= htmlspecialchars($evaluatorFormError) ?>
+                </div>
+              <?php endif; ?>
+
+              <form method="POST" class="grid gap-4 md:grid-cols-2">
+                <input type="hidden" name="create_account" value="1" />
+                <input type="hidden" name="create_account_type" value="evaluator" />
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="evaluator-role">Evaluator Role</label>
+                  <select
+                    id="evaluator-role"
+                    name="evaluator_role"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  >
+                    <option value="student_assistant" <?= $evaluatorFormData["role"] === "student_assistant" ? "selected" : "" ?>>Student Assistant</option>
+                    <option value="administrator" <?= $evaluatorFormData["role"] === "administrator" ? "selected" : "" ?>>Administrator</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="evaluator-username">Username</label>
+                  <input
+                    id="evaluator-username"
+                    name="username"
+                    type="text"
+                    value="<?= htmlspecialchars($evaluatorFormData["username"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="evaluator-password">Password</label>
+                  <input
+                    id="evaluator-password"
+                    name="password"
+                    type="password"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div id="evaluator-full-name-block">
+                  <label class="text-xs font-semibold text-[#052c6a]" for="evaluator-full-name">Full Name</label>
+                  <input
+                    id="evaluator-full-name"
+                    name="full_name"
+                    type="text"
+                    value="<?= htmlspecialchars($evaluatorFormData["full_name"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  />
+                </div>
+                <div id="evaluator-email-block">
+                  <label class="text-xs font-semibold text-[#052c6a]" for="evaluator-email">Email</label>
+                  <input
+                    id="evaluator-email"
+                    name="email"
+                    type="email"
+                    value="<?= htmlspecialchars($evaluatorFormData["email"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  />
+                </div>
+                <div id="evaluator-office-block">
+                  <label class="text-xs font-semibold text-[#052c6a]" for="evaluator-office">Office</label>
+                  <input
+                    id="evaluator-office"
+                    name="office"
+                    type="text"
+                    value="<?= htmlspecialchars($evaluatorFormData["office"]) ?>"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  />
+                </div>
+                <div id="evaluator-student-block" class="md:col-span-2">
+                  <label class="text-xs font-semibold text-[#052c6a]" for="evaluator-student-record">Student Assistant Record</label>
+                  <select
+                    id="evaluator-student-record"
+                    name="scholar_record_id"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  >
+                    <option value="0">Select student assistant</option>
+                    <?php if (empty($availableStudentAssistantRecordOptions)): ?>
+                      <option value="0" disabled>No available student assistant records</option>
+                    <?php else: ?>
+                    <?php foreach ($availableStudentAssistantRecordOptions as $studentRecord): ?>
+                      <?php
+                        $recordId = (int)($studentRecord["id"] ?? 0);
+                        $recordName = trim((string)($studentRecord["full_name"] ?? ""));
+                        $recordOffice = trim((string)($studentRecord["assigned_office"] ?? ""));
+                        $recordSemester = trim((string)($studentRecord["semester"] ?? ""));
+                        $recordSchoolYear = trim((string)($studentRecord["academic_year"] ?? ""));
+                        $recordLabel = trim($recordName . " / " . $recordOffice . " / " . $recordSemester . " " . $recordSchoolYear, " /");
+                      ?>
+                      <option
+                        value="<?= htmlspecialchars((string)$recordId) ?>"
+                        <?= (int)$evaluatorFormData["scholar_record_id"] === $recordId ? "selected" : "" ?>
+                      >
+                        <?= htmlspecialchars($recordLabel !== "" ? $recordLabel : ("Record #" . $recordId)) ?>
+                      </option>
+                    <?php endforeach; ?>
+                    <?php endif; ?>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="evaluator-status">Status</label>
+                  <select
+                    id="evaluator-status"
+                    name="status"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  >
+                    <option value="active" <?= $evaluatorFormData["status"] === "active" ? "selected" : "" ?>>Active</option>
+                    <option value="inactive" <?= $evaluatorFormData["status"] === "inactive" ? "selected" : "" ?>>Inactive</option>
+                  </select>
+                </div>
+                <div class="md:col-span-2 flex flex-wrap justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    class="rounded-full border border-slate-300 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400 hover:text-slate-700"
+                    data-close-modal="evaluatorModal"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="rounded-full bg-[#0d8ddb] px-6 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow hover:bg-[#0b7bbf]"
+                  >
+                    Save Evaluator
                   </button>
                 </div>
               </form>
@@ -1865,7 +2836,7 @@ if ($headOfficeResult) {
                   />
                 </div>
                 <div>
-                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-head-office-name">Name</label>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-head-office-name">First Name</label>
                   <input
                     id="edit-head-office-name"
                     name="name"
@@ -1910,6 +2881,127 @@ if ($headOfficeResult) {
                     type="button"
                     class="rounded-full border border-slate-300 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400 hover:text-slate-700"
                     data-close-modal="editHeadOfficeModal"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    class="rounded-full bg-[#0d8ddb] px-6 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow hover:bg-[#0b7bbf]"
+                  >
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Edit Evaluator Modal -->
+        <div
+          id="editEvaluatorModal"
+          class="fixed inset-0 z-40 hidden items-center justify-center bg-slate-950/60 px-4 py-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="edit-evaluator-modal-title"
+        >
+          <div class="absolute inset-0" data-close-modal="editEvaluatorModal"></div>
+          <div class="relative z-10 w-full max-w-2xl rounded-2xl border border-[#0d8ddb]/20 bg-white shadow-2xl">
+            <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <div>
+                <p class="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#0d8ddb]">Accounts</p>
+                <h3 id="edit-evaluator-modal-title" class="text-lg font-semibold text-[#052c6a]">Edit Evaluator Account</h3>
+              </div>
+              <button
+                type="button"
+                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                data-close-modal="editEvaluatorModal"
+              >
+                Close
+              </button>
+            </div>
+            <div class="px-6 py-5">
+              <form method="POST" class="grid gap-4 md:grid-cols-2">
+                <input type="hidden" name="update_account" value="1" />
+                <input type="hidden" name="update_account_type" value="evaluator" />
+                <input type="hidden" name="original_username" id="edit-evaluator-original-username" />
+                <input type="hidden" name="original_role" id="edit-evaluator-original-role" />
+                <input type="hidden" name="evaluator_role" id="edit-evaluator-role" />
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-evaluator-role-label">Evaluator Role</label>
+                  <input
+                    id="edit-evaluator-role-label"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-slate-50 px-4 py-2 text-sm text-[#052c6a]"
+                    readonly
+                  />
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-evaluator-username">Username</label>
+                  <input
+                    id="edit-evaluator-username"
+                    name="username"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                    required
+                  />
+                </div>
+                <div id="edit-evaluator-full-name-block">
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-evaluator-full-name">Full Name</label>
+                  <input
+                    id="edit-evaluator-full-name"
+                    name="full_name"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  />
+                </div>
+                <div id="edit-evaluator-office-block">
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-evaluator-office">Office</label>
+                  <input
+                    id="edit-evaluator-office"
+                    name="office"
+                    type="text"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  />
+                </div>
+                <div id="edit-evaluator-student-block" class="md:col-span-2">
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-evaluator-student-record">Student Assistant Record</label>
+                  <select
+                    id="edit-evaluator-student-record"
+                    name="scholar_record_id"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  >
+                    <option value="0">Select student assistant</option>
+                    <?php foreach ($studentAssistantRecordOptions as $studentRecord): ?>
+                      <?php
+                        $recordId = (int)($studentRecord["id"] ?? 0);
+                        $recordName = trim((string)($studentRecord["full_name"] ?? ""));
+                        $recordOffice = trim((string)($studentRecord["assigned_office"] ?? ""));
+                        $recordSemester = trim((string)($studentRecord["semester"] ?? ""));
+                        $recordSchoolYear = trim((string)($studentRecord["academic_year"] ?? ""));
+                        $recordLabel = trim($recordName . " / " . $recordOffice . " / " . $recordSemester . " " . $recordSchoolYear, " /");
+                      ?>
+                      <option value="<?= htmlspecialchars((string)$recordId) ?>">
+                        <?= htmlspecialchars($recordLabel !== "" ? $recordLabel : ("Record #" . $recordId)) ?>
+                      </option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div>
+                  <label class="text-xs font-semibold text-[#052c6a]" for="edit-evaluator-status">Status</label>
+                  <select
+                    id="edit-evaluator-status"
+                    name="status"
+                    class="mt-2 w-full rounded-lg border border-[#0d8ddb]/40 bg-white px-4 py-2 text-sm text-[#052c6a] focus:border-[#0d8ddb] focus:outline-none focus:ring focus:ring-[#0d8ddb]/20"
+                  >
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+                </div>
+                <div class="md:col-span-2 flex flex-wrap justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    class="rounded-full border border-slate-300 px-5 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600 hover:border-slate-400 hover:text-slate-700"
+                    data-close-modal="editEvaluatorModal"
                   >
                     Cancel
                   </button>
@@ -2135,11 +3227,84 @@ if ($headOfficeResult) {
           });
         }
 
+        const evaluatorRoleSelect = document.getElementById("evaluator-role");
+        const evaluatorStudentBlock = document.getElementById("evaluator-student-block");
+        const evaluatorStudentSelect = document.getElementById("evaluator-student-record");
+        const evaluatorFullNameBlock = document.getElementById("evaluator-full-name-block");
+        const evaluatorFullNameInput = document.getElementById("evaluator-full-name");
+        const evaluatorEmailBlock = document.getElementById("evaluator-email-block");
+        const evaluatorEmailInput = document.getElementById("evaluator-email");
+        const evaluatorOfficeBlock = document.getElementById("evaluator-office-block");
+        const editEvaluatorRoleInput = document.getElementById("edit-evaluator-role");
+        const editEvaluatorStudentBlock = document.getElementById("edit-evaluator-student-block");
+        const editEvaluatorStudentSelect = document.getElementById("edit-evaluator-student-record");
+        const editEvaluatorFullNameBlock = document.getElementById("edit-evaluator-full-name-block");
+        const editEvaluatorFullNameInput = document.getElementById("edit-evaluator-full-name");
+        const editEvaluatorOfficeBlock = document.getElementById("edit-evaluator-office-block");
+        const updateEvaluatorFormRole = () => {
+          if (!evaluatorRoleSelect) {
+            return;
+          }
+
+          const isStudentAssistant = evaluatorRoleSelect.value === "student_assistant";
+          if (evaluatorStudentBlock) {
+            evaluatorStudentBlock.classList.toggle("hidden", !isStudentAssistant);
+          }
+          if (evaluatorStudentSelect) {
+            evaluatorStudentSelect.required = isStudentAssistant;
+          }
+          if (evaluatorFullNameBlock) {
+            evaluatorFullNameBlock.classList.toggle("hidden", isStudentAssistant);
+          }
+          if (evaluatorFullNameInput) {
+            evaluatorFullNameInput.required = !isStudentAssistant;
+          }
+          if (evaluatorEmailBlock) {
+            evaluatorEmailBlock.classList.toggle("hidden", isStudentAssistant);
+          }
+          if (evaluatorEmailInput) {
+            evaluatorEmailInput.required = !isStudentAssistant;
+          }
+          if (evaluatorOfficeBlock) {
+            evaluatorOfficeBlock.classList.toggle("hidden", isStudentAssistant);
+          }
+        };
+        if (evaluatorRoleSelect) {
+          evaluatorRoleSelect.addEventListener("change", updateEvaluatorFormRole);
+          updateEvaluatorFormRole();
+        }
+        const updateEditEvaluatorFormRole = () => {
+          if (!editEvaluatorRoleInput) {
+            return;
+          }
+
+          const isStudentAssistant = editEvaluatorRoleInput.value === "student_assistant";
+          if (editEvaluatorStudentBlock) {
+            editEvaluatorStudentBlock.classList.toggle("hidden", !isStudentAssistant);
+          }
+          if (editEvaluatorStudentSelect) {
+            editEvaluatorStudentSelect.required = isStudentAssistant;
+          }
+          if (editEvaluatorFullNameBlock) {
+            editEvaluatorFullNameBlock.classList.toggle("hidden", isStudentAssistant);
+          }
+          if (editEvaluatorFullNameInput) {
+            editEvaluatorFullNameInput.required = !isStudentAssistant;
+          }
+          if (editEvaluatorOfficeBlock) {
+            editEvaluatorOfficeBlock.classList.toggle("hidden", isStudentAssistant);
+          }
+        };
+        updateEditEvaluatorFormRole();
+
         document.querySelectorAll("[data-open-modal]").forEach((button) => {
           button.addEventListener("click", () => {
             const modalId = button.getAttribute("data-open-modal");
             if (modalId) {
               setModalState(modalId, true);
+              if (modalId === "evaluatorModal") {
+                updateEvaluatorFormRole();
+              }
             }
           });
         });
@@ -2183,6 +3348,45 @@ if ($headOfficeResult) {
             officeInput.value = button.dataset.office || "";
             statusSelect.value = button.dataset.status || "active";
             setModalState("editHeadOfficeModal", true);
+          });
+        });
+
+        document.querySelectorAll("[data-edit-evaluator]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const originalUsernameInput = document.getElementById("edit-evaluator-original-username");
+            const originalRoleInput = document.getElementById("edit-evaluator-original-role");
+            const roleInput = document.getElementById("edit-evaluator-role");
+            const roleLabelInput = document.getElementById("edit-evaluator-role-label");
+            const usernameInput = document.getElementById("edit-evaluator-username");
+            const fullNameInput = document.getElementById("edit-evaluator-full-name");
+            const officeInput = document.getElementById("edit-evaluator-office");
+            const studentSelect = document.getElementById("edit-evaluator-student-record");
+            const statusSelect = document.getElementById("edit-evaluator-status");
+
+            if (!originalUsernameInput || !originalRoleInput || !roleInput || !roleLabelInput || !usernameInput || !fullNameInput || !officeInput || !studentSelect || !statusSelect) {
+              return;
+            }
+
+            const role = button.dataset.role || "";
+            const scholarRecordId = button.dataset.scholarRecordId || "0";
+
+            originalUsernameInput.value = button.dataset.username || "";
+            originalRoleInput.value = role;
+            roleInput.value = role;
+            roleLabelInput.value = button.dataset.roleLabel || "Evaluator";
+            usernameInput.value = button.dataset.username || "";
+            fullNameInput.value = button.dataset.fullName || "";
+            officeInput.value = button.dataset.office || "";
+            statusSelect.value = button.dataset.status || "active";
+
+            if (scholarRecordId !== "0" && !Array.from(studentSelect.options).some((option) => option.value === scholarRecordId)) {
+              const linkedLabel = button.dataset.linkedStudentLabel || `Record #${scholarRecordId}`;
+              studentSelect.appendChild(new Option(linkedLabel, scholarRecordId));
+            }
+            studentSelect.value = scholarRecordId;
+
+            updateEditEvaluatorFormRole();
+            setModalState("editEvaluatorModal", true);
           });
         });
 

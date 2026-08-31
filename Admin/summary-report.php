@@ -6,6 +6,7 @@ require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once __DIR__ . "/includes/school-term-filter.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
+require_once __DIR__ . "/../includes/administrator-sa-assignments.php";
 
 $summaryRecords = [];
 $summaryLoadError = "";
@@ -30,12 +31,10 @@ $formatAverage = static function (?float $value) use ($truncateAverage): string 
   return $truncatedValue === null ? "" : number_format($truncatedValue, 2, ".", "");
 };
 
-$verbalFromAverage = static function (?float $value): string {
-  if ($value === null || $value <= 0) {
+$verbalFromAverage = static function (?float $value) use ($truncateAverage): string {
+  $value = $truncateAverage($value);
+  if ($value === null || $value < 1.0) {
     return "";
-  }
-  if ($value >= 5.0) {
-    return "Excellent";
   }
   if ($value >= 4.0) {
     return "Very Good";
@@ -44,9 +43,67 @@ $verbalFromAverage = static function (?float $value): string {
     return "Good";
   }
   if ($value >= 2.0) {
-    return "Fair";
+    return "Poor";
   }
-  return "Poor";
+  return "Needs Improvement";
+};
+
+$summaryEvaluatorRoleOrder = [
+  "student_assistant" => 1,
+  "department_head" => 2,
+  "administrator" => 3,
+];
+$requiredSummaryEvaluatorRoles = array_keys($summaryEvaluatorRoleOrder);
+
+$summaryEvaluatorBaseLabel = static function (string $role): string {
+  if ($role === "student_assistant") {
+    return "Student Assistant";
+  }
+  if ($role === "administrator") {
+    return "Administrator";
+  }
+  return "Head of Office";
+};
+
+$summaryEvaluatorCommentLabel = static function (string $role, string $evaluatorName, string $evaluatorUsername, string $applicantName) use ($summaryEvaluatorBaseLabel): string {
+  $baseLabel = $summaryEvaluatorBaseLabel($role);
+  $personLabel = trim($evaluatorName);
+  if ($personLabel === "") {
+    $personLabel = trim($evaluatorUsername);
+  }
+  if ($personLabel === "" && $role === "student_assistant") {
+    $personLabel = trim($applicantName);
+  }
+
+  return $personLabel !== "" ? $baseLabel . " - " . $personLabel : $baseLabel;
+};
+
+$formatLabeledComments = static function (array $comments): string {
+  if (empty($comments)) {
+    return "&nbsp;";
+  }
+
+  usort($comments, static function (array $left, array $right): int {
+    $leftOrder = (int)($left["order"] ?? 99);
+    $rightOrder = (int)($right["order"] ?? 99);
+    if ($leftOrder !== $rightOrder) {
+      return $leftOrder <=> $rightOrder;
+    }
+    return strcmp((string)($left["label"] ?? ""), (string)($right["label"] ?? ""));
+  });
+
+  $parts = [];
+  foreach ($comments as $comment) {
+    $label = trim((string)($comment["label"] ?? ""));
+    $text = trim((string)($comment["text"] ?? ""));
+    if ($text === "") {
+      continue;
+    }
+    $labelHtml = $label !== "" ? '<span class="summary-comment-label">' . htmlspecialchars($label) . ':</span><br />' : "";
+    $parts[] = '<div class="summary-comment-entry">' . $labelHtml . nl2br(htmlspecialchars($text)) . '</div>';
+  }
+
+  return !empty($parts) ? implode("", $parts) : "&nbsp;";
 };
 
 $formatCertificateDate = static function (?int $timestamp = null): string {
@@ -68,6 +125,8 @@ $formatCertificateDate = static function (?int $timestamp = null): string {
 };
 
 if (($conn ?? null) instanceof mysqli) {
+  isgEnsureAdministratorSaAssignmentsTable($conn);
+
   $evaluationTableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
   $hasEvaluationTable = $evaluationTableResult instanceof mysqli_result && $evaluationTableResult->num_rows > 0;
   if ($evaluationTableResult instanceof mysqli_result) {
@@ -96,9 +155,13 @@ if (($conn ?? null) instanceof mysqli) {
         application_id,
         applicant_name,
         assigned_office,
+        head_username,
+        head_name,
+        evaluator_role,
         semester,
         school_year,
         overall_total,
+        ratings_json,
         strengths,
         areas_improvement,
         recommendations,
@@ -116,35 +179,165 @@ if (($conn ?? null) instanceof mysqli) {
 
       if ($stmt->execute()) {
         $result = $stmt->get_result();
-        $seenApplicationIds = [];
+        $summaryGroups = [];
+        $seenEvaluationRoles = [];
+        $administratorAssignmentCache = [];
 
         while ($row = $result->fetch_assoc()) {
           $applicationId = (int)($row["application_id"] ?? 0);
-          $applicationKey = (string)$applicationId;
-          if (isset($seenApplicationIds[$applicationKey])) {
+          $scholarRecordId = abs($applicationId);
+          if ($scholarRecordId <= 0) {
             continue;
           }
-          $seenApplicationIds[$applicationKey] = true;
+
+          $evaluatorRole = isgNormalizeEvaluatorRole((string)($row["evaluator_role"] ?? "department_head"));
+          if ($evaluatorRole === "") {
+            $evaluatorRole = "department_head";
+          }
+          if (!isset($summaryEvaluatorRoleOrder[$evaluatorRole])) {
+            continue;
+          }
+
+          $semester = trim((string)($row["semester"] ?? ""));
+          $schoolYear = trim((string)($row["school_year"] ?? ""));
+          if ($evaluatorRole === "administrator") {
+            $assignmentKey = isgAdministratorSaAssignmentKey($scholarRecordId, $schoolYear, $semester);
+            if (!array_key_exists($assignmentKey, $administratorAssignmentCache)) {
+              $administratorAssignmentCache[$assignmentKey] = isgLoadAdministratorSaAssignment(
+                $conn,
+                $scholarRecordId,
+                $schoolYear,
+                $semester
+              );
+            }
+
+            $assignment = $administratorAssignmentCache[$assignmentKey];
+            $pickedAdministratorUsername = is_array($assignment)
+              ? strtolower(trim((string)($assignment["administrator_username"] ?? "")))
+              : "";
+            $evaluationAdministratorUsername = strtolower(trim((string)($row["head_username"] ?? "")));
+            if ($pickedAdministratorUsername === "" || $evaluationAdministratorUsername === "" || $pickedAdministratorUsername !== $evaluationAdministratorUsername) {
+              continue;
+            }
+          }
+
+          $groupKey = (string)$scholarRecordId . "|" . strtolower($schoolYear) . "|" . strtolower($semester);
+          $roleKey = $groupKey . "|" . $evaluatorRole;
+          if (isset($seenEvaluationRoles[$roleKey])) {
+            continue;
+          }
+          $seenEvaluationRoles[$roleKey] = true;
+
+          if (!isset($summaryGroups[$groupKey])) {
+            $summaryGroups[$groupKey] = [
+              "application_id" => $scholarRecordId,
+              "name" => trim((string)($row["applicant_name"] ?? "")),
+              "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
+              "semester" => $semester,
+              "school_year" => $schoolYear,
+              "weighted_mean_total" => 0.0,
+              "weighted_mean_count" => 0,
+              "evaluator_roles" => [],
+              "strength_comments" => [],
+              "areas_improvement_comments" => [],
+              "recommendation_comments" => [],
+            ];
+          }
 
           $overallTotal = (int)($row["overall_total"] ?? 0);
-          $weightedMean = $overallTotal > 0 ? ($overallTotal / 15) : null;
+          $ratingTotal = 0;
+          $ratingCount = 0;
+          $decodedRatings = json_decode((string)($row["ratings_json"] ?? ""), true);
+          if (is_array($decodedRatings)) {
+            foreach ($decodedRatings as $ratingValue) {
+              $score = (int)$ratingValue;
+              if ($score >= 1 && $score <= 4) {
+                $ratingTotal += $score;
+                $ratingCount++;
+              }
+            }
+          }
+          if ($ratingCount <= 0 && $overallTotal > 0) {
+            $ratingTotal = $overallTotal;
+            $ratingCount = 20;
+          }
 
-          $summaryRecords[] = [
-            "application_id" => $applicationId,
-            "name" => trim((string)($row["applicant_name"] ?? "")),
-            "assigned_office" => trim((string)($row["assigned_office"] ?? "")),
-            "semester" => trim((string)($row["semester"] ?? "")),
-            "school_year" => trim((string)($row["school_year"] ?? "")),
-            "weighted_mean" => $weightedMean,
-            "verbal_description" => $verbalFromAverage($weightedMean),
-            "strengths" => trim((string)($row["strengths"] ?? "")),
-            "areas_improvement" => trim((string)($row["areas_improvement"] ?? "")),
-            "recommendations" => trim((string)($row["recommendations"] ?? "")),
-          ];
+          if ($ratingCount > 0) {
+            $summaryGroups[$groupKey]["weighted_mean_total"] += $ratingTotal / $ratingCount;
+            $summaryGroups[$groupKey]["weighted_mean_count"]++;
+            $summaryGroups[$groupKey]["evaluator_roles"][$evaluatorRole] = true;
+          }
+
+          $commentLabel = $summaryEvaluatorCommentLabel(
+            $evaluatorRole,
+            (string)($row["head_name"] ?? ""),
+            (string)($row["head_username"] ?? ""),
+            (string)($row["applicant_name"] ?? "")
+          );
+          $commentOrder = (int)($summaryEvaluatorRoleOrder[$evaluatorRole] ?? 99);
+
+          $strengthText = trim((string)($row["strengths"] ?? ""));
+          if ($strengthText !== "") {
+            $summaryGroups[$groupKey]["strength_comments"][] = [
+              "order" => $commentOrder,
+              "label" => $commentLabel,
+              "text" => $strengthText,
+            ];
+          }
+
+          $areasImprovementText = trim((string)($row["areas_improvement"] ?? ""));
+          if ($areasImprovementText !== "") {
+            $summaryGroups[$groupKey]["areas_improvement_comments"][] = [
+              "order" => $commentOrder,
+              "label" => $commentLabel,
+              "text" => $areasImprovementText,
+            ];
+          }
+
+          $recommendationText = trim((string)($row["recommendations"] ?? ""));
+          if ($recommendationText !== "") {
+            $summaryGroups[$groupKey]["recommendation_comments"][] = [
+              "order" => $commentOrder,
+              "label" => $commentLabel,
+              "text" => $recommendationText,
+            ];
+          }
         }
 
         if ($result instanceof mysqli_result) {
           $result->free();
+        }
+
+        foreach ($summaryGroups as $group) {
+          $evaluatorRoles = array_keys((array)($group["evaluator_roles"] ?? []));
+          $hasCompleteEvaluations = true;
+          foreach ($requiredSummaryEvaluatorRoles as $requiredRole) {
+            if (!in_array($requiredRole, $evaluatorRoles, true)) {
+              $hasCompleteEvaluations = false;
+              break;
+            }
+          }
+
+          $weightedMeanCount = (int)($group["weighted_mean_count"] ?? 0);
+          $weightedMean = ($hasCompleteEvaluations && $weightedMeanCount === count($requiredSummaryEvaluatorRoles))
+            ? ((float)($group["weighted_mean_total"] ?? 0.0) / $weightedMeanCount)
+            : null;
+
+          $summaryRecords[] = [
+            "application_id" => (int)($group["application_id"] ?? 0),
+            "name" => trim((string)($group["name"] ?? "")),
+            "assigned_office" => trim((string)($group["assigned_office"] ?? "")),
+            "semester" => trim((string)($group["semester"] ?? "")),
+            "school_year" => trim((string)($group["school_year"] ?? "")),
+            "weighted_mean" => $weightedMean,
+            "verbal_description" => $verbalFromAverage($weightedMean),
+            "evaluator_count" => $weightedMeanCount,
+            "has_complete_evaluations" => $hasCompleteEvaluations,
+            "evaluator_roles" => $evaluatorRoles,
+            "strength_comments" => (array)($group["strength_comments"] ?? []),
+            "areas_improvement_comments" => (array)($group["areas_improvement_comments"] ?? []),
+            "recommendation_comments" => (array)($group["recommendation_comments"] ?? []),
+          ];
         }
       } else {
         $summaryLoadError = "Unable to load summary report records.";
@@ -160,7 +353,7 @@ if (($conn ?? null) instanceof mysqli) {
 if (!empty($summaryRecords)) {
   if ($showExcellentOnly) {
     $summaryRecords = array_values(array_filter($summaryRecords, static function (array $record): bool {
-      return ($record["verbal_description"] ?? "") === "Excellent";
+      return ($record["verbal_description"] ?? "") === "Very Good";
     }));
   }
 
@@ -197,8 +390,8 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css" rel="stylesheet" />
     <style>
       @page {
-        size: <?php echo $showExcellentOnly ? "letter landscape" : "8.5in 13in"; ?>;
-        margin: <?php echo $showExcellentOnly ? "0" : "12mm 10mm"; ?>;
+        size: <?php echo $showExcellentOnly ? "letter landscape" : "8.5in 13in portrait"; ?>;
+        margin: <?php echo $showExcellentOnly ? "0" : "6mm"; ?>;
       }
 
       ::-webkit-scrollbar {
@@ -211,7 +404,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
       }
 
       .report-header {
-        margin-bottom: 0.5rem;
+        margin-bottom: 1rem;
         text-align: center;
       }
 
@@ -221,7 +414,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
         align-items: center;
         flex-wrap: wrap;
         gap: 1rem;
-        margin-bottom: 0.25rem;
+        margin-bottom: 0.5rem;
       }
 
       .header-left {
@@ -293,23 +486,27 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
       }
 
       .summary-table col.col-name {
-        width: 24%;
+        width: 18%;
       }
 
       .summary-table col.col-weighted {
-        width: 10%;
+        width: 8%;
       }
 
       .summary-table col.col-verbal {
-        width: 13%;
+        width: 11%;
       }
 
       .summary-table col.col-strength {
-        width: 24%;
+        width: 19%;
+      }
+
+      .summary-table col.col-area {
+        width: 19%;
       }
 
       .summary-table col.col-comment {
-        width: 25%;
+        width: 21%;
       }
 
       .summary-table th,
@@ -325,6 +522,16 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
         word-break: normal;
         overflow-wrap: normal;
         line-height: 1.3;
+      }
+
+      .summary-comment-entry + .summary-comment-entry {
+        margin-top: 0.45rem;
+        padding-top: 0.45rem;
+        border-top: 1px solid rgba(0, 0, 0, 0.18);
+      }
+
+      .summary-comment-label {
+        font-weight: 700;
       }
 
       .excellent-table {
@@ -895,10 +1102,19 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
         main {
           margin-left: 0 !important;
           padding: 0 !important;
+          width: 100% !important;
+        }
+
+        main > section {
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
         }
 
         .report-stage {
+          width: 100% !important;
           max-width: none !important;
+          margin: 0 !important;
         }
 
         .report-wrapper {
@@ -922,38 +1138,43 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
 
         .summary-table {
           width: 100% !important;
-          table-layout: auto !important;
-          font-size: 10px !important;
+          min-width: 0 !important;
+          table-layout: fixed !important;
+          font-size: 10.6px !important;
         }
 
         .summary-table col.col-seq {
-          width: 4% !important;
+          width: 4.5% !important;
         }
 
         .summary-table col.col-name {
-          width: 24% !important;
+          width: 17% !important;
         }
 
         .summary-table col.col-weighted {
-          width: 10% !important;
+          width: 8.5% !important;
         }
 
         .summary-table col.col-verbal {
-          width: 13% !important;
+          width: 10.5% !important;
         }
 
         .summary-table col.col-strength {
-          width: 24% !important;
+          width: 19.5% !important;
+        }
+
+        .summary-table col.col-area {
+          width: 19.5% !important;
         }
 
         .summary-table col.col-comment {
-          width: 25% !important;
+          width: 20.5% !important;
         }
 
         .summary-table th,
         .summary-table td {
-          padding: 3px 4px !important;
-          line-height: 1.2 !important;
+          padding: 4px 5px !important;
+          line-height: 1.24 !important;
         }
 
         .summary-table .summary-text-cell {
@@ -1312,7 +1533,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
               class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-[#0d8ddb] px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-[#0a6fac]"
             >
               <i class="fas fa-star text-[11px]"></i>
-              <span>Excellent Student Assistants</span>
+              <span>Very Good Student Assistants</span>
             </a>
           <?php else: ?>
             <a
@@ -1320,7 +1541,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
               class="inline-flex items-center gap-2 rounded-full border border-[#0d8ddb] bg-white px-4 py-2 text-xs font-semibold text-[#052c6a] shadow-sm transition-colors hover:bg-[#eff6ff]"
             >
               <i class="fas fa-star text-[11px]"></i>
-              <span>Excellent Student Assistants</span>
+              <span>Very Good Student Assistants</span>
             </a>
           <?php endif; ?>
           <button
@@ -1360,11 +1581,10 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                   <div class="header-left-text">
                     <h1 class="text-center">Saint Michael College of Caraga</h1>
                     <p class="text-center">
-                      Atupan St., Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
+                      Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines
                     </p>
-                    <p class="text-center">Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
                     <p class="text-center">
-                      <a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a>
+                      <a>Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</a>
                     </p>
                   </div>
                 </div>
@@ -1374,16 +1594,10 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
               </div>
             </header>
 
-            <p class="text-center text-xs -mt-2">
-              Website:
-              <a class="text-blue-700 underline" href="http://www.smccnasipit.edu.ph">www.smccnasipit.edu.ph</a>,
-              Email:
-              <a class="text-blue-700 underline" href="mailto:communications@smccnasipit.edu.ph">communications@smccnasipit.edu.ph</a>
-            </p>
             <p class="text-center font-semibold title-line text-sm">OFFICE OF THE ADMISSION &amp; SCHOLARSHIP</p>
             <div class="thin-rule my-1"></div>
             <section class="text-center mb-4">
-              <h2 class="font-bold text-base"><?php echo $showExcellentOnly ? "EXCELLENT STUDENT ASSISTANTS" : "STUDENT ASSISTANTS' EVALUATION SUMMARY REPORT"; ?></h2>
+              <h2 class="font-bold text-base"><?php echo $showExcellentOnly ? "VERY GOOD STUDENT ASSISTANTS" : "STUDENT ASSISTANTS' EVALUATION SUMMARY REPORT"; ?></h2>
               <p class="font-semibold text-sm"><?php echo htmlspecialchars($headerSemesterLabel); ?>, S.Y. <?php echo htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years"); ?></p>
             </section>
 
@@ -1407,7 +1621,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                       </tr>
                     <?php elseif (empty($summaryRecords)): ?>
                       <tr>
-                        <td class="text-center" colspan="6">No Excellent Student Assistants found for the selected term.</td>
+                        <td class="text-center" colspan="6">No Very Good Student Assistants found for the selected term.</td>
                       </tr>
                     <?php else: ?>
                       <?php foreach ($summaryRecords as $index => $record): ?>
@@ -1427,7 +1641,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                               ?>
                             </span>
                           </td>
-                          <td><span class="excellent-badge">Excellent</span></td>
+                          <td><span class="excellent-badge">Very Good</span></td>
                           <td>
                             <button
                               type="button"
@@ -1450,6 +1664,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                     <col class="col-weighted" />
                     <col class="col-verbal" />
                     <col class="col-strength" />
+                    <col class="col-area" />
                     <col class="col-comment" />
                   </colgroup>
                   <thead>
@@ -1458,18 +1673,19 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                       <th class="border border-black p-1">NAME OF STUDENT ASSISTANT</th>
                       <th class="border border-black p-1">Weighted<br />Mean</th>
                       <th class="border border-black p-1">Verbal<br />Description</th>
-                      <th class="border border-black p-1">Strength(s)/Areas for Improvement</th>
+                      <th class="border border-black p-1">Strength(s)</th>
+                      <th class="border border-black p-1">Areas for Improvement</th>
                       <th class="border border-black p-1">Evaluator's Comment(s)/Recommendation</th>
                     </tr>
                   </thead>
                   <tbody>
                     <?php if ($summaryLoadError !== ""): ?>
                       <tr>
-                        <td class="border border-black p-2 text-center" colspan="6"><?php echo htmlspecialchars($summaryLoadError); ?></td>
+                        <td class="border border-black p-2 text-center" colspan="7"><?php echo htmlspecialchars($summaryLoadError); ?></td>
                       </tr>
                     <?php elseif (empty($summaryRecords)): ?>
                       <tr>
-                        <td class="border border-black p-2 text-center" colspan="6">No department evaluation results found for the selected term.</td>
+                        <td class="border border-black p-2 text-center" colspan="7">No department evaluation results found for the selected term.</td>
                       </tr>
                     <?php else: ?>
                       <?php foreach ($summaryRecords as $index => $record): ?>
@@ -1484,16 +1700,13 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                           </td>
                           <td class="border border-black p-1 text-center"><?php echo htmlspecialchars((string)($record["verbal_description"] ?? "")); ?></td>
                           <td class="border border-black p-1 summary-text-cell">
-                            <?php
-                              $strengthParts = [];
-                              if ($record["strengths"] !== "") $strengthParts[] = $record["strengths"];
-                              if ($record["areas_improvement"] !== "") $strengthParts[] = $record["areas_improvement"];
-                              $combinedStrength = implode(" / ", $strengthParts);
-                              echo $combinedStrength !== "" ? nl2br(htmlspecialchars($combinedStrength)) : "&nbsp;";
-                            ?>
+                            <?php echo $formatLabeledComments((array)($record["strength_comments"] ?? [])); ?>
                           </td>
                           <td class="border border-black p-1 summary-text-cell">
-                            <?php echo $record["recommendations"] !== "" ? nl2br(htmlspecialchars((string)$record["recommendations"])) : "&nbsp;"; ?>
+                            <?php echo $formatLabeledComments((array)($record["areas_improvement_comments"] ?? [])); ?>
+                          </td>
+                          <td class="border border-black p-1 summary-text-cell">
+                            <?php echo $formatLabeledComments((array)($record["recommendation_comments"] ?? [])); ?>
                           </td>
                         </tr>
                       <?php endforeach; ?>
@@ -1535,7 +1748,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                         <div class="certificate-school-text">
                           <h3>Saint Michael College of Caraga</h3>
                           <p>Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines</p>
-                          <p>Website: www.smccnasipit.edu.ph | Tel. Nos. 085 300-2732</p>
+                          <p>Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</p>
                           <div class="certificate-office">Office of the Admission &amp; Scholarship</div>
                         </div>
                         <img class="certificate-iso-logo" src="../img/SOCO-PAB-1024x672.jpg" alt="SOCOTEC certification logo" />
@@ -1554,7 +1767,7 @@ $allReportUrl = "summary-report.php" . (!empty($allReportParams) ? ("?" . http_b
                         <p>
                           for demonstrating exemplary dedication, professionalism, and outstanding service as a Student Assistant at
                           Saint Michael College of Caraga. With a perfect performance evaluation rating of
-                          <strong><?php echo htmlspecialchars($certificateMean); ?> (Excellent)</strong> for the
+                          <strong><?php echo htmlspecialchars($certificateMean); ?> (Very Good)</strong> for the
                           <strong><?php echo htmlspecialchars($certificateSemester); ?></strong> of
                           <strong>S.Y. <?php echo htmlspecialchars($certificateSchoolYear); ?></strong>, your commitment to excellence,
                           work ethic, and invaluable contributions to the institution serve as an inspiration to your peers and the academic community.
@@ -1820,19 +2033,3 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     </script>  </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

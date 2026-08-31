@@ -362,8 +362,8 @@ $_SESSION["from_index"] = true;
       <div class="bg-gradient-to-br from-[#0d8ddb] to-[#003b7d] rounded-full p-5 mb-4 shadow-md text-white animate-float">
         <i class="fas fa-id-card text-2xl"></i>
       </div>
-      <h3 class="font-extrabold text-lg mb-2 text-[#222222]">Head of Office</h3>
-      <button class="bg-[#fcdc2f] text-[#052c6a] font-semibold rounded-full w-full py-2 text-sm hover:bg-[#ffe45c] shadow transition" type="button" onclick="window.location.href='DepartmentHead/headLogin.php'">
+      <h3 class="font-extrabold text-lg mb-2 text-[#222222]">Evaluators</h3>
+      <button class="bg-[#fcdc2f] text-[#052c6a] font-semibold rounded-full w-full py-2 text-sm hover:bg-[#ffe45c] shadow transition" type="button" onclick="window.location.href='evaluatorLogin.php'">
         Login
       </button>
     </div>

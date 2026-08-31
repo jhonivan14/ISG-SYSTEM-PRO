@@ -1,5 +1,6 @@
 <?php
 session_start();
+require_once __DIR__ . "/includes/evaluator-users.php";
 
 // Resolve where to send the user before clearing session data.
 $redirect = "index.php";
@@ -7,14 +8,14 @@ $redirect = "index.php";
 $requestedRole = strtolower(trim((string)($_GET["role"] ?? "")));
 if ($requestedRole === "panel" || $requestedRole === "panelist") {
     $redirect = "Panelist/panelLogin.php";
-} elseif ($requestedRole === "head" || $requestedRole === "departmenthead") {
-    $redirect = "DepartmentHead/headLogin.php";
+} elseif ($requestedRole === "head" || $requestedRole === "departmenthead" || $requestedRole === "department_head" || $requestedRole === "student_assistant" || $requestedRole === "administrator" || $requestedRole === "evaluator") {
+    $redirect = "evaluatorLogin.php";
 } elseif ($requestedRole === "admin") {
     $redirect = "Admin/adminLogin.php";
 } elseif (!empty($_SESSION["panelist_username"])) {
     $redirect = "Panelist/panelLogin.php";
 } elseif (!empty($_SESSION["head_username"])) {
-    $redirect = "DepartmentHead/headLogin.php";
+    $redirect = "evaluatorLogin.php";
 } elseif (!empty($_SESSION["admin_username"]) || !empty($_SESSION["admin_name"])) {
     $redirect = "Admin/adminLogin.php";
 } else {
@@ -22,8 +23,8 @@ if ($requestedRole === "panel" || $requestedRole === "panelist") {
     $refPath = (string)parse_url((string)($_SERVER["HTTP_REFERER"] ?? ""), PHP_URL_PATH);
     if (stripos($refPath, "/Panelist/") !== false) {
         $redirect = "Panelist/panelLogin.php";
-    } elseif (stripos($refPath, "/DepartmentHead/") !== false) {
-        $redirect = "DepartmentHead/headLogin.php";
+    } elseif (stripos($refPath, "/DepartmentHead/") !== false || stripos($refPath, "/StudentAssistant/") !== false || stripos($refPath, "/Administrator/") !== false) {
+        $redirect = "evaluatorLogin.php";
     } elseif (stripos($refPath, "/Admin/") !== false) {
         $redirect = "Admin/adminLogin.php";
     }

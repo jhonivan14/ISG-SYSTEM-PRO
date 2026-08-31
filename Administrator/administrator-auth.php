@@ -96,3 +96,4 @@ if (!function_exists("headConsumeRedirectTarget")) {
     return headPath($fallbackFile);
   }
 }
+

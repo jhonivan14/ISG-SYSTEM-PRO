@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . "/head-auth.php";
+require_once __DIR__ . "/administrator-auth.php";
 headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
@@ -395,19 +395,19 @@ $check = static function (int $actual, int $scale): string {
 
         <nav class="flex-1 mt-2">
           <ul class="text-xs font-semibold">
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='headDashboard.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='administratorDashboard.php'">
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='my-sas.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='administrator-my-sas.php'">
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
-            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='show-evaluation.php'">
+            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='administrator-show-evaluation.php'">
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='head-changePassword.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='administrator-changePassword.php'">
               <i class="fas fa-key w-5"></i>
               <span>Change Password</span>
             </li>
@@ -459,7 +459,7 @@ $check = static function (int $actual, int $scale): string {
 
         <section class="px-4 sm:px-6 pt-6">
           <div class="mx-auto max-w-6xl flex justify-end gap-2 mb-4 no-print">
-            <button type="button" class="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-150" onclick="window.location.href='show-evaluation.php'">
+            <button type="button" class="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-white px-4 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-400 transition-colors duration-150" onclick="window.location.href='administrator-show-evaluation.php'">
               <i class="fas fa-arrow-left text-[10px]"></i> Back
             </button>
             <?php if ($evaluation !== null): ?>
@@ -600,3 +600,4 @@ $check = static function (int $actual, int $scale): string {
     </script>
   </body>
 </html>
+

@@ -5,6 +5,7 @@
 require_once __DIR__ . "/includes/admin-auth.php";
 adminRequireLogin();
 require_once "../db.php";
+require_once "../includes/administrator-sa-assignments.php";
 require_once __DIR__ . "/includes/applicant-sidebar-badge.php";
 
 $evaluationId = isset($_GET["evaluation_id"])
@@ -25,41 +26,104 @@ $displayRecommendations = "";
 $displaySignatureData = "";
 $displayProgramYearLevel = "";
 $displayHeadAccountLastName = "";
+$selectedEvaluationSemester = "";
+$selectedEvaluationSchoolYear = "";
+$evaluationDisplayRecords = [];
+$evaluatorOptions = ["Self", "Head of Office", "Administrator"];
+$displayEvaluatorRole = "department_head";
+$evaluatorType = "Head of Office";
 
-$ratings = [
-  "score-a1" => 0,
-  "score-a2" => 0,
-  "score-a3" => 0,
-  "score-a4" => 0,
-  "score-a5" => 0,
-  "score-b1" => 0,
-  "score-b2" => 0,
-  "score-b3" => 0,
-  "score-b4" => 0,
-  "score-b5" => 0,
-  "score-c1" => 0,
-  "score-c2" => 0,
-  "score-c3" => 0,
-  "score-c4" => 0,
-  "score-c5" => 0,
+$ratingOptions = [
+  4 => [
+    "label" => "Very Good",
+    "short" => "VG",
+    "interpretation" => "Consistently exceeds the performance expectations stated in the indicator.",
+  ],
+  3 => [
+    "label" => "Good",
+    "short" => "G",
+    "interpretation" => "Consistently meets the performance expectations stated in the indicator.",
+  ],
+  2 => [
+    "label" => "Poor",
+    "short" => "P",
+    "interpretation" => "Frequently falls below the performance expectations stated in the indicator and requires improvement.",
+  ],
+  1 => [
+    "label" => "Needs Improvement",
+    "short" => "NI",
+    "interpretation" => "Consistently fails to meet the performance expectations stated in the indicator and requires close supervision and additional guidance.",
+  ],
+];
+$evaluationSections = [
+  "a" => [
+    "title" => "A. Quality and Quantity of Work",
+    "criteria" => [
+      "score-a1" => "A.1 Completes assigned tasks accurately and with minimal errors.",
+      "score-a2" => "A.2 Completes assigned tasks thoroughly and according to instructions.",
+      "score-a3" => "A.3 Completes work within the required time.",
+      "score-a4" => "A.4 Demonstrates initiative by seeking additional responsibilities after completing assigned works.",
+      "score-a5" => "A.5 Willingly accepts new assignments and responsibilities.",
+    ],
+  ],
+  "b" => [
+    "title" => "B. Interpersonal Skills",
+    "criteria" => [
+      "score-b1" => "B.1 Communicates clearly and respectfully with students, employees, and visitors.",
+      "score-b2" => "B.2 Demonstrates courtesy and professionalism when assisting students, employees, parents, and visitors.",
+      "score-b3" => "B.3 Works cooperatively with office personnel and fellow student assistants.",
+      "score-b4" => "B.4 Responds appropriately to questions, concerns, and requests.",
+      "score-b5" => "B.5 Contributes positively to teamwork and collaborates effectively with colleagues.",
+    ],
+  ],
+  "c" => [
+    "title" => "C. Attendance and Reliability",
+    "criteria" => [
+      "score-c1" => "C.1 Maintains regular attendance and provides timely notification for any authorized absence.",
+      "score-c2" => "C.2 Reports for duty punctually and observes the assigned work schedule.",
+      "score-c3" => "C.3 Participates actively in institutional activities, meetings, orientations, and trainings when required.",
+      "score-c4" => "C.4 Works responsibly with minimal supervision.",
+      "score-c5" => "C.5 Follows instructions and completes assigned responsibilities consistently.",
+    ],
+  ],
+  "d" => [
+    "title" => "D. Professionalism and Ethical Conduct",
+    "criteria" => [
+      "score-d1" => "D.1 Demonstrates honesty and integrity in performing assigned duties.",
+      "score-d2" => "D.2 Maintains confidentiality of office records and information.",
+      "score-d3" => "D.3 Shows respect for institutional policies and procedures.",
+      "score-d4" => "D.4 Maintains a positive attitude and professional demeanor while performing assigned duties.",
+      "score-d5" => "D.5 Observes proper dress code and behaves appropriately while on duty.",
+    ],
+  ],
 ];
 
-$sectionFields = [
-  "a" => ["score-a1", "score-a2", "score-a3", "score-a4", "score-a5"],
-  "b" => ["score-b1", "score-b2", "score-b3", "score-b4", "score-b5"],
-  "c" => ["score-c1", "score-c2", "score-c3", "score-c4", "score-c5"],
-];
-
-$sectionWeightedTotals = [
-  "a" => [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0],
-  "b" => [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0],
-  "c" => [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0],
-];
-$overallWeightedTotals = [5 => 0, 4 => 0, 3 => 0, 2 => 0, 1 => 0];
+$ratings = [];
+$sectionFields = [];
+$sectionWeightedTotals = [];
+foreach ($evaluationSections as $sectionKey => $section) {
+  $sectionFields[$sectionKey] = array_keys($section["criteria"]);
+  $sectionWeightedTotals[$sectionKey] = array_fill_keys(array_keys($ratingOptions), 0);
+  foreach ($sectionFields[$sectionKey] as $field) {
+    $ratings[$field] = 0;
+  }
+}
+$overallWeightedTotals = array_fill_keys(array_keys($ratingOptions), 0);
 $resolvedScholarRow = null;
 $loadedByEvaluationId = false;
 
 // Helpers below load the selected evaluation record and format print-friendly score summaries.
+
+$evaluatorTypeFromRole = static function (string $role): string {
+  $role = isgNormalizeEvaluatorRole($role);
+  if ($role === "student_assistant") {
+    return "Self";
+  }
+  if ($role === "administrator") {
+    return "Administrator";
+  }
+  return "Head of Office";
+};
 
 function adminDepartmentEvaluationLoadScholarRecord(mysqli $conn, int $recordId, int $sourceApplicationId): ?array
 {
@@ -120,6 +184,7 @@ if (($conn ?? null) instanceof mysqli && $evaluationId > 0) {
       dhe.assigned_office,
       dhe.head_name,
       dhe.head_username,
+      dhe.evaluator_role,
       dhe.evaluation_date,
       dhe.ratings_json,
       dhe.strengths,
@@ -130,22 +195,24 @@ if (($conn ?? null) instanceof mysqli && $evaluationId > 0) {
       (
         SELECT TRIM(
           CONCAT(
-            TRIM(COALESCE(ho.name, '')),
-            CASE
-              WHEN TRIM(COALESCE(ho.name, '')) <> '' AND TRIM(COALESCE(ho.lastname, '')) <> '' THEN ' '
+              TRIM(COALESCE(u.name, '')),
+              CASE
+              WHEN TRIM(COALESCE(u.name, '')) <> '' AND TRIM(COALESCE(u.lastname, '')) <> '' THEN ' '
               ELSE ''
             END,
-            TRIM(COALESCE(ho.lastname, ''))
+            TRIM(COALESCE(u.lastname, ''))
           )
         )
-        FROM head_offices ho
-        WHERE ho.username = dhe.head_username
+        FROM users u
+        WHERE u.username = dhe.head_username
+          AND u.role = dhe.evaluator_role
         LIMIT 1
       ) AS head_account_full_name,
       (
-        SELECT TRIM(COALESCE(ho.lastname, ''))
-        FROM head_offices ho
-        WHERE ho.username = dhe.head_username
+        SELECT TRIM(COALESCE(u.lastname, ''))
+        FROM users u
+        WHERE u.username = dhe.head_username
+          AND u.role = dhe.evaluator_role
         LIMIT 1
       ) AS head_account_lastname
     FROM department_head_evaluations dhe
@@ -166,6 +233,8 @@ if (($conn ?? null) instanceof mysqli && $evaluationId > 0) {
         $displayApplicantName = trim((string)($evaluationRow["applicant_name"] ?? ""));
         $semester = trim((string)($evaluationRow["semester"] ?? ""));
         $schoolYear = trim((string)($evaluationRow["school_year"] ?? ""));
+        $selectedEvaluationSemester = $semester;
+        $selectedEvaluationSchoolYear = $schoolYear;
         if ($semester !== "" && $schoolYear !== "") {
           $displaySemesterSchoolYear = $semester . ", S.Y. " . $schoolYear;
         } elseif ($semester !== "") {
@@ -174,6 +243,8 @@ if (($conn ?? null) instanceof mysqli && $evaluationId > 0) {
           $displaySemesterSchoolYear = $schoolYear;
         }
         $displayAreaOfAssignment = trim((string)($evaluationRow["assigned_office"] ?? ""));
+        $displayEvaluatorRole = isgNormalizeEvaluatorRole((string)($evaluationRow["evaluator_role"] ?? "department_head"));
+        $evaluatorType = $evaluatorTypeFromRole($displayEvaluatorRole);
         $resolvedHeadFullName = trim((string)($evaluationRow["head_account_full_name"] ?? ""));
         $displayHeadOfOffice = $resolvedHeadFullName !== ""
           ? $resolvedHeadFullName
@@ -198,7 +269,7 @@ if (($conn ?? null) instanceof mysqli && $evaluationId > 0) {
         if (is_array($decodedRatings)) {
           foreach ($ratings as $field => $unusedValue) {
             $score = isset($decodedRatings[$field]) ? (int)$decodedRatings[$field] : 0;
-            if ($score >= 1 && $score <= 5) {
+            if ($score >= 1 && $score <= 4) {
               $ratings[$field] = $score;
             }
           }
@@ -245,6 +316,7 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
         assigned_office,
         head_name,
         head_username,
+        evaluator_role,
         evaluation_date,
         ratings_json,
         strengths,
@@ -254,22 +326,24 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
         (
           SELECT TRIM(
             CONCAT(
-              TRIM(COALESCE(ho.name, '')),
+              TRIM(COALESCE(u.name, '')),
               CASE
-                WHEN TRIM(COALESCE(ho.name, '')) <> '' AND TRIM(COALESCE(ho.lastname, '')) <> '' THEN ' '
+                WHEN TRIM(COALESCE(u.name, '')) <> '' AND TRIM(COALESCE(u.lastname, '')) <> '' THEN ' '
                 ELSE ''
               END,
-              TRIM(COALESCE(ho.lastname, ''))
+              TRIM(COALESCE(u.lastname, ''))
             )
           )
-          FROM head_offices ho
-          WHERE ho.username = department_head_evaluations.head_username
+          FROM users u
+          WHERE u.username = department_head_evaluations.head_username
+            AND u.role = department_head_evaluations.evaluator_role
           LIMIT 1
         ) AS head_account_full_name,
         (
-          SELECT TRIM(COALESCE(ho.lastname, ''))
-          FROM head_offices ho
-          WHERE ho.username = department_head_evaluations.head_username
+          SELECT TRIM(COALESCE(u.lastname, ''))
+          FROM users u
+          WHERE u.username = department_head_evaluations.head_username
+            AND u.role = department_head_evaluations.evaluator_role
           LIMIT 1
         ) AS head_account_lastname
       FROM department_head_evaluations
@@ -297,6 +371,8 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
           $displayApplicantName = trim((string)($row["applicant_name"] ?? ""));
           $semester = trim((string)($row["semester"] ?? ""));
           $schoolYear = trim((string)($row["school_year"] ?? ""));
+          $selectedEvaluationSemester = $semester;
+          $selectedEvaluationSchoolYear = $schoolYear;
           if ($semester !== "" && $schoolYear !== "") {
             $displaySemesterSchoolYear = $semester . ", S.Y. " . $schoolYear;
           } elseif ($semester !== "") {
@@ -305,6 +381,8 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
             $displaySemesterSchoolYear = $schoolYear;
           }
           $displayAreaOfAssignment = trim((string)($row["assigned_office"] ?? ""));
+          $displayEvaluatorRole = isgNormalizeEvaluatorRole((string)($row["evaluator_role"] ?? "department_head"));
+          $evaluatorType = $evaluatorTypeFromRole($displayEvaluatorRole);
           $resolvedHeadFullName = trim((string)($row["head_account_full_name"] ?? ""));
           $displayHeadOfOffice = $resolvedHeadFullName !== ""
             ? $resolvedHeadFullName
@@ -328,7 +406,7 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
           if (is_array($decodedRatings)) {
             foreach ($ratings as $field => $unusedValue) {
               $score = isset($decodedRatings[$field]) ? (int)$decodedRatings[$field] : 0;
-              if ($score >= 1 && $score <= 5) {
+              if ($score >= 1 && $score <= 4) {
                 $ratings[$field] = $score;
               }
             }
@@ -407,7 +485,7 @@ if (($conn ?? null) instanceof mysqli && !$loadedByEvaluationId && $applicationI
 foreach ($sectionFields as $sectionKey => $fields) {
   foreach ($fields as $field) {
     $score = (int)($ratings[$field] ?? 0);
-    if ($score >= 1 && $score <= 5) {
+    if ($score >= 1 && $score <= 4) {
       $sectionWeightedTotals[$sectionKey][$score] += $score;
       $overallWeightedTotals[$score] += $score;
     }
@@ -423,12 +501,12 @@ $weightedTotalText = static function (array $weightedTotals, int $scale): string
   return $value > 0 ? (string)$value : "";
 };
 
-$sectionScoreTotals = ["a" => 0.0, "b" => 0.0, "c" => 0.0];
-$sectionRatedCounts = ["a" => 0, "b" => 0, "c" => 0];
+$sectionScoreTotals = array_fill_keys(array_keys($sectionFields), 0.0);
+$sectionRatedCounts = array_fill_keys(array_keys($sectionFields), 0);
 foreach ($sectionFields as $sectionKey => $fields) {
   foreach ($fields as $field) {
     $score = (int)($ratings[$field] ?? 0);
-    if ($score >= 1 && $score <= 5) {
+    if ($score >= 1 && $score <= 4) {
       $sectionScoreTotals[$sectionKey] += $score;
       $sectionRatedCounts[$sectionKey]++;
     }
@@ -438,6 +516,7 @@ foreach ($sectionFields as $sectionKey => $fields) {
 $sectionAAvg = $sectionRatedCounts["a"] > 0 ? ($sectionScoreTotals["a"] / $sectionRatedCounts["a"]) : null;
 $sectionBAvg = $sectionRatedCounts["b"] > 0 ? ($sectionScoreTotals["b"] / $sectionRatedCounts["b"]) : null;
 $sectionCAvg = $sectionRatedCounts["c"] > 0 ? ($sectionScoreTotals["c"] / $sectionRatedCounts["c"]) : null;
+$sectionDAvg = $sectionRatedCounts["d"] > 0 ? ($sectionScoreTotals["d"] / $sectionRatedCounts["d"]) : null;
 
 $overallAvg = null;
 if (array_sum($sectionRatedCounts) > 0) {
@@ -466,9 +545,6 @@ $verbalFromAverage = static function (?float $value): string {
     return "";
   }
 
-  if ($value >= 5.0) {
-    return "Excellent";
-  }
   if ($value >= 4.0) {
     return "Very Good";
   }
@@ -476,9 +552,101 @@ $verbalFromAverage = static function (?float $value): string {
     return "Good";
   }
   if ($value >= 2.0) {
-    return "Fair";
+    return "Poor";
   }
-  return "Poor";
+  return "Needs Improvement";
+};
+
+$buildEvaluationDisplayRecord = static function (array $row) use ($ratings, $sectionFields, $ratingOptions, $evaluatorTypeFromRole): array {
+  $recordRatings = $ratings;
+  $decodedRatings = json_decode((string)($row["ratings_json"] ?? ""), true);
+  if (is_array($decodedRatings)) {
+    foreach ($recordRatings as $field => $unusedValue) {
+      $score = isset($decodedRatings[$field]) ? (int)$decodedRatings[$field] : 0;
+      if ($score >= 1 && $score <= 4) {
+        $recordRatings[$field] = $score;
+      }
+    }
+  }
+
+  $recordSectionWeightedTotals = [];
+  foreach ($sectionFields as $sectionKey => $fields) {
+    $recordSectionWeightedTotals[$sectionKey] = array_fill_keys(array_keys($ratingOptions), 0);
+  }
+  $recordOverallWeightedTotals = array_fill_keys(array_keys($ratingOptions), 0);
+  $recordSectionScoreTotals = array_fill_keys(array_keys($sectionFields), 0.0);
+  $recordSectionRatedCounts = array_fill_keys(array_keys($sectionFields), 0);
+
+  foreach ($sectionFields as $sectionKey => $fields) {
+    foreach ($fields as $field) {
+      $score = (int)($recordRatings[$field] ?? 0);
+      if ($score >= 1 && $score <= 4) {
+        $recordSectionWeightedTotals[$sectionKey][$score] += $score;
+        $recordOverallWeightedTotals[$score] += $score;
+        $recordSectionScoreTotals[$sectionKey] += $score;
+        $recordSectionRatedCounts[$sectionKey]++;
+      }
+    }
+  }
+
+  $recordEvaluatorRole = isgNormalizeEvaluatorRole((string)($row["evaluator_role"] ?? "department_head"));
+  if ($recordEvaluatorRole === "") {
+    $recordEvaluatorRole = "department_head";
+  }
+
+  $semester = trim((string)($row["semester"] ?? ""));
+  $schoolYear = trim((string)($row["school_year"] ?? ""));
+  $semesterSchoolYear = "";
+  if ($semester !== "" && $schoolYear !== "") {
+    $semesterSchoolYear = $semester . ", S.Y. " . $schoolYear;
+  } elseif ($semester !== "") {
+    $semesterSchoolYear = $semester;
+  } elseif ($schoolYear !== "") {
+    $semesterSchoolYear = $schoolYear;
+  }
+
+  $resolvedHeadFullName = trim((string)($row["head_account_full_name"] ?? ""));
+  $headOfOffice = $resolvedHeadFullName !== ""
+    ? $resolvedHeadFullName
+    : trim((string)($row["head_name"] ?? ""));
+  if ($headOfOffice === "") {
+    $headOfOffice = trim((string)($row["head_username"] ?? ""));
+  }
+
+  $evaluationDate = "";
+  $rawDate = trim((string)($row["evaluation_date"] ?? ""));
+  if ($rawDate !== "") {
+    $parsedDate = strtotime($rawDate);
+    $evaluationDate = $parsedDate !== false ? date("F j, Y", $parsedDate) : $rawDate;
+  }
+
+  $overallRatedCount = array_sum($recordSectionRatedCounts);
+
+  return [
+    "evaluation_id" => (int)($row["evaluation_id"] ?? ($row["id"] ?? 0)),
+    "application_id" => (int)($row["application_id"] ?? 0),
+    "applicant_name" => trim((string)($row["applicant_name"] ?? "")),
+    "semester_school_year" => $semesterSchoolYear,
+    "area_of_assignment" => trim((string)($row["assigned_office"] ?? "")),
+    "head_of_office" => $headOfOffice,
+    "head_account_lastname" => trim((string)($row["head_account_lastname"] ?? "")),
+    "evaluation_date" => $evaluationDate,
+    "program_year_level" => trim((string)($row["program_year"] ?? "")),
+    "evaluator_role" => $recordEvaluatorRole,
+    "evaluator_type" => $evaluatorTypeFromRole($recordEvaluatorRole),
+    "ratings" => $recordRatings,
+    "section_weighted_totals" => $recordSectionWeightedTotals,
+    "overall_weighted_totals" => $recordOverallWeightedTotals,
+    "section_a_avg" => $recordSectionRatedCounts["a"] > 0 ? ($recordSectionScoreTotals["a"] / $recordSectionRatedCounts["a"]) : null,
+    "section_b_avg" => $recordSectionRatedCounts["b"] > 0 ? ($recordSectionScoreTotals["b"] / $recordSectionRatedCounts["b"]) : null,
+    "section_c_avg" => $recordSectionRatedCounts["c"] > 0 ? ($recordSectionScoreTotals["c"] / $recordSectionRatedCounts["c"]) : null,
+    "section_d_avg" => $recordSectionRatedCounts["d"] > 0 ? ($recordSectionScoreTotals["d"] / $recordSectionRatedCounts["d"]) : null,
+    "overall_avg" => $overallRatedCount > 0 ? (array_sum($recordSectionScoreTotals) / $overallRatedCount) : null,
+    "strengths" => trim((string)($row["strengths"] ?? "")),
+    "areas_improvement" => trim((string)($row["areas_improvement"] ?? "")),
+    "recommendations" => trim((string)($row["recommendations"] ?? "")),
+    "signature_data" => trim((string)($row["signature_data"] ?? "")),
+  ];
 };
 
 $extractLastName = static function (string $fullName): string {
@@ -512,6 +680,285 @@ $extractLastName = static function (string $fullName): string {
 
   return trim((string)end($parts), ",. ");
 };
+
+if (($conn ?? null) instanceof mysqli && $applicationId !== 0) {
+  isgEnsureAdministratorSaAssignmentsTable($conn);
+
+  $selectedScholarRecordId = abs((int)$applicationId);
+  $selectedSourceApplicationId = 0;
+  $selectedScholarRow = adminDepartmentEvaluationLoadScholarRecord(
+    $conn,
+    $applicationId < 0 ? abs((int)$applicationId) : $selectedScholarRecordId,
+    $applicationId > 0 ? (int)$applicationId : 0
+  );
+  if (is_array($selectedScholarRow)) {
+    $selectedScholarRecordId = (int)($selectedScholarRow["id"] ?? $selectedScholarRecordId);
+    $selectedSourceApplicationId = (int)($selectedScholarRow["source_application_id"] ?? 0);
+  }
+
+  $allEvaluationCandidateIds = [];
+  foreach ([0 - $selectedScholarRecordId, (int)$applicationId, $selectedSourceApplicationId] as $candidateId) {
+    $candidateId = (int)$candidateId;
+    if ($candidateId !== 0 && !in_array($candidateId, $allEvaluationCandidateIds, true)) {
+      $allEvaluationCandidateIds[] = $candidateId;
+    }
+  }
+
+  $tableResult = $conn->query("SHOW TABLES LIKE 'department_head_evaluations'");
+  $hasEvaluationTable = $tableResult instanceof mysqli_result && $tableResult->num_rows > 0;
+  if ($tableResult instanceof mysqli_result) {
+    $tableResult->free();
+  }
+
+  if ($hasEvaluationTable && !empty($allEvaluationCandidateIds)) {
+    $allEvaluationPlaceholders = implode(", ", array_fill(0, count($allEvaluationCandidateIds), "?"));
+    $allEvaluationWhere = ["dhe.application_id IN ($allEvaluationPlaceholders)"];
+    $allEvaluationParams = $allEvaluationCandidateIds;
+    $allEvaluationTypes = str_repeat("i", count($allEvaluationCandidateIds));
+
+    if ($selectedEvaluationSchoolYear !== "") {
+      $allEvaluationWhere[] = "TRIM(COALESCE(dhe.school_year, '')) = ?";
+      $allEvaluationParams[] = $selectedEvaluationSchoolYear;
+      $allEvaluationTypes .= "s";
+    }
+    if ($selectedEvaluationSemester !== "") {
+      $allEvaluationWhere[] = "TRIM(COALESCE(dhe.semester, '')) = ?";
+      $allEvaluationParams[] = $selectedEvaluationSemester;
+      $allEvaluationTypes .= "s";
+    }
+
+    $allEvaluationStmt = $conn->prepare(
+      "SELECT
+        dhe.id AS evaluation_id,
+        dhe.application_id,
+        dhe.applicant_name,
+        dhe.semester,
+        dhe.school_year,
+        dhe.assigned_office,
+        dhe.head_name,
+        dhe.head_username,
+        dhe.evaluator_role,
+        dhe.evaluation_date,
+        dhe.ratings_json,
+        dhe.strengths,
+        dhe.areas_improvement,
+        dhe.recommendations,
+        dhe.signature_data,
+        COALESCE(NULLIF(TRIM(isr.program_year), ''), '') AS program_year,
+        (
+          SELECT TRIM(
+            CONCAT(
+              TRIM(COALESCE(u.name, '')),
+              CASE
+                WHEN TRIM(COALESCE(u.name, '')) <> '' AND TRIM(COALESCE(u.lastname, '')) <> '' THEN ' '
+                ELSE ''
+              END,
+              TRIM(COALESCE(u.lastname, ''))
+            )
+          )
+          FROM users u
+          WHERE u.username = dhe.head_username
+            AND u.role = dhe.evaluator_role
+          LIMIT 1
+        ) AS head_account_full_name,
+        (
+          SELECT TRIM(COALESCE(u.lastname, ''))
+          FROM users u
+          WHERE u.username = dhe.head_username
+            AND u.role = dhe.evaluator_role
+          LIMIT 1
+        ) AS head_account_lastname
+      FROM department_head_evaluations dhe
+      LEFT JOIN institutional_scholar_records isr
+        ON isr.id = ABS(dhe.application_id)
+      WHERE " . implode(" AND ", $allEvaluationWhere) . "
+      ORDER BY
+        CASE dhe.evaluator_role
+          WHEN 'student_assistant' THEN 0
+          WHEN 'department_head' THEN 1
+          WHEN 'administrator' THEN 2
+          ELSE 3
+        END,
+        dhe.updated_at DESC,
+        dhe.id DESC"
+    );
+
+    if ($allEvaluationStmt) {
+      $allEvaluationStmt->bind_param($allEvaluationTypes, ...$allEvaluationParams);
+      if ($allEvaluationStmt->execute()) {
+        $allEvaluationResult = $allEvaluationStmt->get_result();
+        $seenEvaluationRoles = [];
+        while ($evaluationRow = $allEvaluationResult->fetch_assoc()) {
+          $recordRole = isgNormalizeEvaluatorRole((string)($evaluationRow["evaluator_role"] ?? "department_head"));
+          if ($recordRole === "") {
+            $recordRole = "department_head";
+          }
+          if (!in_array($recordRole, ["student_assistant", "department_head", "administrator"], true)) {
+            continue;
+          }
+
+          $recordScholarId = abs((int)($evaluationRow["application_id"] ?? 0));
+          $recordSemester = trim((string)($evaluationRow["semester"] ?? ""));
+          $recordSchoolYear = trim((string)($evaluationRow["school_year"] ?? ""));
+          if ($recordRole === "administrator") {
+            $assignedAdministrator = isgLoadAdministratorSaAssignment($conn, $recordScholarId, $recordSchoolYear, $recordSemester);
+            $assignedUsername = is_array($assignedAdministrator)
+              ? strtolower(trim((string)($assignedAdministrator["administrator_username"] ?? "")))
+              : "";
+            $evaluationUsername = strtolower(trim((string)($evaluationRow["head_username"] ?? "")));
+            if ($assignedUsername === "" || $evaluationUsername === "" || $assignedUsername !== $evaluationUsername) {
+              continue;
+            }
+          }
+
+          $roleKey = $recordRole . "|" . strtolower($recordSchoolYear) . "|" . strtolower($recordSemester);
+          if (isset($seenEvaluationRoles[$roleKey])) {
+            continue;
+          }
+          $seenEvaluationRoles[$roleKey] = true;
+          $evaluationDisplayRecords[] = $buildEvaluationDisplayRecord($evaluationRow);
+        }
+        if ($allEvaluationResult instanceof mysqli_result) {
+          $allEvaluationResult->free();
+        }
+      }
+      $allEvaluationStmt->close();
+    }
+  }
+}
+
+if (empty($evaluationDisplayRecords)) {
+  $evaluationDisplayRecords[] = [
+    "evaluation_id" => $evaluationId,
+    "application_id" => $applicationId,
+    "applicant_name" => $displayApplicantName,
+    "semester_school_year" => $displaySemesterSchoolYear,
+    "area_of_assignment" => $displayAreaOfAssignment,
+    "head_of_office" => $displayHeadOfOffice,
+    "head_account_lastname" => $displayHeadAccountLastName,
+    "evaluation_date" => $displayEvaluationDate,
+    "program_year_level" => $displayProgramYearLevel,
+    "evaluator_role" => $displayEvaluatorRole,
+    "evaluator_type" => $evaluatorType,
+    "ratings" => $ratings,
+    "section_weighted_totals" => $sectionWeightedTotals,
+    "overall_weighted_totals" => $overallWeightedTotals,
+    "section_a_avg" => $sectionAAvg,
+    "section_b_avg" => $sectionBAvg,
+    "section_c_avg" => $sectionCAvg,
+    "section_d_avg" => $sectionDAvg,
+    "overall_avg" => $overallAvg,
+    "strengths" => $displayStrengths,
+    "areas_improvement" => $displayAreasImprovement,
+    "recommendations" => $displayRecommendations,
+    "signature_data" => $displaySignatureData,
+  ];
+}
+
+$aggregateEvaluatorRoles = ["student_assistant", "department_head", "administrator"];
+$aggregateRoleLabels = [
+  "student_assistant" => "Student Assistant",
+  "department_head" => "Head of Office",
+  "administrator" => "Administrator",
+];
+$evaluationResultRecordsByRole = [];
+foreach ($evaluationDisplayRecords as $evaluationDisplayRecord) {
+  $recordRole = isgNormalizeEvaluatorRole((string)($evaluationDisplayRecord["evaluator_role"] ?? ""));
+  if ($recordRole === "" || !in_array($recordRole, $aggregateEvaluatorRoles, true) || isset($evaluationResultRecordsByRole[$recordRole])) {
+    continue;
+  }
+  $evaluationResultRecordsByRole[$recordRole] = $evaluationDisplayRecord;
+}
+
+$hasCompleteAggregateResult = true;
+foreach ($aggregateEvaluatorRoles as $requiredRole) {
+  if (!isset($evaluationResultRecordsByRole[$requiredRole])) {
+    $hasCompleteAggregateResult = false;
+    break;
+  }
+}
+
+$averageAggregateField = static function (array $recordsByRole, array $requiredRoles, string $field, bool $isComplete): ?float {
+  if (!$isComplete) {
+    return null;
+  }
+
+  $total = 0.0;
+  $count = 0;
+  foreach ($requiredRoles as $role) {
+    $value = $recordsByRole[$role][$field] ?? null;
+    if (!is_numeric($value)) {
+      return null;
+    }
+    $total += (float)$value;
+    $count++;
+  }
+
+  return $count > 0 ? ($total / $count) : null;
+};
+
+$collectAggregateComments = static function (array $recordsByRole, array $requiredRoles, array $roleLabels, string $field): array {
+  $parts = [];
+  foreach ($requiredRoles as $role) {
+    if (!isset($recordsByRole[$role])) {
+      continue;
+    }
+
+    $text = trim((string)($recordsByRole[$role][$field] ?? ""));
+    if ($text === "") {
+      continue;
+    }
+
+    $personName = trim((string)($recordsByRole[$role]["head_of_office"] ?? ""));
+    $label = (string)($roleLabels[$role] ?? ucwords(str_replace("_", " ", $role)));
+    if ($personName !== "") {
+      $label .= " - " . $personName;
+    }
+    $parts[] = [
+      "label" => $label,
+      "text" => $text,
+    ];
+  }
+
+  return $parts;
+};
+
+$renderAggregateCommentsHtml = static function (array $comments): string {
+  $htmlBlocks = [];
+  foreach ($comments as $comment) {
+    $label = trim((string)($comment["label"] ?? ""));
+    $text = trim((string)($comment["text"] ?? ""));
+    if ($text === "") {
+      continue;
+    }
+
+    $labelHtml = $label !== ""
+      ? "<strong>" . htmlspecialchars($label . ":", ENT_QUOTES, "UTF-8") . "</strong><br>"
+      : "";
+    $textHtml = nl2br(htmlspecialchars($text, ENT_QUOTES, "UTF-8"));
+    $htmlBlocks[] = $labelHtml . $textHtml;
+  }
+
+  return implode("<br><br>", $htmlBlocks);
+};
+
+$firstEvaluationRecord = $evaluationDisplayRecords[0] ?? [];
+$aggregateEvaluationResult = [
+  "applicant_name" => (string)($firstEvaluationRecord["applicant_name"] ?? $displayApplicantName),
+  "semester_school_year" => (string)($firstEvaluationRecord["semester_school_year"] ?? $displaySemesterSchoolYear),
+  "area_of_assignment" => (string)($firstEvaluationRecord["area_of_assignment"] ?? $displayAreaOfAssignment),
+  "program_year_level" => (string)($firstEvaluationRecord["program_year_level"] ?? $displayProgramYearLevel),
+  "evaluator_label" => "Student Assistant, Head of Office, and Administrator",
+  "section_a_avg" => $averageAggregateField($evaluationResultRecordsByRole, $aggregateEvaluatorRoles, "section_a_avg", $hasCompleteAggregateResult),
+  "section_b_avg" => $averageAggregateField($evaluationResultRecordsByRole, $aggregateEvaluatorRoles, "section_b_avg", $hasCompleteAggregateResult),
+  "section_c_avg" => $averageAggregateField($evaluationResultRecordsByRole, $aggregateEvaluatorRoles, "section_c_avg", $hasCompleteAggregateResult),
+  "section_d_avg" => $averageAggregateField($evaluationResultRecordsByRole, $aggregateEvaluatorRoles, "section_d_avg", $hasCompleteAggregateResult),
+  "overall_avg" => $averageAggregateField($evaluationResultRecordsByRole, $aggregateEvaluatorRoles, "overall_avg", $hasCompleteAggregateResult),
+  "strengths" => $collectAggregateComments($evaluationResultRecordsByRole, $aggregateEvaluatorRoles, $aggregateRoleLabels, "strengths"),
+  "areas_improvement" => $collectAggregateComments($evaluationResultRecordsByRole, $aggregateEvaluatorRoles, $aggregateRoleLabels, "areas_improvement"),
+  "recommendations" => $collectAggregateComments($evaluationResultRecordsByRole, $aggregateEvaluatorRoles, $aggregateRoleLabels, "recommendations"),
+  "has_complete_result" => $hasCompleteAggregateResult,
+];
 
 $ccHeadLabel = "Sir/maam.";
 $headLastName = $displayHeadAccountLastName !== ""
@@ -568,11 +1015,11 @@ if ($assistantFullName !== "") {
       }
 
       .eval-page .header-top {
-        margin-top: 3rem;
+        margin-top: 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.75rem;
+        gap: 1rem;
         flex-wrap: wrap;
         margin-bottom: 0.5rem;
       }
@@ -591,8 +1038,8 @@ if ($assistantFullName !== "") {
       }
 
       .eval-page .header-center {
-        line-height: 1.2;
-        text-align: center;
+        line-height: 1.1;
+        text-align: left;
       }
 
       .eval-page .header-center h1 {
@@ -727,6 +1174,68 @@ if ($assistantFullName !== "") {
         font-weight: 600;
       }
 
+      .eval-page .performance-summary-cell {
+        height: auto;
+        padding: 0.55rem 0.65rem;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .eval-page .performance-summary-title {
+        margin: 0 0 0.7rem;
+        font-weight: 700;
+      }
+
+      .eval-page .performance-summary-lines {
+        display: grid;
+        gap: 0.42rem;
+        font-style: italic;
+        font-weight: 700;
+      }
+
+      .eval-page .performance-summary-lines p {
+        margin: 0;
+      }
+
+      .eval-page .performance-summary-label {
+        display: inline-block;
+        min-width: 9.2rem;
+      }
+
+      .eval-page .performance-summary-line {
+        display: inline-block;
+        min-width: 4.6rem;
+        border-bottom: 1px solid #111827;
+        text-align: center;
+        font-style: normal;
+        font-weight: 400;
+      }
+
+      .eval-page .performance-level-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.55rem 0.8rem;
+      }
+
+      .eval-page .performance-level-option {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.28rem;
+        font-weight: 400;
+      }
+
+      .eval-page .performance-level-box {
+        display: inline-flex;
+        width: 0.72rem;
+        height: 0.72rem;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid #111827;
+        font-size: 0.55rem;
+        line-height: 1;
+      }
+
       .eval-page .comment-box {
         border: 1px solid #111827;
         min-height: 3.2rem;
@@ -734,6 +1243,23 @@ if ($assistantFullName !== "") {
         padding: 0.45rem 0.6rem;
         font-size: 12px;
         line-height: 1.45;
+      }
+
+      .eval-page .retention-note {
+        margin-top: 1.6rem;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .eval-page .retention-note-title {
+        margin: 0 0 0.65rem;
+        font-style: italic;
+        font-weight: 700;
+      }
+
+      .eval-page .retention-note-copy {
+        margin: 0;
+        text-indent: 1.8rem;
       }
 
       .eval-page .signature-row {
@@ -779,6 +1305,11 @@ if ($assistantFullName !== "") {
         object-fit: contain;
       }
 
+      .eval-page + .eval-page,
+      .eval-result + .eval-result {
+        border-top: 12px solid #e5e7eb;
+      }
+
       /* Evaluation result block pulled from copyOfEval.php */
       .eval-result {
         font-family: "Times New Roman", serif;
@@ -799,7 +1330,7 @@ if ($assistantFullName !== "") {
 
       @page {
         /* Use long bond (8.5in x 13in) for printing */
-        size: 8.5in 13in;
+        size: 8.5in 13in portrait;
         margin: 0.28in;
       }
 
@@ -855,120 +1386,132 @@ if ($assistantFullName !== "") {
           background: #ffffff !important;
         }
 
+        .eval-page + .eval-page,
+        .eval-result + .eval-result {
+          border-top: 0 !important;
+          page-break-before: always;
+          break-before: page;
+        }
+
         .eval-page {
           background: #ffffff;
         }
 
-        /* ── Document 1: Evaluation Form (portrait 8.5in × 13in) ─────────── */
+        /* Document 1: Evaluation Form (portrait long bond 8.5in x 13in) */
 
         #print-eval-form .eval-page {
-          font-size: 10px;
-          line-height: 1.2;
+          font-size: 11.5px;
+          line-height: 1.28;
         }
 
         #print-eval-form .header-top {
           margin-top: 0;
-          gap: 0.4rem;
-          margin-bottom: 0.3rem;
+          gap: 0.65rem;
+          margin-bottom: 0.45rem;
         }
 
         #print-eval-form .header-logo img,
         #print-eval-form .header-cert img {
-          width: 60px;
-          height: 60px;
+          width: 70px;
+          height: 70px;
         }
 
         #print-eval-form .header-center h1 {
-          font-size: 13pt;
+          font-size: 14.5pt;
         }
 
         #print-eval-form .header-center p {
-          font-size: 8.5pt;
+          font-size: 9.4pt;
         }
 
         #print-eval-form .paper {
-          padding: 0.3rem 0.5rem 0.4rem;
+          padding: 0.45rem 0.65rem 0.55rem;
         }
 
         #print-eval-form .title {
-          font-size: 11.5px;
-          margin-bottom: 0.35rem;
+          font-size: 13.5px;
+          margin-bottom: 0.45rem;
         }
 
         #print-eval-form .info-block {
-          margin-bottom: 0.35rem;
-          font-size: 10px;
+          margin-bottom: 0.45rem;
+          font-size: 11.5px;
         }
 
         #print-eval-form .info-row {
-          grid-template-columns: 210px minmax(0, 260px);
-          gap: 0.25rem;
-          margin-bottom: 0.1rem;
+          grid-template-columns: 225px minmax(0, 300px);
+          gap: 0.35rem;
+          margin-bottom: 0.14rem;
         }
 
         #print-eval-form .info-value {
-          min-height: 0.6rem;
+          min-height: 0.75rem;
         }
 
         #print-eval-form .direction {
-          font-size: 10px;
-          line-height: 1.25;
-          margin-bottom: 0.25rem;
+          font-size: 11.5px;
+          line-height: 1.35;
+          margin-bottom: 0.35rem;
         }
 
         #print-eval-form table th,
         #print-eval-form table td {
-          padding: 0.13rem 0.25rem;
-          font-size: 10px;
+          padding: 0.18rem 0.32rem;
+          font-size: 11px;
         }
 
         #print-eval-form .scale-table {
-          margin-bottom: 0.35rem;
+          margin-bottom: 0.45rem;
         }
 
         #print-eval-form .scale-table td {
-          font-size: 9.5px;
-          padding: 0.1rem 0.25rem;
+          font-size: 10.5px;
+          padding: 0.14rem 0.32rem;
         }
 
         #print-eval-form .rating-table td {
-          height: 1.25rem;
+          height: 1.55rem;
         }
 
         #print-eval-form section.pt-4,
         #print-eval-form section.pt-6 {
-          padding-top: 0.2rem !important;
+          padding-top: 0.35rem !important;
         }
 
         #print-eval-form .comment-box {
-          min-height: 2.2rem;
-          padding: 0.25rem 0.4rem;
-          line-height: 1.2;
+          min-height: 2.7rem;
+          padding: 0.35rem 0.5rem;
+          line-height: 1.3;
+        }
+
+        #print-eval-form .retention-note {
+          margin-top: 1rem;
+          line-height: 1.32;
         }
 
         #print-eval-form .signature-row {
-          margin-top: 1rem;
+          margin-top: 1.15rem;
         }
 
         #print-eval-form .signature-line {
-          margin-top: 0.4rem;
+          margin-top: 0.55rem;
         }
 
         #print-eval-form .footer-box {
-          margin-top: 0.2rem;
+          margin-top: 0.35rem;
         }
 
         #print-eval-form footer {
-          margin-top: 0.2rem;
-          padding-top: 0.05rem;
+          margin-top: 0.35rem;
+          padding-top: 0.1rem;
         }
 
-        /* ── Document 2: Copy of Evaluation (landscape 11in × 8.5in) ─────── */
+        /* Document 2: Copy of Evaluation (portrait long bond 8.5in x 13in) */
 
         #print-eval-result .eval-result {
-          padding: 1rem 1.5rem;
-          font-size: 12px;
-          line-height: 1.4;
+          padding: 1.1rem 1.6rem;
+          font-size: 13px;
+          line-height: 1.45;
           box-shadow: none !important;
           border: none !important;
           background: transparent !important;
@@ -1004,13 +1547,13 @@ if ($assistantFullName !== "") {
 
         #print-eval-result .result-table th,
         #print-eval-result .result-table td {
-          padding: 5px 8px;
-          font-size: 12px;
+          padding: 6px 9px;
+          font-size: 12.5px;
         }
 
-        /* Tall enough to fill the page without overflowing landscape height */
+        /* Tall enough to fill the page without overflowing portrait height */
         #print-eval-result .result-table .h-16 {
-          height: 3rem !important;
+          height: 3.25rem !important;
           min-height: 0 !important;
         }
       }
@@ -1297,6 +1840,26 @@ if ($assistantFullName !== "") {
           </div>
 
           <div id="print-eval-form" class="max-w-6xl mx-auto bg-white rounded-lg shadow-sm">
+            <?php foreach ($evaluationDisplayRecords as $evaluationDisplayRecord): ?>
+              <?php
+                $displayApplicantName = (string)($evaluationDisplayRecord["applicant_name"] ?? "");
+                $displaySemesterSchoolYear = (string)($evaluationDisplayRecord["semester_school_year"] ?? "");
+                $displayAreaOfAssignment = (string)($evaluationDisplayRecord["area_of_assignment"] ?? "");
+                $displayHeadOfOffice = (string)($evaluationDisplayRecord["head_of_office"] ?? "");
+                $displayEvaluationDate = (string)($evaluationDisplayRecord["evaluation_date"] ?? "");
+                $displayStrengths = (string)($evaluationDisplayRecord["strengths"] ?? "");
+                $displayAreasImprovement = (string)($evaluationDisplayRecord["areas_improvement"] ?? "");
+                $displayRecommendations = (string)($evaluationDisplayRecord["recommendations"] ?? "");
+                $displaySignatureData = (string)($evaluationDisplayRecord["signature_data"] ?? "");
+                $evaluatorType = (string)($evaluationDisplayRecord["evaluator_type"] ?? "Head of Office");
+                $ratings = (array)($evaluationDisplayRecord["ratings"] ?? $ratings);
+                $sectionWeightedTotals = (array)($evaluationDisplayRecord["section_weighted_totals"] ?? $sectionWeightedTotals);
+                $overallWeightedTotals = (array)($evaluationDisplayRecord["overall_weighted_totals"] ?? $overallWeightedTotals);
+                $overallAvg = $evaluationDisplayRecord["overall_avg"] ?? null;
+                $overallTotalScore = array_sum(array_map("intval", $overallWeightedTotals));
+                $overallMaxScore = count($ratings) * max(array_keys($ratingOptions));
+                $performanceLevel = $verbalFromAverage(is_numeric($overallAvg) ? (float)$overallAvg : null);
+              ?>
             <div class="eval-page">
               <header>
                 <div class="header-top">
@@ -1308,16 +1871,9 @@ if ($assistantFullName !== "") {
                   </div>
                   <div class="header-center">
                     <h1>Saint Michael College of Caraga</h1>
+                    <p>Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines</p>
                     <p>
-                      Atupan St.,Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
-                    </p>
-                    <p>Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
-                    <p>
-                      <a
-                        href="http://www.smccnasipit.edu.ph"
-                        style="color: blue; text-decoration: underline;"
-                        >www.smccnasipit.edu.ph</a
-                      >
+                      <a>Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</a>
                     </p>
                   </div>
                   <div class="header-cert">
@@ -1346,13 +1902,27 @@ if ($assistantFullName !== "") {
                     <span class="info-value"><?= htmlspecialchars($displayAreaOfAssignment) ?></span>
                   </div>
                   <div class="info-row">
-                    <span class="info-label">Head of Office:</span>
+                    <span class="info-label">Evaluator Name:</span>
                     <span class="info-value"><?= htmlspecialchars($displayHeadOfOffice) ?></span>
                   </div>
                   <div class="info-row">
                     <span class="info-label">Date of Evaluation:</span>
                     <span class="info-value"><?= htmlspecialchars($displayEvaluationDate) ?></span>
                   </div>
+                </section>
+
+                <section class="direction">
+                  <p class="flex flex-wrap items-center gap-4">
+                    <span class="font-semibold">Evaluator:</span>
+                    <?php foreach ($evaluatorOptions as $option): ?>
+                      <span class="inline-flex items-center gap-1">
+                        <span class="inline-flex h-4 w-4 items-center justify-center border border-black text-[10px] leading-none">
+                          <?= $evaluatorType === $option ? "&#10003;" : "" ?>
+                        </span>
+                        <span><?= htmlspecialchars($option) ?></span>
+                      </span>
+                    <?php endforeach; ?>
+                  </p>
                 </section>
 
                 <section class="direction">
@@ -1371,31 +1941,13 @@ if ($assistantFullName !== "") {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr>
-                        <td>5</td>
-                        <td>Excellent</td>
-                        <td>This rating is given to student assistants who consistently exceed expectations and demonstrate outstanding performance in their assigned tasks.</td>
-                      </tr>
-                      <tr>
-                        <td>4</td>
-                        <td>Very Good</td>
-                        <td>This rating is given to student assistants who frequently exceed expectations and demonstrate a high level of performance in their assigned tasks.</td>
-                      </tr>
-                      <tr>
-                        <td>3</td>
-                        <td>Good</td>
-                        <td>This rating is given to student assistants who consistently meet expectations and perform their assigned tasks satisfactorily.</td>
-                      </tr>
-                      <tr>
-                        <td>2</td>
-                        <td>Fair</td>
-                        <td>This rating is given to student assistants who occasionally meet expectations but may have areas for improvement.</td>
-                      </tr>
-                      <tr>
-                        <td>1</td>
-                        <td>Poor</td>
-                        <td>This rating is given to student assistants who consistently fail to meet expectations and demonstrate unsatisfactory performance in their assigned tasks.</td>
-                      </tr>
+                      <?php foreach ($ratingOptions as $scale => $option): ?>
+                        <tr>
+                          <td><?= htmlspecialchars((string)$scale) ?></td>
+                          <td><?= htmlspecialchars($option["label"] . " (" . $option["short"] . ")") ?></td>
+                          <td><?= htmlspecialchars($option["interpretation"]) ?></td>
+                        </tr>
+                      <?php endforeach; ?>
                     </tbody>
                   </table>
                 </section>
@@ -1405,204 +1957,96 @@ if ($assistantFullName !== "") {
                     <thead>
                       <tr>
                         <th rowspan="2" style="width: 47%;">Performance Indicators</th>
-                        <th colspan="5">Rating</th>
+                        <th colspan="<?= count($ratingOptions) ?>">Rating</th>
                       </tr>
                       <tr>
-                        <th>Excellent (5)</th>
-                        <th>Very Good (4)</th>
-                        <th>Good (3)</th>
-                        <th>Fair (2)</th>
-                        <th>Poor (1)</th>
+                        <?php foreach ($ratingOptions as $scale => $option): ?>
+                          <th><?= htmlspecialchars(((int)$scale === 1 ? "NI" : $option["label"]) . " (" . $scale . ")") ?></th>
+                        <?php endforeach; ?>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr>
-                        <td class="section-label">A. Quality and Quantity of Work</td>
-                        <td></td><td></td><td></td><td></td><td></td>
-                      </tr>
-                      <tr>
-                        <td>A.1 Accurate at work assigned</td>
-                        <td><?= $checkMark($ratings, "score-a1", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-a1", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-a1", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-a1", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-a1", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>A.2 Always completes tasks</td>
-                        <td><?= $checkMark($ratings, "score-a2", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-a2", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-a2", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-a2", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-a2", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>A.3 Works in a timely manner</td>
-                        <td><?= $checkMark($ratings, "score-a3", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-a3", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-a3", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-a3", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-a3", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>A.4 Asks for more work when assigned tasks are done</td>
-                        <td><?= $checkMark($ratings, "score-a4", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-a4", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-a4", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-a4", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-a4", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>A.5 Easily accepts new responsibilities</td>
-                        <td><?= $checkMark($ratings, "score-a5", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-a5", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-a5", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-a5", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-a5", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td class="subtotal">Total</td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 5)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 4)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 3)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 2)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["a"], 1)) ?></td>
-                      </tr>
-
-                      <tr>
-                        <td class="section-label">B. Interpersonal Skills</td>
-                        <td></td><td></td><td></td><td></td><td></td>
-                      </tr>
-                      <tr>
-                        <td>B.1 Answers patron's questions accurately</td>
-                        <td><?= $checkMark($ratings, "score-b1", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-b1", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-b1", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-b1", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-b1", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>B.2 Deals with patrons well</td>
-                        <td><?= $checkMark($ratings, "score-b2", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-b2", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-b2", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-b2", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-b2", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>B.3 Deals with personnel well</td>
-                        <td><?= $checkMark($ratings, "score-b3", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-b3", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-b3", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-b3", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-b3", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>B.4 Knows how to effectively communicate with others</td>
-                        <td><?= $checkMark($ratings, "score-b4", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-b4", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-b4", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-b4", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-b4", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>B.5 Has a good relationship with other student assistants</td>
-                        <td><?= $checkMark($ratings, "score-b5", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-b5", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-b5", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-b5", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-b5", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td class="subtotal">Total</td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 5)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 4)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 3)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 2)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["b"], 1)) ?></td>
-                      </tr>
-
-                      <tr>
-                        <td class="section-label">C. Attendance and Reliability</td>
-                        <td></td><td></td><td></td><td></td><td></td>
-                      </tr>
-                      <tr>
-                        <td>C.1 Perfect attendance</td>
-                        <td><?= $checkMark($ratings, "score-c1", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-c1", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-c1", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-c1", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-c1", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>C.2 Reports duty on time, rarely comes late</td>
-                        <td><?= $checkMark($ratings, "score-c2", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-c2", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-c2", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-c2", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-c2", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>C.3 Following assigned schedule</td>
-                        <td><?= $checkMark($ratings, "score-c3", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-c3", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-c3", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-c3", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-c3", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>C.4 Able to work without direct supervision</td>
-                        <td><?= $checkMark($ratings, "score-c4", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-c4", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-c4", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-c4", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-c4", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td>C.5 Carries out instructions successfully</td>
-                        <td><?= $checkMark($ratings, "score-c5", 5) ?></td>
-                        <td><?= $checkMark($ratings, "score-c5", 4) ?></td>
-                        <td><?= $checkMark($ratings, "score-c5", 3) ?></td>
-                        <td><?= $checkMark($ratings, "score-c5", 2) ?></td>
-                        <td><?= $checkMark($ratings, "score-c5", 1) ?></td>
-                      </tr>
-                      <tr>
-                        <td class="subtotal">Total</td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 5)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 4)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 3)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 2)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals["c"], 1)) ?></td>
-                      </tr>
+                      <?php foreach ($evaluationSections as $sectionKey => $section): ?>
+                        <tr>
+                          <td class="section-label"><?= htmlspecialchars($section["title"]) ?></td>
+                          <?php foreach ($ratingOptions as $unusedScale => $unusedOption): ?>
+                            <td></td>
+                          <?php endforeach; ?>
+                        </tr>
+                        <?php foreach ($section["criteria"] as $fieldName => $criterion): ?>
+                          <tr>
+                            <td><?= htmlspecialchars($criterion) ?></td>
+                            <?php foreach ($ratingOptions as $scale => $unusedOption): ?>
+                              <td><?= $checkMark($ratings, $fieldName, (int)$scale) ?></td>
+                            <?php endforeach; ?>
+                          </tr>
+                        <?php endforeach; ?>
+                        <tr>
+                          <td class="subtotal">Total</td>
+                          <?php foreach ($ratingOptions as $scale => $unusedOption): ?>
+                            <td><?= htmlspecialchars($weightedTotalText($sectionWeightedTotals[$sectionKey] ?? [], (int)$scale)) ?></td>
+                          <?php endforeach; ?>
+                        </tr>
+                      <?php endforeach; ?>
 
                       <tr>
                         <td class="subtotal">Over-all Total</td>
-                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 5)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 4)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 3)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 2)) ?></td>
-                        <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, 1)) ?></td>
+                        <?php foreach ($ratingOptions as $scale => $unusedOption): ?>
+                          <td><?= htmlspecialchars($weightedTotalText($overallWeightedTotals, (int)$scale)) ?></td>
+                        <?php endforeach; ?>
+                      </tr>
+                      <tr>
+                        <td colspan="<?= 1 + count($ratingOptions) ?>" class="performance-summary-cell">
+                          <p class="performance-summary-title">Performance Summary</p>
+                          <div class="performance-summary-lines">
+                            <p>
+                              <span class="performance-summary-label">Overall Total Score:</span>
+                              <span class="performance-summary-line"><?= $overallTotalScore > 0 ? htmlspecialchars((string)$overallTotalScore) : "" ?></span>/<?= htmlspecialchars((string)$overallMaxScore) ?>
+                            </p>
+                            <p>
+                              <span class="performance-summary-label">Average Rating:</span>
+                              <span class="performance-summary-line"><?= htmlspecialchars($formatAverage(is_numeric($overallAvg) ? (float)$overallAvg : null)) ?></span>
+                            </p>
+                            <p class="performance-level-row">
+                              <span class="performance-summary-label">Performance Level:</span>
+                              <?php foreach (["Very Good", "Good", "Poor", "Needs Improvement"] as $levelOption): ?>
+                                <span class="performance-level-option">
+                                  <span class="performance-level-box"><?= $performanceLevel === $levelOption ? "&#10003;" : "" ?></span>
+                                  <span><?= htmlspecialchars($levelOption) ?></span>
+                                </span>
+                              <?php endforeach; ?>
+                            </p>
+                          </div>
+                        </td>
                       </tr>
                     </tbody>
                   </table>
                 </section>
 
                 <section class="pt-6 text-[12px]">
-                  <p class="font-semibold">D. Strength(s) / Area(s) for Improvement:</p>
+                  <p class="font-semibold">E. Strength(s):</p>
                   <div class="comment-box">
-                    <?php
-                      $combinedStrAreas = array_filter([$displayStrengths, $displayAreasImprovement], fn($s) => $s !== "");
-                      $combinedStrAreas = implode(" / ", $combinedStrAreas);
-                      echo $combinedStrAreas !== "" ? nl2br(htmlspecialchars($combinedStrAreas)) : "&nbsp;";
-                    ?>
+                    <?= $displayStrengths !== "" ? nl2br(htmlspecialchars($displayStrengths)) : "&nbsp;" ?>
                   </div>
                 </section>
 
                 <section class="pt-4 text-[12px]">
-                  <p class="font-semibold">E. Evaluator's Comment(s)/Recommendation:</p>
+                  <p class="font-semibold">F. Area(s) for Improvement:</p>
+                  <div class="comment-box">
+                    <?= $displayAreasImprovement !== "" ? nl2br(htmlspecialchars($displayAreasImprovement)) : "&nbsp;" ?>
+                  </div>
+                </section>
+
+                <section class="pt-4 text-[12px]">
+                  <p class="font-semibold">G. Evaluator's Comment(s):</p>
                   <div class="comment-box">
                     <?= $displayRecommendations !== "" ? nl2br(htmlspecialchars($displayRecommendations)) : "&nbsp;" ?>
                   </div>
+                </section>
+
+                <section class="retention-note">
+                  <p class="retention-note-title">Note for Retention</p>
+                  <p class="retention-note-copy">A Student Assistant must obtain an overall performance rating of at least &quot;Good&quot; and comply with all provisions of the Student Assistant Scholarship Agreement to remain eligible for retention in the Student Assistant Scholarship Program.</p>
                 </section>
 
                 <div class="signature-row">
@@ -1618,7 +2062,7 @@ if ($assistantFullName !== "") {
                 </div>
 
                 <div class="footer-box">
-                  <img src="../img/newboxHead.png" alt="footer box" />
+                  <img src="../img/boxEvaluator.png" alt="footer box" />
                 </div>
               </main>
 
@@ -1626,6 +2070,7 @@ if ($assistantFullName !== "") {
                 <img src="../img/newfooter.jpg" alt="SMCC footer" />
               </footer>
             </div>
+            <?php endforeach; ?>
           </div>
 
           <!-- Separator between documents with light design -->
@@ -1656,6 +2101,21 @@ if ($assistantFullName !== "") {
           </div>
 
           <div id="print-eval-result" class="max-w-6xl mx-auto mt-0 bg-white rounded-lg shadow-sm">
+            <?php
+              $displayApplicantName = (string)($aggregateEvaluationResult["applicant_name"] ?? "");
+              $displaySemesterSchoolYear = (string)($aggregateEvaluationResult["semester_school_year"] ?? "");
+              $displayAreaOfAssignment = (string)($aggregateEvaluationResult["area_of_assignment"] ?? "");
+              $displayProgramYearLevel = (string)($aggregateEvaluationResult["program_year_level"] ?? "");
+              $displayStrengths = (array)($aggregateEvaluationResult["strengths"] ?? []);
+              $displayAreasImprovement = (array)($aggregateEvaluationResult["areas_improvement"] ?? []);
+              $displayRecommendations = (array)($aggregateEvaluationResult["recommendations"] ?? []);
+              $evaluatorType = (string)($aggregateEvaluationResult["evaluator_label"] ?? "Student Assistant, Head of Office, and Administrator");
+              $sectionAAvg = $aggregateEvaluationResult["section_a_avg"] ?? null;
+              $sectionBAvg = $aggregateEvaluationResult["section_b_avg"] ?? null;
+              $sectionCAvg = $aggregateEvaluationResult["section_c_avg"] ?? null;
+              $sectionDAvg = $aggregateEvaluationResult["section_d_avg"] ?? null;
+              $overallAvg = $aggregateEvaluationResult["overall_avg"] ?? null;
+            ?>
             <div class="eval-result p-6 sm:p-8">
               <header class="text-center mb-4">
                 <div class="flex flex-wrap items-center justify-center gap-4 mb-2">
@@ -1667,15 +2127,10 @@ if ($assistantFullName !== "") {
                   <div class="leading-tight text-center">
                     <h1 class="font-bold text-[16pt] m-0">Saint Michael College of Caraga</h1>
                     <p class="m-0 text-[10pt]">
-                      Atupan St.,Brgy. 4, Nasipit, Agusan del Norte, Philippines<br />
+                      Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines
                     </p>
-                    <p class="m-0 text-[10pt]">Tel. Nos. +63 085 343-3251 / +63 085 283-3113</p>
                     <p class="m-0 text-[10pt]">
-                      <a
-                        href="http://www.smccnasipit.edu.ph"
-                        style="color: blue; text-decoration: underline;"
-                        >www.smccnasipit.edu.ph</a
-                      >
+                      <a>Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</a>
                     </p>
                   </div>
                   <img
@@ -1689,6 +2144,7 @@ if ($assistantFullName !== "") {
               <section class="text-center mb-6">
                 <h2 class="font-bold text-[13pt] tracking-wide m-0">STUDENT ASSISTANTS' EVALUATION RESULT</h2>
                 <p class="text-[11pt] mt-1 mb-0"><?= htmlspecialchars($displaySemesterSchoolYear) ?></p>
+                <p class="text-[10pt] mt-1 mb-0 font-semibold">Evaluator: <?= htmlspecialchars($evaluatorType) ?></p>
               </section>
 
               <div class="max-w-4xl mx-auto text-[12px] font-serif space-y-2 mb-6">
@@ -1708,9 +2164,9 @@ if ($assistantFullName !== "") {
                   <span class="border-b border-black ml-2 h-5 inline-block w-80"><?= htmlspecialchars($displayAreaOfAssignment) ?></span>
                 </div>
                 <div class="flex items-center max-w-3xl">
-                  <span class="w-56">Head of Office</span>
+                  <span class="w-56">Evaluators</span>
                   <span>:</span>
-                  <span class="border-b border-black ml-2 h-5 inline-block w-80"><?= htmlspecialchars($displayHeadOfOffice) ?></span>
+                  <span class="border-b border-black ml-2 h-5 inline-block w-80"><?= htmlspecialchars($evaluatorType) ?></span>
                 </div>
               </div>
 
@@ -1740,20 +2196,26 @@ if ($assistantFullName !== "") {
                       <td><?= htmlspecialchars($verbalFromAverage($sectionCAvg)) ?></td>
                     </tr>
                     <tr>
+                      <td>D. Professionalism and Ethical Conduct</td>
+                      <td><?= htmlspecialchars($formatAverage($sectionDAvg)) ?></td>
+                      <td><?= htmlspecialchars($verbalFromAverage($sectionDAvg)) ?></td>
+                    </tr>
+                    <tr>
                       <td class="font-semibold">Overall Rating</td>
                       <td><?= htmlspecialchars($formatAverage($overallAvg)) ?></td>
                       <td><?= htmlspecialchars($verbalFromAverage($overallAvg)) ?></td>
                     </tr>
                     <tr>
-                      <td>D. Strength(s) / Area(s) for Improvement</td>
-                      <td colspan="2"><div class="h-16 whitespace-pre-wrap"><?php
-                        $combinedStrAreas2 = array_filter([$displayStrengths, $displayAreasImprovement], fn($s) => $s !== "");
-                        echo htmlspecialchars(implode(" / ", $combinedStrAreas2));
-                      ?></div></td>
+                      <td>E. Strength(s)</td>
+                      <td colspan="2"><div class="min-h-16 whitespace-pre-wrap"><?= $renderAggregateCommentsHtml($displayStrengths) ?></div></td>
                     </tr>
                     <tr>
-                      <td>E. Evaluator's Comment(s)/Recommendation</td>
-                      <td colspan="2"><div class="h-16 whitespace-pre-wrap"><?= htmlspecialchars($displayRecommendations) ?></div></td>
+                      <td>F. Area(s) for Improvement</td>
+                      <td colspan="2"><div class="min-h-16 whitespace-pre-wrap"><?= $renderAggregateCommentsHtml($displayAreasImprovement) ?></div></td>
+                    </tr>
+                    <tr>
+                      <td>G. Evaluator's Comment(s)/Recommendation</td>
+                      <td colspan="2"><div class="min-h-16 whitespace-pre-wrap"><?= $renderAggregateCommentsHtml($displayRecommendations) ?></div></td>
                     </tr>
                   </tbody>
                 </table>
@@ -1855,7 +2317,8 @@ if ($assistantFullName !== "") {
       function printSection(sectionId) {
         const isResult = sectionId === "print-eval-result";
 
-        // Dynamically set the correct @page size for this document
+        // Dynamically set the correct @page size for this document.
+        // Both evaluation form and result print in portrait long bond.
         let pageOverride = document.getElementById("page-size-override");
         if (!pageOverride) {
           pageOverride = document.createElement("style");
@@ -1863,8 +2326,8 @@ if ($assistantFullName !== "") {
           document.head.appendChild(pageOverride);
         }
         pageOverride.textContent = isResult
-          ? "@page { size: 11in 8.5in; margin: 0.2in; }"
-          : "@page { size: 8.5in 13in; margin: 0.28in; }";
+          ? "@page { size: 8.5in 13in portrait; margin: 0.28in; }"
+          : "@page { size: 8.5in 13in portrait; margin: 0.28in; }";
 
         // Add body classes so @media print CSS knows what to show/hide
         document.body.classList.add("is-printing", isResult ? "printing-eval-result" : "printing-eval-form");

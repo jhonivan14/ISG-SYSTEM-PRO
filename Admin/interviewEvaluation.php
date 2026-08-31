@@ -180,8 +180,8 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
       }
       /* Print styling */
       @page {
-        size: Legal;
-        margin: 12mm 10mm 12mm 10mm;
+        size: 8.5in 13in portrait;
+        margin: 8mm;
       }
       .paper h1,
       .paper h2,
@@ -189,7 +189,7 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
         margin: 0;
       }
       .paper header {
-        margin-bottom: 0.5rem;
+        margin-bottom: 1rem;
         text-align: center;
       }
       .paper .header-top {
@@ -197,8 +197,8 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
         justify-content: center;
         align-items: center;
         flex-wrap: wrap;
-        gap: 0.75rem;
-        margin-bottom: 0.15rem;
+        gap: 1rem;
+        margin-bottom: 0.5rem;
       }
       .paper .header-left {
         display: flex;
@@ -206,12 +206,12 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
         gap: 0.5rem;
       }
       .paper .header-left img {
-        width: 76px;
-        height: 76px;
+        width: 80px;
+        height: 80px;
         object-fit: contain;
       }
       .paper .header-left-text {
-        line-height: 1.2;
+        line-height: 1.1;
         text-align: left;
       }
       .paper .header-left-text h1 {
@@ -223,12 +223,13 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
       }
       .paper .header-right {
         display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
         align-items: center;
-        gap: 0.4rem;
       }
       .paper .header-right img {
-        width: 96px;
-        height: 74px;
+        width: 100px;
+        height: 80px;
         object-fit: contain;
       }
       .title-line {
@@ -312,6 +313,8 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
           width: 100% !important;
         }
         .paper {
+          width: 100% !important;
+          max-width: 100% !important;
           border: none !important;
           box-shadow: none !important;
           padding: 0 !important;
@@ -321,13 +324,40 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
         .paper-wrap {
           max-width: 100% !important;
           width: 100% !important;
-          padding: 0 4px 12px 4px !important;
+          padding: 0 0 12px 0 !important;
         }
         .plain-table {
           overflow: visible !important;
         }
         .plain-table table {
+          width: 100% !important;
           min-width: 0 !important;
+          table-layout: fixed !important;
+        }
+        .plain-table th,
+        .plain-table td {
+          font-size: 9.8pt !important;
+          line-height: 1.2 !important;
+          padding: 4px 5px !important;
+          white-space: normal !important;
+          overflow-wrap: anywhere !important;
+          word-break: normal !important;
+        }
+        .plain-table th:nth-child(1),
+        .plain-table td:nth-child(1) { width: 6% !important; text-align: center !important; }
+        .plain-table th:nth-child(2),
+        .plain-table td:nth-child(2) { width: 28% !important; }
+        .plain-table th:nth-child(3),
+        .plain-table td:nth-child(3) { width: 15% !important; }
+        .plain-table th:nth-child(4),
+        .plain-table td:nth-child(4) { width: 16% !important; }
+        .plain-table th:nth-child(5),
+        .plain-table td:nth-child(5) { width: 24% !important; }
+        .plain-table th:nth-child(6),
+        .plain-table td:nth-child(6) { width: 11% !important; }
+        .plain-table td:nth-child(2),
+        .plain-table td:nth-child(5) {
+          text-align: left !important;
         }
         .plain-table .remarks-content {
           display: none !important;
@@ -697,11 +727,11 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
                     <img src="../img/SMCCNEWLOGO.png" alt="Seal of Saint Michael College of Caraga" />
                     <div class="header-left-text">
                       <h1 class="text-center">Saint Michael College of Caraga</h1>
-                      <p class="text-center">Brgy. 4, Nasipit, Agusan del Norte, Philippines</p>
-                      <p class="text-center">Tel. No. 085 225-0208</p>
                       <p class="text-center">
-                        Website: <a href="http://www.smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">www.smccnasipit.edu.ph</a>,
-                        Email: <a href="mailto:communications@smccnasipit.edu.ph" style="color: blue; text-decoration: underline;">communications@smccnasipit.edu.ph</a>
+                        Atupan St., Brgy. 4, Nasipit, Agusan del Norte 8602, Philippines
+                      </p>
+                      <p class="text-center">
+                        <a>Website: www.smccnasipit.edu.ph ; Tel. Nos. 085 300-2932</a>
                       </p>
                     </div>
                   </div>
@@ -717,7 +747,7 @@ $showClearFilters = $rawSelectedSchoolYear !== null || $rawSelectedBatch !== nul
               <hr class="border-black mb-3" />
 
               <section class="text-center mb-4">
-                <h2 class="font-bold text-base">Student Assistance Applicants' Interview Result</h2>
+                <h2 class="font-bold text-base">Student Assistant Applicants' Interview Result</h2>
                 <p class="font-semibold text-sm"><?php echo htmlspecialchars($headerSemesterLabel); ?>, S.Y. <?php echo htmlspecialchars($activeSchoolYearFilter !== "" ? $activeSchoolYearFilter : "All School Years"); ?></p>
                 <p class="font-semibold text-sm"><?php echo htmlspecialchars($displayBatch); ?></p>
               </section>

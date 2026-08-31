@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . "/head-auth.php";
+require_once __DIR__ . "/administrator-auth.php";
 headRequireLogin();
 header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
 header("Pragma: no-cache");
@@ -338,19 +338,19 @@ $evaluatedCount = count($evaluatedApplicants);
 
         <nav class="flex-1 mt-2">
           <ul class="text-xs font-semibold">
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='headDashboard.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='administratorDashboard.php'">
               <i class="fas fa-home w-5"></i>
               <span>Home</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='my-sas.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='administrator-my-sas.php'">
               <i class="fas fa-user-friends w-5"></i>
               <span>My SA's</span>
             </li>
-            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='show-evaluation.php'">
+            <li class="panel-nav-item active gap-2 cursor-pointer" onclick="window.location.href='administrator-show-evaluation.php'">
               <i class="fas fa-check-circle w-5"></i>
               <span>Show Evaluation</span>
             </li>
-            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='head-changePassword.php'">
+            <li class="panel-nav-item gap-2 cursor-pointer" onclick="window.location.href='administrator-changePassword.php'">
               <i class="fas fa-key w-5"></i>
               <span>Change Password</span>
             </li>
@@ -411,7 +411,7 @@ $evaluatedCount = count($evaluatedApplicants);
               <p class="text-xs text-[#052c6a]">View evaluation entries for approved student assistants.</p>
             </div>
             <div class="flex flex-wrap items-center gap-2 text-xs">
-              <form method="get" action="show-evaluation.php" class="flex flex-wrap items-center gap-2">
+              <form method="get" action="administrator-show-evaluation.php" class="flex flex-wrap items-center gap-2">
                 <select
                   class="rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm focus:outline-none"
                   name="school_year"
@@ -440,7 +440,7 @@ $evaluatedCount = count($evaluatedApplicants);
                 </select>
                 <?php if ($selectedSchoolYear !== "" || $selectedSemester !== ""): ?>
                   <a
-                    href="show-evaluation.php"
+                    href="administrator-show-evaluation.php"
                     class="inline-flex items-center rounded-full border border-[#0d8ddb] bg-white px-3 py-2 text-xs font-semibold text-[#052c6a] shadow-sm"
                   >
                     Clear
@@ -525,7 +525,7 @@ $evaluatedCount = count($evaluatedApplicants);
                         <button
                           class="rounded-full border border-[#052c6a] px-3 py-1 text-[11px] font-semibold text-[#052c6a] hover:bg-[#052c6a] hover:text-white"
                           type="button"
-                          onclick="window.location.href='department-evaluation-view.php?evaluation_id=<?= urlencode((string)($applicant['evaluation_id'] ?? 0)) ?>'"
+                          onclick="window.location.href='administrator-evaluation-view.php?evaluation_id=<?= urlencode((string)($applicant['evaluation_id'] ?? 0)) ?>'"
                         >
                           View Evaluation
                         </button>
@@ -581,3 +581,4 @@ $evaluatedCount = count($evaluatedApplicants);
     </script>
   </body>
 </html>
+
